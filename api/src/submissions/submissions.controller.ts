@@ -6,11 +6,12 @@ export class SubmissionsController {
   constructor(private readonly submissionsService: SubmissionsService) {}
 
   @Post()
-  create(@Body('code') code: string) {
-    return this.submissionsService.executeCode(code);
+  // Recebe o corpo completo (body)
+  create(@Body() body: { code: string; language_id: number; stdin: string }) {
+    return this.submissionsService.executeCode(body);
   }
 
-  @Get() // Novo endpoint GET /submissions
+  @Get()
   findAll() {
     return this.submissionsService.findAll();
   }
