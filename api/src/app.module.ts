@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigModule } from '@nestjs/config'; // Importante para .env
 import { SubmissionsModule } from './submissions/submissions.module';
 import { Submission } from './submissions/entities/submission.entity';
 // Importe as novas entidades
@@ -9,9 +9,7 @@ import { TestCase } from './submissions/entities/test-case.entity';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
+    ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST || 'localhost',

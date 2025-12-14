@@ -8,7 +8,7 @@ import { Problem } from './entities/problem.entity';
 import { TestCase } from './entities/test-case.entity';
 
 @Module({
-  // CORREÇÃO: Registre as 3 entidades aqui
+  // CORREÇÃO: Registre as 3 entidades para poder injetá-las no Service
   imports: [TypeOrmModule.forFeature([Submission, Problem, TestCase])],
   controllers: [SubmissionsController],
   providers: [SubmissionsService],

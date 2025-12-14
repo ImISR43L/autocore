@@ -20,12 +20,15 @@ services:
     container_name: autocore_api
     ports:
       - "3000:3000"
+    # CORREÇÃO: Adicione esta linha para ler o arquivo que você criou
+    env_file:
+      - ./api/.env
     environment:
-      - DB_HOST=db # Conecta no serviço 'db' acima
+      # As variáveis abaixo podem ser mantidas aqui ou movidas para o .env também
+      - DB_HOST=db
       - DB_USER=autocore_user
       - DB_PASS=autocore_pass
       - DB_NAME=autocore_db
-      # Chaves do Judge0 (opcional passar por aqui ou manter no código)
     depends_on:
       - db
     networks:
