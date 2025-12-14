@@ -16,7 +16,7 @@ export class Submission {
   @Column()
   language_id: number;
 
-  // Nova coluna para suportar inputs do usuário
+  // COLUNA NOVA OBRIGATÓRIA
   @Column({ nullable: true, type: 'text' })
   stdin: string;
 

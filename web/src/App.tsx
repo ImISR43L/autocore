@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+import Editor from "@monaco-editor/react"; // Importação do Monaco
 
 interface Submission {
   id: number;
@@ -11,7 +12,15 @@ interface Submission {
   created_at: string;
 }
 
-// Configuração das linguagens suportadas
+// Mapeamento para o Monaco entender qual sintaxe colorir
+const LANGUAGE_MAP: { [key: number]: string } = {
+  71: "python",
+  63: "javascript",
+  54: "cpp",
+  51: "csharp",
+  60: "go",
+};
+
 const LANGUAGES = [
   {
     id: 71,
@@ -27,7 +36,7 @@ const LANGUAGES = [
     id: 54,
     name: "C++ (GCC 9.2.0)",
     defaultCode:
-      '#include <iostream>\nint main() { std::cout << "Hello C++"; return 0; }',
+      '#include <iostream>\nusing namespace std;\nint main() {\n    string s;\n    cin >> s;\n    cout << "Ola " << s;\n    return 0;\n}',
   },
   {
     id: 51,
@@ -73,15 +82,12 @@ function App() {
   const runCode = async () => {
     setLoading(true);
     setOutput("");
-
     try {
-      // Envia codigo, linguagem E input
       const response = await axios.post("http://localhost:3000/submissions", {
         code,
         language_id: languageId,
         stdin,
       });
-
       const data = response.data;
 
       if (data.stdout) {
@@ -105,7 +111,6 @@ function App() {
       } else {
         setOutput(`Status: ${data.status?.description}`);
       }
-
       fetchHistory();
     } catch (error: any) {
       setOutput("Erro: " + error.message);
@@ -117,19 +122,39 @@ function App() {
   return (
     <div
       style={{
-        padding: "2rem",
-        fontFamily: "monospace",
-        maxWidth: "900px",
-        margin: "0 auto",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        fontFamily: "sans-serif",
+        backgroundColor: "#1e1e1e",
+        color: "#fff",
       }}
     >
-      <h1>Autocore IDE</h1>
+      {/* Header / Toolbar */}
+      <div
+        style={{
+          padding: "10px 20px",
+          borderBottom: "1px solid #333",
+          display: "flex",
+          alignItems: "center",
+          gap: "1rem",
+          backgroundColor: "#252526",
+        }}
+      >
+        <h2 style={{ margin: 0, marginRight: "auto", fontSize: "1.2rem" }}>
+          Autocore IDE
+        </h2>
 
-      <div style={{ marginBottom: "1rem", display: "flex", gap: "1rem" }}>
         <select
           value={languageId}
           onChange={(e) => handleLanguageChange(Number(e.target.value))}
-          style={{ padding: "8px", fontSize: "1rem" }}
+          style={{
+            padding: "8px",
+            borderRadius: "4px",
+            backgroundColor: "#3c3c3c",
+            color: "white",
+            border: "none",
+          }}
         >
           {LANGUAGES.map((lang) => (
             <option key={lang.id} value={lang.id}>
@@ -144,63 +169,101 @@ function App() {
           style={{
             padding: "8px 20px",
             cursor: "pointer",
-            flexGrow: 1,
             fontWeight: "bold",
+            backgroundColor: loading ? "#555" : "#0e639c",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
           }}
         >
-          {loading ? "Executando..." : "▶ RODAR CÓDIGO"}
+          {loading ? "Executando..." : "▶ Run"}
         </button>
       </div>
 
-      <div style={{ display: "flex", gap: "1rem", height: "400px" }}>
-        <div style={{ flex: 2, display: "flex", flexDirection: "column" }}>
-          <label>
-            <strong>Source Code:</strong>
-          </label>
-          <textarea
-            style={{
-              flex: 1,
-              padding: "10px",
-              backgroundColor: "#1e1e1e",
-              color: "#d4d4d4",
-              fontFamily: "monospace",
-            }}
+      {/* Main Area: Split Screen */}
+      <div style={{ flex: 1, display: "flex" }}>
+        {/* Editor (Esquerda) */}
+        <div style={{ flex: 2, borderRight: "1px solid #333" }}>
+          <Editor
+            height="100%"
+            theme="vs-dark"
+            language={LANGUAGE_MAP[languageId]}
             value={code}
-            onChange={(e) => setCode(e.target.value)}
+            onChange={(value) => setCode(value || "")}
+            options={{
+              minimap: { enabled: false },
+              fontSize: 14,
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+            }}
           />
         </div>
 
+        {/* Painel Lateral (Direita) */}
         <div
           style={{
             flex: 1,
             display: "flex",
             flexDirection: "column",
-            gap: "1rem",
+            backgroundColor: "#1e1e1e",
           }}
         >
-          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <label>
-              <strong>Custom Input (Stdin):</strong>
-            </label>
+          {/* Input */}
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              borderBottom: "1px solid #333",
+            }}
+          >
+            <div
+              style={{
+                padding: "5px 10px",
+                backgroundColor: "#252526",
+                fontSize: "0.8rem",
+                fontWeight: "bold",
+              }}
+            >
+              STDIN (Input)
+            </div>
             <textarea
-              style={{ flex: 1, padding: "10px", backgroundColor: "#f0f0f0" }}
-              placeholder="Digite aqui dados de entrada..."
+              style={{
+                flex: 1,
+                width: "100%",
+                backgroundColor: "#1e1e1e",
+                color: "#d4d4d4",
+                border: "none",
+                padding: "10px",
+                resize: "none",
+                outline: "none",
+              }}
+              placeholder="Entrada de dados aqui..."
               value={stdin}
               onChange={(e) => setStdin(e.target.value)}
             />
           </div>
+
+          {/* Output */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <label>
-              <strong>Output:</strong>
-            </label>
+            <div
+              style={{
+                padding: "5px 10px",
+                backgroundColor: "#252526",
+                fontSize: "0.8rem",
+                fontWeight: "bold",
+              }}
+            >
+              STDOUT (Console)
+            </div>
             <pre
               style={{
                 flex: 1,
-                padding: "10px",
-                backgroundColor: "#333",
-                color: "#fff",
-                overflow: "auto",
                 margin: 0,
+                padding: "10px",
+                overflow: "auto",
+                fontFamily: "monospace",
+                color: output.startsWith("Erro") ? "#f14c4c" : "#fff",
               }}
             >
               {output}
@@ -209,43 +272,52 @@ function App() {
         </div>
       </div>
 
-      <div style={{ marginTop: "3rem" }}>
-        <h3>Histórico de Execuções</h3>
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "0.9rem",
-          }}
-        >
-          <thead>
-            <tr style={{ textAlign: "left", backgroundColor: "#eee" }}>
-              <th style={{ padding: "8px" }}>Lang</th>
-              <th>Preview</th>
-              <th>Status</th>
-              <th>Input</th>
-              <th>Data</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((sub) => {
-              const langName =
-                LANGUAGES.find((l) => l.id === sub.language_id)?.name ||
-                sub.language_id;
-              return (
-                <tr key={sub.id} style={{ borderBottom: "1px solid #ddd" }}>
-                  <td style={{ padding: "8px" }}>{langName}</td>
-                  <td>
-                    <code>{sub.code.substring(0, 30)}...</code>
-                  </td>
-                  <td>{sub.status}</td>
-                  <td>{sub.stdin ? "Sim" : "-"}</td>
-                  <td>{new Date(sub.created_at).toLocaleTimeString()}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      {/* Footer / Histórico Colapsável (Simplificado para visualização) */}
+      <div
+        style={{
+          height: "150px",
+          overflowY: "auto",
+          borderTop: "1px solid #333",
+          backgroundColor: "#252526",
+          padding: "10px",
+        }}
+      >
+        <h4 style={{ margin: "0 0 10px 0", fontSize: "0.9rem", color: "#ccc" }}>
+          Histórico Recente
+        </h4>
+        <div style={{ display: "flex", gap: "10px", overflowX: "auto" }}>
+          {history.map((sub) => (
+            <div
+              key={sub.id}
+              style={{
+                minWidth: "200px",
+                backgroundColor: "#333",
+                padding: "10px",
+                borderRadius: "4px",
+                fontSize: "0.8rem",
+              }}
+            >
+              <div style={{ fontWeight: "bold", marginBottom: "5px" }}>
+                {
+                  LANGUAGES.find((l) => l.id === sub.language_id)?.name.split(
+                    " "
+                  )[0]
+                }
+                <span
+                  style={{
+                    float: "right",
+                    color: sub.status === "Accepted" ? "#4caf50" : "#f44336",
+                  }}
+                >
+                  {sub.status}
+                </span>
+              </div>
+              <div style={{ color: "#aaa" }}>
+                ID: {sub.id} • {new Date(sub.created_at).toLocaleTimeString()}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

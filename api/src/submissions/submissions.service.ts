@@ -4,7 +4,6 @@ import { Repository } from 'typeorm';
 import axios from 'axios';
 import { Submission } from './entities/submission.entity';
 
-// Interface para definir o que o serviço espera receber
 interface ExecuteDto {
   code: string;
   language_id: number;
@@ -14,7 +13,7 @@ interface ExecuteDto {
 @Injectable()
 export class SubmissionsService {
   private readonly judge0Url = 'https://judge0-ce.p.rapidapi.com';
-  // Sua API Key
+  // Mantenha sua chave da RapidAPI aqui
   private readonly apiKey =
     'b634d42f29mshb773397ed4902e0p1b001ejsn545bd3de7177';
 
@@ -23,7 +22,6 @@ export class SubmissionsService {
     private submissionsRepository: Repository<Submission>,
   ) {}
 
-  // Agora aceita um objeto 'data' com linguagem e stdin
   async executeCode(data: ExecuteDto) {
     const { code, language_id, stdin } = data;
 
@@ -32,7 +30,7 @@ export class SubmissionsService {
 
     const payload = {
       source_code: base64Code,
-      language_id: language_id, // <--- Dinâmico!
+      language_id: language_id, // <--- Agora usamos o ID dinâmico vindo do Frontend
       stdin: base64Stdin,
     };
 
@@ -58,7 +56,6 @@ export class SubmissionsService {
         ? Buffer.from(result.stderr, 'base64').toString('utf-8')
         : null;
 
-      // Salva no banco
       const newSubmission = this.submissionsRepository.create({
         code: code,
         language_id: language_id,
@@ -66,7 +63,7 @@ export class SubmissionsService {
         stdout: decodedStdout,
         stderr: decodedStderr,
         status: result.status?.description || 'Unknown',
-      } as any);
+      } as any); // 'as any' para evitar erro de tipagem temporário
 
       await this.submissionsRepository.save(newSubmission);
 

@@ -6,8 +6,8 @@ export class SubmissionsController {
   constructor(private readonly submissionsService: SubmissionsService) {}
 
   @Post()
-  // Recebe o corpo completo (body)
   create(@Body() body: { code: string; language_id: number; stdin: string }) {
+    // Repassa o corpo completo para o serviço
     return this.submissionsService.executeCode(body);
   }
 
