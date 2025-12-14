@@ -3,7 +3,9 @@ import {
   Column,
   PrimaryGeneratedColumn,
   CreateDateColumn,
+  ManyToOne,
 } from 'typeorm';
+import { Problem } from './problem.entity';
 
 @Entity()
 export class Submission {
@@ -16,18 +18,12 @@ export class Submission {
   @Column()
   language_id: number;
 
-  // COLUNA NOVA OBRIGATÓRIA
-  @Column({ nullable: true, type: 'text' })
-  stdin: string;
-
-  @Column({ nullable: true, type: 'text' })
-  stdout: string;
-
-  @Column({ nullable: true, type: 'text' })
-  stderr: string;
-
   @Column({ nullable: true })
-  status: string;
+  status: string; // Accepted, Wrong Answer, etc.
+
+  // Vincula a submissão a um problema específico
+  @ManyToOne(() => Problem)
+  problem: Problem;
 
   @CreateDateColumn()
   created_at: Date;

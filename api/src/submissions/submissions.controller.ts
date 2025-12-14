@@ -1,15 +1,19 @@
+// api/src/submissions/submissions.controller.ts
 import { Controller, Post, Get, Body } from '@nestjs/common';
 import { SubmissionsService } from './submissions.service';
-import { CreateSubmissionDto } from './dto/create-submission.dto'; // [Novo]
 
 @Controller('submissions')
 export class SubmissionsController {
   constructor(private readonly submissionsService: SubmissionsService) {}
 
   @Post()
-  // [Alterado] Usa o DTO real em vez de tipagem manual
-  create(@Body() createSubmissionDto: CreateSubmissionDto) {
-    return this.submissionsService.executeCode(createSubmissionDto);
+  create(@Body() body: any) {
+    return this.submissionsService.executeCode(body);
+  }
+
+  @Post('seed') // Endpoint temporário para criar o problema no banco
+  seed() {
+    return this.submissionsService.seedProblem();
   }
 
   @Get()

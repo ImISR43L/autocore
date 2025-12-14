@@ -6,10 +6,12 @@ interface Submission {
   id: number;
   code: string;
   language_id: number;
-  stdin: string;
-  stdout: string;
   status: string;
   created_at: string;
+  problem: {
+    id: number;
+    title: string;
+  };
 }
 
 const LANGUAGE_MAP: { [key: number]: string } = {
@@ -20,57 +22,49 @@ const LANGUAGE_MAP: { [key: number]: string } = {
   60: "go",
 };
 
+// Problemas disponíveis (Idealmente viriam de uma API GET /problems)
+const PROBLEMS = [
+  {
+    id: 1,
+    title: "1. Soma Simples",
+    description:
+      "Leia dois valores inteiros e imprima a soma deles. Exemplo de Entrada: '5 5'. Saída Esperada: '10'.",
+  },
+  // Você pode adicionar mais aqui depois de criar no banco
+];
+
 const LANGUAGES = [
   {
     id: 71,
     name: "Python (3.8.1)",
-    defaultCode: `print("Olá, mundo!")`, // Teste com acento
+    defaultCode: `import sys\n\n# Leia a entrada padrão\nline = sys.stdin.read().split()\nif len(line) >= 2:\n    a = int(line[0])\n    b = int(line[1])\n    print(a + b)`,
   },
   {
     id: 63,
     name: "JavaScript (Node.js 12.14)",
-    defaultCode: `console.log("Olá do JavaScript!");`,
+    defaultCode: `const fs = require('fs');\nconst input = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);\n\nif(input.length >= 2) {\n    const a = parseInt(input[0]);\n    const b = parseInt(input[1]);\n    console.log(a + b);\n}`,
   },
   {
     id: 54,
     name: "C++ (GCC 9.2.0)",
-    defaultCode: `#include <iostream>\nusing namespace std;\nint main() {\n    cout << "Olá do C++";\n    return 0;\n}`,
-  },
-  {
-    id: 51,
-    name: "C# (Mono 6.6.0)",
-    defaultCode: `using System;\nclass Program { static void Main() { Console.WriteLine("Olá do C#"); } }`,
+    defaultCode: `#include <iostream>\nusing namespace std;\n\nint main() {\n    int a, b;\n    if (cin >> a >> b) {\n        cout << (a + b);\n    }\n    return 0;\n}`,
   },
   {
     id: 60,
     name: "Go (1.13.5)",
-    defaultCode: `package main\nimport "fmt"\nfunc main() { fmt.Println("Olá do Go") }`,
+    defaultCode: `package main\nimport (\n    "fmt"\n)\n\nfunc main() {\n    var a, b int\n    if _, err := fmt.Scan(&a, &b); err == nil {\n        fmt.Println(a + b)\n    }\n}`,
   },
 ];
 
 function App() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+
   const [languageId, setLanguageId] = useState<number>(71);
+  const [problemId, setProblemId] = useState<number>(1);
   const [code, setCode] = useState<string>(LANGUAGES[0].defaultCode);
-  const [stdin, setStdin] = useState<string>("");
-  const [output, setOutput] = useState<string>("");
+  const [verdict, setVerdict] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [history, setHistory] = useState<Submission[]>([]);
-
-  // CORREÇÃO: Função segura para decodificar Base64 com acentos (UTF-8)
-  const decodeBase64 = (base64String: string) => {
-    try {
-      const binaryString = atob(base64String);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      return new TextDecoder("utf-8").decode(bytes);
-    } catch (e) {
-      console.error("Erro na decodificação:", e);
-      return base64String; // Retorna original se falhar
-    }
-  };
 
   const fetchHistory = async () => {
     try {
@@ -91,34 +85,34 @@ function App() {
     if (lang) setCode(lang.defaultCode);
   };
 
-  const runCode = async () => {
+  const submitSolution = async () => {
     setLoading(true);
-    setOutput("");
+    setVerdict(null);
     try {
+      // Agora enviamos o problem_id em vez de stdin
       const response = await axios.post(`${API_URL}/submissions`, {
         code,
         language_id: languageId,
-        stdin,
+        problem_id: problemId,
       });
-      const data = response.data;
 
-      // CORREÇÃO: Usando a nova função decodeBase64 em vez de atob direto
-      if (data.stdout) {
-        setOutput(decodeBase64(data.stdout));
-      } else if (data.stderr) {
-        setOutput(`Erro:\n${decodeBase64(data.stderr)}`);
-      } else if (data.compile_output) {
-        setOutput(`Erro de Compilação:\n${decodeBase64(data.compile_output)}`);
-      } else {
-        setOutput(`Status: ${data.status?.description}`);
-      }
+      const data = response.data;
+      setVerdict(data.status); // Ex: "Accepted", "Wrong Answer"
 
       fetchHistory();
     } catch (error: any) {
-      setOutput("Erro: " + error.message);
+      setVerdict("Error: " + error.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Helper para cor do status
+  const getStatusColor = (status: string | null) => {
+    if (!status) return "#fff";
+    if (status === "Accepted") return "#4caf50"; // Verde
+    if (status === "Wrong Answer") return "#f44336"; // Vermelho
+    return "#ff9800"; // Laranja (Outros erros)
   };
 
   return (
@@ -132,7 +126,7 @@ function App() {
         color: "#fff",
       }}
     >
-      {/* Header */}
+      {/* Toolbar */}
       <div
         style={{
           padding: "10px 20px",
@@ -144,9 +138,29 @@ function App() {
         }}
       >
         <h2 style={{ margin: 0, marginRight: "auto", fontSize: "1.2rem" }}>
-          Autocore IDE
+          Autocore Judge
         </h2>
 
+        {/* Seletor de Problema */}
+        <select
+          value={problemId}
+          onChange={(e) => setProblemId(Number(e.target.value))}
+          style={{
+            padding: "8px",
+            borderRadius: "4px",
+            backgroundColor: "#3c3c3c",
+            color: "white",
+            border: "1px solid #555",
+          }}
+        >
+          {PROBLEMS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.title}
+            </option>
+          ))}
+        </select>
+
+        {/* Seletor de Linguagem */}
         <select
           value={languageId}
           onChange={(e) => handleLanguageChange(Number(e.target.value))}
@@ -166,10 +180,10 @@ function App() {
         </select>
 
         <button
-          onClick={runCode}
+          onClick={submitSolution}
           disabled={loading}
           style={{
-            padding: "8px 20px",
+            padding: "8px 25px",
             cursor: "pointer",
             fontWeight: "bold",
             backgroundColor: loading ? "#555" : "#0e639c",
@@ -178,12 +192,13 @@ function App() {
             borderRadius: "4px",
           }}
         >
-          {loading ? "Executando..." : "▶ Run"}
+          {loading ? "Julgando..." : "Enviar Solução"}
         </button>
       </div>
 
-      {/* Main Area */}
+      {/* Área Principal */}
       <div style={{ flex: 1, display: "flex" }}>
+        {/* Editor (Esquerda) */}
         <div style={{ flex: 2, borderRight: "1px solid #333" }}>
           <Editor
             height="100%"
@@ -199,72 +214,66 @@ function App() {
           />
         </div>
 
+        {/* Painel de Informações (Direita) */}
         <div
           style={{
             flex: 1,
             display: "flex",
             flexDirection: "column",
             backgroundColor: "#1e1e1e",
+            padding: "20px",
           }}
         >
+          {/* Descrição do Problema */}
+          <div style={{ marginBottom: "2rem" }}>
+            <h3
+              style={{ borderBottom: "1px solid #444", paddingBottom: "10px" }}
+            >
+              {PROBLEMS.find((p) => p.id === problemId)?.title}
+            </h3>
+            <p style={{ lineHeight: "1.6", color: "#ccc" }}>
+              {PROBLEMS.find((p) => p.id === problemId)?.description}
+            </p>
+          </div>
+
+          {/* Área de Veredito */}
           <div
             style={{
               flex: 1,
               display: "flex",
               flexDirection: "column",
-              borderBottom: "1px solid #333",
+              justifyContent: "center",
+              alignItems: "center",
             }}
           >
-            <div
-              style={{
-                padding: "5px 10px",
-                backgroundColor: "#252526",
-                fontSize: "0.8rem",
-                fontWeight: "bold",
-              }}
-            >
-              STDIN (Input)
-            </div>
-            <textarea
-              style={{
-                flex: 1,
-                width: "100%",
-                backgroundColor: "#1e1e1e",
-                color: "#d4d4d4",
-                border: "none",
-                padding: "10px",
-                resize: "none",
-                outline: "none",
-              }}
-              placeholder="Entrada..."
-              value={stdin}
-              onChange={(e) => setStdin(e.target.value)}
-            />
-          </div>
-
-          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <div
-              style={{
-                padding: "5px 10px",
-                backgroundColor: "#252526",
-                fontSize: "0.8rem",
-                fontWeight: "bold",
-              }}
-            >
-              STDOUT (Console)
-            </div>
-            <pre
-              style={{
-                flex: 1,
-                margin: 0,
-                padding: "10px",
-                overflow: "auto",
-                fontFamily: "monospace",
-                color: output.startsWith("Erro") ? "#f14c4c" : "#fff",
-              }}
-            >
-              {output}
-            </pre>
+            {verdict && (
+              <div
+                style={{
+                  padding: "20px",
+                  borderRadius: "8px",
+                  backgroundColor: "#2d2d2d",
+                  border: `2px solid ${getStatusColor(verdict)}`,
+                  textAlign: "center",
+                  width: "80%",
+                }}
+              >
+                <h2 style={{ color: getStatusColor(verdict), margin: 0 }}>
+                  {verdict}
+                </h2>
+                <small
+                  style={{ color: "#888", marginTop: "10px", display: "block" }}
+                >
+                  {verdict === "Accepted"
+                    ? "Parabéns! Todos os casos de teste passaram."
+                    : "Verifique sua lógica e tente novamente."}
+                </small>
+              </div>
+            )}
+            {!verdict && !loading && (
+              <div style={{ color: "#555", textAlign: "center" }}>
+                Envie seu código para ver o resultado.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -280,37 +289,37 @@ function App() {
         }}
       >
         <h4 style={{ margin: "0 0 10px 0", fontSize: "0.9rem", color: "#ccc" }}>
-          Histórico Recente
+          Histórico de Submissões
         </h4>
         <div style={{ display: "flex", gap: "10px", overflowX: "auto" }}>
           {history.map((sub) => (
             <div
               key={sub.id}
               style={{
-                minWidth: "200px",
+                minWidth: "220px",
                 backgroundColor: "#333",
                 padding: "10px",
                 borderRadius: "4px",
                 fontSize: "0.8rem",
               }}
             >
-              <div style={{ fontWeight: "bold", marginBottom: "5px" }}>
-                {
-                  LANGUAGES.find((l) => l.id === sub.language_id)?.name.split(
-                    " "
-                  )[0]
-                }
-                <span
-                  style={{
-                    float: "right",
-                    color: sub.status === "Accepted" ? "#4caf50" : "#f44336",
-                  }}
-                >
+              <div
+                style={{
+                  fontWeight: "bold",
+                  marginBottom: "5px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span>ID: {sub.id}</span>
+                <span style={{ color: getStatusColor(sub.status) }}>
                   {sub.status}
                 </span>
               </div>
-              <div style={{ color: "#aaa" }}>
-                ID: {sub.id} • {new Date(sub.created_at).toLocaleTimeString()}
+              <div style={{ color: "#aaa", fontSize: "0.75rem" }}>
+                {sub.problem?.title || "Problema " + (sub.problem as any)?.id}{" "}
+                <br />
+                {new Date(sub.created_at).toLocaleTimeString()}
               </div>
             </div>
           ))}
