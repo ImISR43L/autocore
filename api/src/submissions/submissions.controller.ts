@@ -1,14 +1,15 @@
 import { Controller, Post, Get, Body } from '@nestjs/common';
 import { SubmissionsService } from './submissions.service';
+import { CreateSubmissionDto } from './dto/create-submission.dto'; // [Novo]
 
 @Controller('submissions')
 export class SubmissionsController {
   constructor(private readonly submissionsService: SubmissionsService) {}
 
   @Post()
-  // FIX: Recebe o corpo completo (@Body) em vez de filtrar apenas 'code'
-  create(@Body() body: { code: string; language_id: number; stdin: string }) {
-    return this.submissionsService.executeCode(body);
+  // [Alterado] Usa o DTO real em vez de tipagem manual
+  create(@Body() createSubmissionDto: CreateSubmissionDto) {
+    return this.submissionsService.executeCode(createSubmissionDto);
   }
 
   @Get()

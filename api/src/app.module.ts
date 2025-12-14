@@ -1,15 +1,17 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config'; // [Novo]
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SubmissionsModule } from './submissions/submissions.module';
 import { Submission } from './submissions/entities/submission.entity';
 
 @Module({
   imports: [
+    // [Novo] Carrega as variáveis do .env globalmente
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
     TypeOrmModule.forRoot({
       type: 'postgres',
-      // CORREÇÃO CRÍTICA AQUI:
-      // Se estiver no Docker, usa a variável DB_HOST ('db').
-      // Se não, usa 'localhost'.
       host: process.env.DB_HOST || 'localhost',
       port: 5432,
       username: process.env.DB_USER || 'autocore_user',

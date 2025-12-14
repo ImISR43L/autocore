@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import Editor from "@monaco-editor/react"; // Importação do Monaco
+import Editor from "@monaco-editor/react";
 
 interface Submission {
   id: number;
@@ -12,7 +12,6 @@ interface Submission {
   created_at: string;
 }
 
-// Mapeamento para o Monaco entender qual sintaxe colorir
 const LANGUAGE_MAP: { [key: number]: string } = {
   71: "python",
   63: "javascript",
@@ -25,88 +24,32 @@ const LANGUAGES = [
   {
     id: 71,
     name: "Python (3.8.1)",
-    defaultCode: `import sys
-
-# Lê todo o input disponível
-data = sys.stdin.read().strip()
-
-if not data:
-    data = "Visitante"
-
-print(f"Ola do Python, {data}!")`,
+    defaultCode: `print("Olá, mundo!")`, // Teste com acento
   },
   {
     id: 63,
     name: "JavaScript (Node.js 12.14)",
-    defaultCode: `const fs = require('fs');
-
-// Lê o input da entrada padrão (fd 0)
-const input = fs.readFileSync(0, 'utf-8').trim();
-
-const nome = input || "Visitante";
-console.log("Ola do JavaScript, " + nome + "!");`,
+    defaultCode: `console.log("Olá do JavaScript!");`,
   },
   {
     id: 54,
     name: "C++ (GCC 9.2.0)",
-    defaultCode: `#include <iostream>
-#include <string>
-using namespace std;
-
-int main() {
-    string s;
-    // Lê a primeira palavra do input
-    if (cin >> s) {
-        cout << "Ola do C++, " << s << "!";
-    } else {
-        cout << "Ola do C++ (Sem Input)!";
-    }
-    return 0;
-}`,
+    defaultCode: `#include <iostream>\nusing namespace std;\nint main() {\n    cout << "Olá do C++";\n    return 0;\n}`,
   },
   {
     id: 51,
     name: "C# (Mono 6.6.0)",
-    defaultCode: `using System;
-
-public class Program {
-    public static void Main() {
-        // Lê uma linha do input
-        string input = Console.ReadLine();
-        
-        if (string.IsNullOrEmpty(input)) {
-            input = "Visitante";
-        }
-        
-        Console.WriteLine($"Ola do C#, {input}!");
-    }
-}`,
+    defaultCode: `using System;\nclass Program { static void Main() { Console.WriteLine("Olá do C#"); } }`,
   },
   {
     id: 60,
     name: "Go (1.13.5)",
-    defaultCode: `package main
-import (
-    "bufio"
-    "fmt"
-    "os"
-)
-
-func main() {
-    scanner := bufio.NewScanner(os.Stdin)
-    
-    // Lê a primeira linha disponível
-    if scanner.Scan() {
-        text := scanner.Text()
-        fmt.Printf("Ola do Go, %s!\n", text)
-    } else {
-        fmt.Println("Ola do Go (Sem Input)!")
-    }
-}`,
+    defaultCode: `package main\nimport "fmt"\nfunc main() { fmt.Println("Olá do Go") }`,
   },
 ];
 
 function App() {
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const [languageId, setLanguageId] = useState<number>(71);
   const [code, setCode] = useState<string>(LANGUAGES[0].defaultCode);
   const [stdin, setStdin] = useState<string>("");
@@ -114,9 +57,24 @@ function App() {
   const [loading, setLoading] = useState<boolean>(false);
   const [history, setHistory] = useState<Submission[]>([]);
 
+  // CORREÇÃO: Função segura para decodificar Base64 com acentos (UTF-8)
+  const decodeBase64 = (base64String: string) => {
+    try {
+      const binaryString = atob(base64String);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return new TextDecoder("utf-8").decode(bytes);
+    } catch (e) {
+      console.error("Erro na decodificação:", e);
+      return base64String; // Retorna original se falhar
+    }
+  };
+
   const fetchHistory = async () => {
     try {
-      const res = await axios.get("http://localhost:3000/submissions");
+      const res = await axios.get(`${API_URL}/submissions`);
       setHistory(res.data);
     } catch (error) {
       console.error("Erro ao buscar histórico", error);
@@ -137,34 +95,24 @@ function App() {
     setLoading(true);
     setOutput("");
     try {
-      const response = await axios.post("http://localhost:3000/submissions", {
+      const response = await axios.post(`${API_URL}/submissions`, {
         code,
         language_id: languageId,
         stdin,
       });
       const data = response.data;
 
+      // CORREÇÃO: Usando a nova função decodeBase64 em vez de atob direto
       if (data.stdout) {
-        try {
-          setOutput(atob(data.stdout));
-        } catch {
-          setOutput(data.stdout);
-        }
+        setOutput(decodeBase64(data.stdout));
       } else if (data.stderr) {
-        try {
-          setOutput(`Erro:\n${atob(data.stderr)}`);
-        } catch {
-          setOutput(data.stderr);
-        }
+        setOutput(`Erro:\n${decodeBase64(data.stderr)}`);
       } else if (data.compile_output) {
-        try {
-          setOutput(`Erro de Compilação:\n${atob(data.compile_output)}`);
-        } catch {
-          setOutput(data.compile_output);
-        }
+        setOutput(`Erro de Compilação:\n${decodeBase64(data.compile_output)}`);
       } else {
         setOutput(`Status: ${data.status?.description}`);
       }
+
       fetchHistory();
     } catch (error: any) {
       setOutput("Erro: " + error.message);
@@ -184,7 +132,7 @@ function App() {
         color: "#fff",
       }}
     >
-      {/* Header / Toolbar */}
+      {/* Header */}
       <div
         style={{
           padding: "10px 20px",
@@ -234,9 +182,8 @@ function App() {
         </button>
       </div>
 
-      {/* Main Area: Split Screen */}
+      {/* Main Area */}
       <div style={{ flex: 1, display: "flex" }}>
-        {/* Editor (Esquerda) */}
         <div style={{ flex: 2, borderRight: "1px solid #333" }}>
           <Editor
             height="100%"
@@ -247,13 +194,11 @@ function App() {
             options={{
               minimap: { enabled: false },
               fontSize: 14,
-              scrollBeyondLastLine: false,
               automaticLayout: true,
             }}
           />
         </div>
 
-        {/* Painel Lateral (Direita) */}
         <div
           style={{
             flex: 1,
@@ -262,7 +207,6 @@ function App() {
             backgroundColor: "#1e1e1e",
           }}
         >
-          {/* Input */}
           <div
             style={{
               flex: 1,
@@ -292,13 +236,12 @@ function App() {
                 resize: "none",
                 outline: "none",
               }}
-              placeholder="Entrada de dados aqui..."
+              placeholder="Entrada..."
               value={stdin}
               onChange={(e) => setStdin(e.target.value)}
             />
           </div>
 
-          {/* Output */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
             <div
               style={{
@@ -326,7 +269,7 @@ function App() {
         </div>
       </div>
 
-      {/* Footer / Histórico Colapsável (Simplificado para visualização) */}
+      {/* Histórico */}
       <div
         style={{
           height: "150px",

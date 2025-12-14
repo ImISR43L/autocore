@@ -2,37 +2,38 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import axios from 'axios';
+import { ConfigService } from '@nestjs/config';
 import { Submission } from './entities/submission.entity';
-
-// Definição do objeto esperado
-interface ExecuteDto {
-  code: string;
-  language_id: number;
-  stdin?: string;
-}
+import { CreateSubmissionDto } from './dto/create-submission.dto';
 
 @Injectable()
 export class SubmissionsService {
   private readonly judge0Url = 'https://judge0-ce.p.rapidapi.com';
-  // Sua chave RapidAPI (mantida a partir do seu upload anterior)
-  private readonly apiKey =
-    'b634d42f29mshb773397ed4902e0p1b001ejsn545bd3de7177';
 
   constructor(
     @InjectRepository(Submission)
     private submissionsRepository: Repository<Submission>,
+    private configService: ConfigService,
   ) {}
 
-  async executeCode(data: ExecuteDto) {
-    // Extrai os dados dinâmicos recebidos do Frontend
+  async executeCode(data: CreateSubmissionDto) {
     const { code, language_id, stdin } = data;
+
+    // CORREÇÃO: Buscamos a chave aqui dentro, onde o serviço já está pronto
+    const apiKey = this.configService.get<string>('RAPIDAPI_KEY');
+
+    // Validação extra (opcional) para garantir que a chave existe
+    if (!apiKey) {
+      console.error('ERRO CRÍTICO: RAPIDAPI_KEY não encontrada no .env');
+      return { error: 'Configuração de servidor inválida' };
+    }
 
     const base64Code = Buffer.from(code).toString('base64');
     const base64Stdin = stdin ? Buffer.from(stdin).toString('base64') : '';
 
     const payload = {
       source_code: base64Code,
-      language_id: language_id, // <--- O PULO DO GATO: Agora usa o ID variável
+      language_id: language_id,
       stdin: base64Stdin,
     };
 
@@ -43,7 +44,7 @@ export class SubmissionsService {
         {
           headers: {
             'Content-Type': 'application/json',
-            'X-RapidAPI-Key': this.apiKey,
+            'X-RapidAPI-Key': apiKey,
             'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com',
           },
         },
@@ -58,7 +59,6 @@ export class SubmissionsService {
         ? Buffer.from(result.stderr, 'base64').toString('utf-8')
         : null;
 
-      // Persistência
       const newSubmission = this.submissionsRepository.create({
         code: code,
         language_id: language_id,
@@ -66,7 +66,7 @@ export class SubmissionsService {
         stdout: decodedStdout,
         stderr: decodedStderr,
         status: result.status?.description || 'Unknown',
-      } as any);
+      });
 
       await this.submissionsRepository.save(newSubmission);
 
