@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import axios from 'axios';
 import { Submission } from './entities/submission.entity';
 
+// Definição do objeto esperado
 interface ExecuteDto {
   code: string;
   language_id: number;
@@ -13,7 +14,7 @@ interface ExecuteDto {
 @Injectable()
 export class SubmissionsService {
   private readonly judge0Url = 'https://judge0-ce.p.rapidapi.com';
-  // Mantenha sua chave da RapidAPI aqui
+  // Sua chave RapidAPI (mantida a partir do seu upload anterior)
   private readonly apiKey =
     'b634d42f29mshb773397ed4902e0p1b001ejsn545bd3de7177';
 
@@ -23,6 +24,7 @@ export class SubmissionsService {
   ) {}
 
   async executeCode(data: ExecuteDto) {
+    // Extrai os dados dinâmicos recebidos do Frontend
     const { code, language_id, stdin } = data;
 
     const base64Code = Buffer.from(code).toString('base64');
@@ -30,7 +32,7 @@ export class SubmissionsService {
 
     const payload = {
       source_code: base64Code,
-      language_id: language_id, // <--- Agora usamos o ID dinâmico vindo do Frontend
+      language_id: language_id, // <--- O PULO DO GATO: Agora usa o ID variável
       stdin: base64Stdin,
     };
 
@@ -56,6 +58,7 @@ export class SubmissionsService {
         ? Buffer.from(result.stderr, 'base64').toString('utf-8')
         : null;
 
+      // Persistência
       const newSubmission = this.submissionsRepository.create({
         code: code,
         language_id: language_id,
@@ -63,13 +66,13 @@ export class SubmissionsService {
         stdout: decodedStdout,
         stderr: decodedStderr,
         status: result.status?.description || 'Unknown',
-      } as any); // 'as any' para evitar erro de tipagem temporário
+      } as any);
 
       await this.submissionsRepository.save(newSubmission);
 
       return result;
     } catch (error) {
-      console.error('Erro:', error);
+      console.error('Erro na API Judge0:', error);
       return { error: 'Falha na execução' };
     }
   }

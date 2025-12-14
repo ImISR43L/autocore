@@ -25,30 +25,84 @@ const LANGUAGES = [
   {
     id: 71,
     name: "Python (3.8.1)",
-    defaultCode: "print(input('Digite algo: '))",
+    defaultCode: `import sys
+
+# Lê todo o input disponível
+data = sys.stdin.read().strip()
+
+if not data:
+    data = "Visitante"
+
+print(f"Ola do Python, {data}!")`,
   },
   {
     id: 63,
     name: "JavaScript (Node.js 12.14)",
-    defaultCode: "console.log(process.argv);",
+    defaultCode: `const fs = require('fs');
+
+// Lê o input da entrada padrão (fd 0)
+const input = fs.readFileSync(0, 'utf-8').trim();
+
+const nome = input || "Visitante";
+console.log("Ola do JavaScript, " + nome + "!");`,
   },
   {
     id: 54,
     name: "C++ (GCC 9.2.0)",
-    defaultCode:
-      '#include <iostream>\nusing namespace std;\nint main() {\n    string s;\n    cin >> s;\n    cout << "Ola " << s;\n    return 0;\n}',
+    defaultCode: `#include <iostream>
+#include <string>
+using namespace std;
+
+int main() {
+    string s;
+    // Lê a primeira palavra do input
+    if (cin >> s) {
+        cout << "Ola do C++, " << s << "!";
+    } else {
+        cout << "Ola do C++ (Sem Input)!";
+    }
+    return 0;
+}`,
   },
   {
     id: 51,
     name: "C# (Mono 6.6.0)",
-    defaultCode:
-      'using System;\nclass Program { static void Main() { Console.WriteLine("Hello C#"); } }',
+    defaultCode: `using System;
+
+public class Program {
+    public static void Main() {
+        // Lê uma linha do input
+        string input = Console.ReadLine();
+        
+        if (string.IsNullOrEmpty(input)) {
+            input = "Visitante";
+        }
+        
+        Console.WriteLine($"Ola do C#, {input}!");
+    }
+}`,
   },
   {
     id: 60,
     name: "Go (1.13.5)",
-    defaultCode:
-      'package main\nimport "fmt"\nfunc main() { fmt.Println("Hello Go") }',
+    defaultCode: `package main
+import (
+    "bufio"
+    "fmt"
+    "os"
+)
+
+func main() {
+    scanner := bufio.NewScanner(os.Stdin)
+    
+    // Lê a primeira linha disponível
+    if scanner.Scan() {
+        text := scanner.Text()
+        fmt.Printf("Ola do Go, %s!\n", text)
+    } else {
+        fmt.Println("Ola do Go (Sem Input)!")
+    }
+}`,
   },
 ];
 
