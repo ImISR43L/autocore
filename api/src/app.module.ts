@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ConfigModule } from '@nestjs/config'; // Importante para .env
+import { ConfigModule } from '@nestjs/config';
 import { SubmissionsModule } from './submissions/submissions.module';
+import { ProblemsModule } from './problems/problems.module'; // [Novo]
 import { Submission } from './submissions/entities/submission.entity';
-// Importe as novas entidades
 import { Problem } from './submissions/entities/problem.entity';
 import { TestCase } from './submissions/entities/test-case.entity';
+import { User } from './users/entities/user.entity'; // [Novo]
+import { AuthModule } from './auth/auth.module';
+import { ClassroomsModule } from './classrooms/classrooms.module';
 
 @Module({
   imports: [
@@ -17,11 +20,14 @@ import { TestCase } from './submissions/entities/test-case.entity';
       username: process.env.DB_USER || 'autocore_user',
       password: process.env.DB_PASS || 'autocore_pass',
       database: process.env.DB_NAME || 'autocore_db',
-      // CORREÇÃO: Adicione Problem e TestCase aqui
-      entities: [Submission, Problem, TestCase],
+      // Adicione User à lista de entidades
+      entities: [Submission, Problem, TestCase, User],
       synchronize: true,
     }),
+    AuthModule,
+    ClassroomsModule,
     SubmissionsModule,
+    ProblemsModule, // Adicione o novo módulo aqui
   ],
 })
 export class AppModule {}
