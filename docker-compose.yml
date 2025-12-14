@@ -1,0 +1,50 @@
+version: "3.8"
+
+services:
+  # 1. Banco de Dados
+  db:
+    image: postgres:13.0
+    container_name: autocore_db
+    environment:
+      - POSTGRES_USER=autocore_user
+      - POSTGRES_PASSWORD=autocore_pass
+      - POSTGRES_DB=autocore_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  # 2. API (Backend)
+  api:
+    build: ./api
+    container_name: autocore_api
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=db # Conecta no serviço 'db' acima
+      - DB_USER=autocore_user
+      - DB_PASS=autocore_pass
+      - DB_NAME=autocore_db
+      # Chaves do Judge0 (opcional passar por aqui ou manter no código)
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+  # 3. Web (Frontend)
+  web:
+    build: ./web
+    container_name: autocore_web
+    ports:
+      - "8080:80" # Site acessível na porta 8080
+    depends_on:
+      - api
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+
+networks:
+  app-network:
+    driver: bridge
