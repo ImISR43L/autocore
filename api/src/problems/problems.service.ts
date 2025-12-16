@@ -5,8 +5,8 @@ import {
 } from '@nestjs/common'; // Adicionados Imports
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Problem } from '../submissions/entities/problem.entity';
-import { TestCase } from '../submissions/entities/test-case.entity';
+import { Problem } from './entities/problem.entity';
+import { TestCase } from './entities/test-case.entity';
 import { CreateProblemDto } from './dto/create-problem.dto';
 import { Classroom } from '../classrooms/entities/classroom.entity';
 
@@ -48,7 +48,7 @@ export class ProblemsService {
     const testCases = createProblemDto.testCases.map((tc) =>
       this.testCasesRepository.create({
         input: tc.input,
-        expected_output: tc.expected_output,
+        expectedOutput: tc.expected_output, // <--- Mude a chave para expectedOutput
         problem: savedProblem,
       }),
     );

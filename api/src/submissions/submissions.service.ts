@@ -1,15 +1,18 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+// src/submissions/submissions.service.ts
+
+import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common'; // Adicione OnModuleInit
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import axios from 'axios';
 import { ConfigService } from '@nestjs/config';
 import { Submission } from './entities/submission.entity';
-import { Problem } from './entities/problem.entity';
-import { TestCase } from './entities/test-case.entity'; // Importação nova
+// IMPORT CORRIGIDO (Igual ao Problem):
+import { Problem } from '../problems/entities/problem.entity';
+import { TestCase } from '../problems/entities/test-case.entity';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 
 @Injectable()
-export class SubmissionsService {
+export class SubmissionsService implements OnModuleInit {
   private readonly judge0Url = 'https://judge0-ce.p.rapidapi.com';
 
   constructor(
@@ -17,45 +20,38 @@ export class SubmissionsService {
     private submissionsRepository: Repository<Submission>,
     @InjectRepository(Problem)
     private problemsRepository: Repository<Problem>,
-    @InjectRepository(TestCase) // Injeção do repositório de Testes
+    @InjectRepository(TestCase)
     private testCasesRepository: Repository<TestCase>,
     private configService: ConfigService,
   ) {}
+
+  async onModuleInit() {
+    console.log('[SEED] Verificando e criando problema padrão...');
+    await this.seedProblem();
+  }
 
   async executeCode(data: CreateSubmissionDto) {
     const { code, language_id, problem_id } = data as any;
     const apiKey = this.configService.get<string>('RAPIDAPI_KEY');
 
-    console.log(`[DEBUG] Recebida submissão para Problema ID: ${problem_id}`); // LOG 1
+    console.log(`[DEBUG] Recebida submissão para Problema ID: ${problem_id}`);
 
-    // 1. Buscar o Problema
     const problem = await this.problemsRepository.findOne({
       where: { id: problem_id },
       relations: ['testCases'],
     });
 
     if (!problem) {
-      console.error(
-        `[DEBUG] Erro: Problema ID ${problem_id} não encontrado no banco.`,
-      );
+      console.error(`[DEBUG] Erro: Problema ID ${problem_id} não encontrado.`);
       throw new NotFoundException('Problema não encontrado');
     }
 
-    console.log(
-      `[DEBUG] Problema encontrado: "${problem.title}". Qtd Testes: ${problem.testCases?.length}`,
-    ); // LOG 2
-
-    // TRAVA DE SEGURANÇA: Se não tem testes, lança erro em vez de fingir que funcionou
     if (!problem.testCases || problem.testCases.length === 0) {
-      console.error(
-        '[DEBUG] Erro Crítico: O problema existe mas não tem casos de teste.',
-      );
       return { status: 'Configuration Error: Problem has 0 Test Cases' };
     }
 
     let finalStatus = 'Accepted';
 
-    // 2. Loop de Execução
     for (const testCase of problem.testCases) {
       const base64Code = Buffer.from(code).toString('base64');
       const base64Stdin = Buffer.from(testCase.input).toString('base64');
@@ -79,7 +75,6 @@ export class SubmissionsService {
 
         const result = response.data;
 
-        // Verifica erro de execução antes de checar output
         if (result.status.id !== 3) {
           finalStatus = result.status.description;
           break;
@@ -88,7 +83,9 @@ export class SubmissionsService {
         const runOutput = result.stdout
           ? Buffer.from(result.stdout, 'base64').toString('utf-8').trim()
           : '';
-        const expected = testCase.expected_output.trim();
+
+        // CORREÇÃO 1: expectedOutput (camelCase)
+        const expected = testCase.expectedOutput.trim();
 
         if (runOutput !== expected) {
           finalStatus = 'Wrong Answer';
@@ -101,7 +98,6 @@ export class SubmissionsService {
       }
     }
 
-    // 3. Salvar
     const newSubmission = this.submissionsRepository.create({
       code: code,
       language_id: language_id,
@@ -114,41 +110,39 @@ export class SubmissionsService {
     return { status: finalStatus };
   }
 
-  // SEED SEGURO (Substituindo SQL manual)
   async seedProblem() {
     const title = 'Soma Simples';
     const existing = await this.problemsRepository.findOne({
       where: { title },
     });
 
-    // Se já existe, removemos para recriar limpo (garante que os testes estarão lá)
     if (existing) {
       await this.problemsRepository.remove(existing);
     }
 
-    // 1. Cria o Problema
     const problem = this.problemsRepository.create({
       title: title,
       description: 'Leia dois valores inteiros e imprima a soma deles.',
+      slug: 'soma-simples', // Adicionei slug pois é obrigatório na entidade Problem
     });
     const savedProblem = await this.problemsRepository.save(problem);
 
-    // 2. Cria os Casos de Teste vinculados via Objeto (TypeORM gerencia as chaves)
+    // CORREÇÃO 2: expectedOutput (camelCase)
     const t1 = this.testCasesRepository.create({
       input: '5 5',
-      expected_output: '10',
+      expectedOutput: '10',
       problem: savedProblem,
     });
 
     const t2 = this.testCasesRepository.create({
       input: '-10 20',
-      expected_output: '10',
+      expectedOutput: '10',
       problem: savedProblem,
     });
 
     await this.testCasesRepository.save([t1, t2]);
 
-    return `Problema ID ${savedProblem.id} recriado com sucesso e testes inseridos.`;
+    return `Problema ID ${savedProblem.id} recriado.`;
   }
 
   async findAll() {

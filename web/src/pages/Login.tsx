@@ -9,7 +9,6 @@ export default function Login() {
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("student"); // Default
   const [error, setError] = useState("");
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -18,9 +17,7 @@ export default function Login() {
 
     try {
       const endpoint = isRegister ? "/auth/register" : "/auth/login";
-      const payload = isRegister
-        ? { email, password, role }
-        : { email, password };
+      const payload = isRegister ? { email, password } : { email, password };
 
       const res = await axios.post(`${API_URL}${endpoint}`, payload);
 
@@ -107,23 +104,6 @@ export default function Login() {
             borderRadius: "4px",
           }}
         />
-
-        {isRegister && (
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            style={{
-              padding: "10px",
-              backgroundColor: "#3c3c3c",
-              border: "none",
-              color: "white",
-              borderRadius: "4px",
-            }}
-          >
-            <option value="student">Aluno</option>
-            <option value="professor">Professor</option>
-          </select>
-        )}
 
         <button
           type="submit"

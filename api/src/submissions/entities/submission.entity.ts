@@ -5,7 +5,7 @@ import {
   CreateDateColumn,
   ManyToOne,
 } from 'typeorm';
-import { Problem } from './problem.entity';
+import { Problem } from '../../problems/entities/problem.entity';
 
 @Entity()
 export class Submission {
