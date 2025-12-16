@@ -1,11 +1,4 @@
-import {
-  IsEmail,
-  IsNotEmpty,
-  IsString,
-  IsEnum,
-  IsOptional,
-} from 'class-validator';
-import { UserRole } from '../../users/entities/user.entity';
+import { IsEmail, IsNotEmpty } from 'class-validator';
 
 export class AuthDto {
   @IsEmail()
@@ -13,9 +6,4 @@ export class AuthDto {
 
   @IsNotEmpty()
   password: string;
-
-  // Opcional: só usado no Registro
-  @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole;
 }

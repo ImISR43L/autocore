@@ -16,10 +16,10 @@ export class AuthService {
 
   async register(authDto: AuthDto) {
     const hashedPassword = await bcrypt.hash(authDto.password, 10);
+    // Removemos 'role' da criação
     const user = this.usersRepository.create({
       email: authDto.email,
       password: hashedPassword,
-      role: authDto.role || undefined,
     });
     await this.usersRepository.save(user);
     return { message: 'Usuário criado com sucesso' };
@@ -34,10 +34,11 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    const payload = { email: user.email, sub: user.id, role: user.role };
+    // Payload simples sem role
+    const payload = { email: user.email, sub: user.id };
+
     return {
       access_token: this.jwtService.sign(payload),
-      role: user.role,
       email: user.email,
     };
   }

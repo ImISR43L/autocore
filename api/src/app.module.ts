@@ -3,10 +3,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { SubmissionsModule } from './submissions/submissions.module';
 import { ProblemsModule } from './problems/problems.module'; // [Novo]
-import { Submission } from './submissions/entities/submission.entity';
-import { Problem } from './submissions/entities/problem.entity';
-import { TestCase } from './submissions/entities/test-case.entity';
-import { User } from './users/entities/user.entity'; // [Novo]
 import { AuthModule } from './auth/auth.module';
 import { ClassroomsModule } from './classrooms/classrooms.module';
 
@@ -21,7 +17,7 @@ import { ClassroomsModule } from './classrooms/classrooms.module';
       password: process.env.DB_PASS || 'autocore_pass',
       database: process.env.DB_NAME || 'autocore_db',
       // Adicione User à lista de entidades
-      entities: [Submission, Problem, TestCase, User],
+      autoLoadEntities: true,
       synchronize: true,
     }),
     AuthModule,

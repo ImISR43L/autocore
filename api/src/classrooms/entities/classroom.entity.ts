@@ -19,14 +19,14 @@ export class Classroom {
   name: string;
 
   @Column({ unique: true })
-  code: string; // Código de convite (ex: "X7A9B2")
+  code: string;
 
   @ManyToOne(() => User, (user) => user.ownedClassrooms)
-  owner: User; // O Professor desta turma
+  owner: User;
 
   @ManyToMany(() => User, (user) => user.joinedClassrooms)
   @JoinTable()
-  students: User[]; // Os Alunos desta turma
+  students: User[];
 
   @OneToMany(() => Problem, (problem) => problem.classroom)
   problems: Problem[];

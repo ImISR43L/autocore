@@ -5,7 +5,11 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.enableCors();
+  app.enableCors({
+    origin: true, // Permite qualquer origem (para desenvolvimento) ou defina: 'http://localhost:3001'
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+  });
 
   // [Novo] Ativa validação automática baseada nos DTOs
   app.useGlobalPipes(

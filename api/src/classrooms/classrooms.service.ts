@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Classroom } from './entities/classroom.entity';
@@ -17,10 +13,10 @@ export class ClassroomsService {
     private usersRepository: Repository<User>,
   ) {}
 
-  // 1. Criar Turma (O usuário vira "Dono/Professor" dela)
   async create(name: string, ownerId: number) {
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase(); // Gera código ex: 5A9F2B
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
 
+    // Precisamos do objeto User completo ou pelo menos o ID
     const classroom = this.classroomsRepository.create({
       name,
       code,
@@ -30,7 +26,6 @@ export class ClassroomsService {
     return this.classroomsRepository.save(classroom);
   }
 
-  // 2. Entrar na Turma (O usuário vira "Aluno" dela)
   async join(code: string, userId: number) {
     const classroom = await this.classroomsRepository.findOne({
       where: { code },
@@ -40,35 +35,44 @@ export class ClassroomsService {
     if (!classroom)
       throw new NotFoundException('Turma não encontrada com este código');
 
-    // Verifica se já não é o dono
-    // (Opcional: impedir dono de ser aluno, ou permitir para testes)
-
-    // Adiciona o aluno
     const user = await this.usersRepository.findOne({ where: { id: userId } });
-    classroom.students.push(user);
+
+    // CORREÇÃO 1: Verificar se o usuário existe antes de usar
+    if (!user) throw new NotFoundException('Usuário não encontrado');
+
+    // Inicializa o array se estiver vazio (por segurança)
+    if (!classroom.students) classroom.students = [];
+
+    // Evita duplicatas (opcional, mas recomendado)
+    const isAlreadyIn = classroom.students.some((s) => s.id === user.id);
+    if (!isAlreadyIn) {
+      classroom.students.push(user);
+    }
 
     return this.classroomsRepository.save(classroom);
   }
 
-  // 3. Listar Minhas Turmas (Para o Dashboard)
   async findMyClassrooms(userId: number) {
     const user = await this.usersRepository.findOne({
       where: { id: userId },
       relations: ['ownedClassrooms', 'joinedClassrooms'],
     });
 
+    if (!user) return { teaching: [], enrolled: [] };
+
     return {
-      teaching: user.ownedClassrooms, // Onde sou Professor
-      enrolled: user.joinedClassrooms, // Onde sou Aluno
+      teaching: user.ownedClassrooms,
+      enrolled: user.joinedClassrooms,
     };
   }
 
-  // Auxiliar para validar permissão
   async isOwner(classroomId: number, userId: number): Promise<boolean> {
     const classroom = await this.classroomsRepository.findOne({
       where: { id: classroomId },
       relations: ['owner'],
     });
-    return classroom && classroom.owner.id === userId;
+
+    // CORREÇÃO 2: Garantir retorno booleano estrito (!! converte para true/false)
+    return !!(classroom && classroom.owner && classroom.owner.id === userId);
   }
 }

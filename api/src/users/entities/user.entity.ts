@@ -4,7 +4,6 @@ import {
   PrimaryGeneratedColumn,
   OneToMany,
   ManyToMany,
-  JoinTable,
 } from 'typeorm';
 import { Classroom } from '../../classrooms/entities/classroom.entity';
 
@@ -19,11 +18,11 @@ export class User {
   @Column()
   password: string;
 
-  // Turmas que eu criei (sou Professor nestas)
+  // Turmas que sou dono (Professor)
   @OneToMany(() => Classroom, (classroom) => classroom.owner)
   ownedClassrooms: Classroom[];
 
-  // Turmas que eu entrei (sou Aluno nestas)
+  // Turmas que participo (Aluno)
   @ManyToMany(() => Classroom, (classroom) => classroom.students)
   joinedClassrooms: Classroom[];
 }
