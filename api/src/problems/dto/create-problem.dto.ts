@@ -6,9 +6,11 @@ class TestCaseDto {
   @IsString()
   input: string;
 
+  // Atenção: O Frontend deve enviar 'expectedOutput' (camelCase) ou você deve ajustar aqui para match
+  // Como sua entidade usa expectedOutput, recomendo padronizar tudo para camelCase
   @IsNotEmpty()
   @IsString()
-  expected_output: string;
+  expectedOutput: string;
 }
 
 export class CreateProblemDto {
@@ -19,6 +21,10 @@ export class CreateProblemDto {
   @IsString()
   @IsNotEmpty()
   description: string;
+
+  @IsString()
+  @IsNotEmpty()
+  slug: string; // <--- ADICIONE ISTO
 
   @IsArray()
   @ValidateNested({ each: true })

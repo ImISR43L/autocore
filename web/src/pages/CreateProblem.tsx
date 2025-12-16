@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 
 interface TestCase {
   input: string;
-  expected_output: string;
+  expectedOutput: string;
 }
 
 export default function CreateProblem() {
@@ -12,26 +12,33 @@ export default function CreateProblem() {
   const location = useLocation();
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-  // Estados do Formulário
+  // Recupera o ID da turma passado pelo navigate state
+  const classroomId = location.state?.classroomId;
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [slug, setSlug] = useState("");
   const [testCases, setTestCases] = useState<TestCase[]>([
-    { input: "", expected_output: "" }, // Começa com um caso vazio
+    { input: "", expectedOutput: "" },
   ]);
   const [loading, setLoading] = useState(false);
 
-  // Recupera o ID da turma passado pelo navigate state
-  const classroomId = location.state?.classroomId;
-
   useEffect(() => {
     if (!classroomId) {
-      alert("Erro: Turma não identificada.");
+      alert("Erro: Turma não identificada. Volte para o Dashboard.");
       navigate("/dashboard");
     }
   }, [classroomId, navigate]);
 
-  // Manipulação dos Casos de Teste Dinâmicos
+  const addTestCase = () => {
+    setTestCases([...testCases, { input: "", expectedOutput: "" }]);
+  };
+
+  const removeTestCase = (index: number) => {
+    const newCases = testCases.filter((_, i) => i !== index);
+    setTestCases(newCases);
+  };
+
   const handleTestCaseChange = (
     index: number,
     field: keyof TestCase,
@@ -42,50 +49,29 @@ export default function CreateProblem() {
     setTestCases(newTestCases);
   };
 
-  const addTestCase = () => {
-    setTestCases([...testCases, { input: "", expected_output: "" }]);
-  };
-
-  const removeTestCase = (index: number) => {
-    const newTestCases = testCases.filter((_, i) => i !== index);
-    setTestCases(newTestCases);
-  };
-
-  // Envio do Formulário
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const token = localStorage.getItem("token");
-    if (!token) {
-      alert("Sessão expirada");
-      navigate("/");
-      return;
-    }
-
     try {
+      const token = localStorage.getItem("token");
       await axios.post(
         `${API_URL}/problems`,
         {
           title,
           description,
-          slug, // Opcional: O backend poderia gerar isso, mas estamos enviando manual
+          slug,
           classroomId,
           testCases,
         },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-
-      alert("Exercício criado com sucesso!");
-      navigate(`/class/${classroomId}`); // Volta para a turma
+      alert("Problema criado com sucesso!");
+      navigate(`/class/${classroomId}`);
     } catch (error: any) {
       console.error(error);
-      alert(
-        "Erro ao criar exercício: " +
-          (error.response?.data?.message || error.message)
-      );
+      const msg = error.response?.data?.message || "Erro ao criar problema.";
+      alert(`Erro: ${Array.isArray(msg) ? msg.join(", ") : msg}`);
     } finally {
       setLoading(false);
     }
@@ -96,7 +82,7 @@ export default function CreateProblem() {
       style={{
         padding: "40px",
         backgroundColor: "#1e1e1e",
-        color: "#e0e0e0",
+        color: "#fff",
         minHeight: "100vh",
         fontFamily: "sans-serif",
       }}
@@ -108,180 +94,132 @@ export default function CreateProblem() {
           border: "none",
           color: "#aaa",
           cursor: "pointer",
-          fontSize: "1rem",
           marginBottom: "20px",
         }}
       >
         ← Voltar
       </button>
+      <h2>Novo Exercício</h2>
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "20px",
+          maxWidth: "800px",
+        }}
+      >
+        <input
+          placeholder="Título"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          style={{
+            padding: "10px",
+            backgroundColor: "#333",
+            border: "1px solid #555",
+            color: "#fff",
+          }}
+          required
+        />
 
-      <h1 style={{ marginBottom: "30px" }}>Criar Novo Exercício</h1>
+        <input
+          placeholder="Slug (URL amigável, ex: soma-simples)"
+          value={slug}
+          onChange={(e) => setSlug(e.target.value)}
+          style={{
+            padding: "10px",
+            backgroundColor: "#333",
+            border: "1px solid #555",
+            color: "#fff",
+          }}
+          required
+        />
 
-      <form onSubmit={handleSubmit} style={{ maxWidth: "800px" }}>
-        {/* Título */}
-        <div style={{ marginBottom: "20px" }}>
-          <label style={{ display: "block", marginBottom: "8px" }}>
-            Título do Problema
-          </label>
-          <input
-            type="text"
-            required
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "10px",
-              backgroundColor: "#2d2d2d",
-              border: "1px solid #444",
-              color: "white",
-              borderRadius: "4px",
-            }}
-          />
-        </div>
+        <textarea
+          placeholder="Enunciado"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={5}
+          style={{
+            padding: "10px",
+            backgroundColor: "#333",
+            border: "1px solid #555",
+            color: "#fff",
+          }}
+          required
+        />
 
-        {/* Slug */}
-        <div style={{ marginBottom: "20px" }}>
-          <label style={{ display: "block", marginBottom: "8px" }}>
-            Slug (URL amigável, ex: soma-simples)
-          </label>
-          <input
-            type="text"
-            required
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "10px",
-              backgroundColor: "#2d2d2d",
-              border: "1px solid #444",
-              color: "white",
-              borderRadius: "4px",
-            }}
-          />
-        </div>
-
-        {/* Descrição */}
-        <div style={{ marginBottom: "30px" }}>
-          <label style={{ display: "block", marginBottom: "8px" }}>
-            Descrição (Markdown ou Texto)
-          </label>
-          <textarea
-            required
-            rows={5}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "10px",
-              backgroundColor: "#2d2d2d",
-              border: "1px solid #444",
-              color: "white",
-              borderRadius: "4px",
-              fontFamily: "monospace",
-            }}
-          />
-        </div>
-
-        <hr style={{ borderColor: "#333", marginBottom: "30px" }} />
-
-        {/* Casos de Teste Dinâmicos */}
-        <h3 style={{ marginBottom: "20px" }}>Casos de Teste (I/O)</h3>
-
-        {testCases.map((tc, index) => (
+        <h3>Casos de Teste</h3>
+        {testCases.map((tc, idx) => (
           <div
-            key={index}
+            key={idx}
             style={{
-              backgroundColor: "#252526",
-              padding: "20px",
-              borderRadius: "8px",
-              marginBottom: "20px",
-              border: "1px solid #333",
+              display: "flex",
+              gap: "10px",
+              backgroundColor: "#2d2d2d",
+              padding: "15px",
+              borderRadius: "5px",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: "10px",
-              }}
-            >
-              <strong>Caso #{index + 1}</strong>
-              {testCases.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeTestCase(index)}
-                  style={{
-                    backgroundColor: "#d9534f",
-                    color: "white",
-                    border: "none",
-                    padding: "5px 10px",
-                    borderRadius: "4px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Remover
-                </button>
-              )}
+            <div style={{ flex: 1 }}>
+              <label
+                style={{ display: "block", fontSize: "0.8em", color: "#aaa" }}
+              >
+                Entrada
+              </label>
+              <textarea
+                value={tc.input}
+                onChange={(e) =>
+                  handleTestCaseChange(idx, "input", e.target.value)
+                }
+                style={{
+                  width: "100%",
+                  backgroundColor: "#444",
+                  border: "none",
+                  color: "#fff",
+                  padding: "5px",
+                  fontFamily: "monospace",
+                }}
+                required
+              />
             </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "20px",
-              }}
-            >
-              <div>
-                <label style={{ fontSize: "0.9rem", color: "#aaa" }}>
-                  Entrada (Stdin)
-                </label>
-                <textarea
-                  required
-                  rows={3}
-                  value={tc.input}
-                  onChange={(e) =>
-                    handleTestCaseChange(index, "input", e.target.value)
-                  }
-                  style={{
-                    width: "100%",
-                    marginTop: "5px",
-                    backgroundColor: "#1e1e1e",
-                    border: "1px solid #444",
-                    color: "#eee",
-                    fontFamily: "monospace",
-                    padding: "8px",
-                  }}
-                  placeholder="Ex: 5 10"
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: "0.9rem", color: "#aaa" }}>
-                  Saída Esperada (Stdout)
-                </label>
-                <textarea
-                  required
-                  rows={3}
-                  value={tc.expected_output}
-                  onChange={(e) =>
-                    handleTestCaseChange(
-                      index,
-                      "expected_output",
-                      e.target.value
-                    )
-                  }
-                  style={{
-                    width: "100%",
-                    marginTop: "5px",
-                    backgroundColor: "#1e1e1e",
-                    border: "1px solid #444",
-                    color: "#eee",
-                    fontFamily: "monospace",
-                    padding: "8px",
-                  }}
-                  placeholder="Ex: 15"
-                />
-              </div>
+            <div style={{ flex: 1 }}>
+              <label
+                style={{ display: "block", fontSize: "0.8em", color: "#aaa" }}
+              >
+                Saída Esperada
+              </label>
+              <textarea
+                value={tc.expectedOutput}
+                onChange={(e) =>
+                  handleTestCaseChange(idx, "expectedOutput", e.target.value)
+                }
+                style={{
+                  width: "100%",
+                  backgroundColor: "#444",
+                  border: "none",
+                  color: "#fff",
+                  padding: "5px",
+                  fontFamily: "monospace",
+                }}
+                required
+              />
             </div>
+            {testCases.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeTestCase(idx)}
+                style={{
+                  backgroundColor: "#d9534f",
+                  color: "white",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "0 10px",
+                }}
+              >
+                X
+              </button>
+            )}
           </div>
         ))}
 
@@ -289,36 +227,30 @@ export default function CreateProblem() {
           type="button"
           onClick={addTestCase}
           style={{
-            backgroundColor: "#444",
-            color: "white",
-            border: "1px dashed #666",
             padding: "10px",
-            width: "100%",
             cursor: "pointer",
-            marginBottom: "30px",
+            backgroundColor: "#444",
+            color: "#fff",
+            border: "1px dashed #666",
           }}
         >
-          + Adicionar Novo Caso de Teste
+          + Adicionar Caso de Teste
         </button>
 
-        {/* Botão Salvar */}
         <button
           type="submit"
           disabled={loading}
           style={{
-            backgroundColor: "#28a745",
-            color: "white",
-            border: "none",
-            padding: "15px 30px",
-            fontSize: "1.1rem",
-            fontWeight: "bold",
-            borderRadius: "4px",
+            padding: "15px",
             cursor: "pointer",
-            width: "100%",
+            backgroundColor: "#0e639c",
+            color: "#fff",
+            border: "none",
+            fontWeight: "bold",
             opacity: loading ? 0.7 : 1,
           }}
         >
-          {loading ? "Criando Exercício..." : "Salvar Exercício"}
+          {loading ? "Criando..." : "Criar Problema"}
         </button>
       </form>
     </div>

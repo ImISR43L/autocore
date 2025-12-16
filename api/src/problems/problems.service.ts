@@ -40,15 +40,17 @@ export class ProblemsService {
     const problem = this.problemsRepository.create({
       title: createProblemDto.title,
       description: createProblemDto.description,
+      slug: createProblemDto.slug, // <--- GARANTA QUE ISTO ESTÁ AQUI
       classroom: classroom,
     });
 
     const savedProblem = await this.problemsRepository.save(problem);
 
+    // 3. Salvar Casos de Teste
     const testCases = createProblemDto.testCases.map((tc) =>
       this.testCasesRepository.create({
         input: tc.input,
-        expectedOutput: tc.expected_output, // <--- Mude a chave para expectedOutput
+        expectedOutput: tc.expectedOutput, // Padronize camelCase
         problem: savedProblem,
       }),
     );
