@@ -5,6 +5,7 @@ import {
   Body,
   UseGuards,
   Request,
+  Param, // <--- ADICIONE ISSO
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ClassroomsService } from './classrooms.service';
@@ -27,5 +28,11 @@ export class ClassroomsController {
   @Get('my')
   findMy(@Request() req) {
     return this.classroomsService.findMyClassrooms(req.user.userId);
+  }
+
+  // --- ADICIONE ESTE ENDPOINT (NO FINAL DA CLASSE) ---
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.classroomsService.findOne(+id);
   }
 }

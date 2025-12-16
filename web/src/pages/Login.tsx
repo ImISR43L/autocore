@@ -1,3 +1,4 @@
+// web/src/pages/Login.tsx
 import { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
@@ -12,25 +13,27 @@ export default function Login() {
   const [error, setError] = useState("");
 
   const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault(); // Impede o recarregamento da página
     setError("");
 
     try {
       const endpoint = isRegister ? "/auth/register" : "/auth/login";
-      const payload = isRegister ? { email, password } : { email, password };
+      const payload = { email, password };
 
       const res = await axios.post(`${API_URL}${endpoint}`, payload);
 
       if (!isRegister) {
-        // Salva token e redireciona
+        // Login: Salva token e redireciona
         localStorage.setItem("token", res.data.access_token);
-        localStorage.setItem("role", res.data.role);
-        navigate("/");
+        // localStorage.setItem("role", res.data.role); // Descomente se o backend retornar a role
+        navigate("/dashboard"); // Redireciona para o Dashboard
       } else {
-        setIsRegister(false); // Volta pro login após registrar
-        alert("Conta criada! Faça login.");
+        // Registro: Alterna para a tela de login
+        setIsRegister(false);
+        alert("Conta criada com sucesso! Faça login.");
       }
     } catch (err: any) {
+      console.error(err);
       setError(err.response?.data?.message || "Erro na autenticação");
     }
   };
@@ -40,33 +43,35 @@ export default function Login() {
       style={{
         height: "100vh",
         display: "flex",
-        alignItems: "center",
         justifyContent: "center",
+        alignItems: "center",
         backgroundColor: "#1e1e1e",
-        color: "#fff",
+        color: "white",
         fontFamily: "sans-serif",
       }}
     >
-      <form
-        onSubmit={handleAuth}
+      <div
         style={{
-          backgroundColor: "#252526",
+          width: "100%",
+          maxWidth: "400px",
           padding: "40px",
+          backgroundColor: "#252526",
           borderRadius: "8px",
-          width: "300px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "15px",
+          boxShadow: "0 4px 6px rgba(0,0,0,0.3)",
         }}
       >
-        <h2 style={{ textAlign: "center", margin: 0 }}>
-          Autocore {isRegister ? "Registro" : "Login"}
+        <h2 style={{ textAlign: "center", marginBottom: "20px" }}>
+          {isRegister ? "Criar Conta" : "Login"}
         </h2>
 
         {error && (
           <div
             style={{
-              color: "#f44336",
+              backgroundColor: "#f44336",
+              color: "white",
+              padding: "10px",
+              borderRadius: "4px",
+              marginBottom: "15px",
               fontSize: "0.9rem",
               textAlign: "center",
             }}
@@ -75,64 +80,81 @@ export default function Login() {
           </div>
         )}
 
-        <input
-          type="email"
-          placeholder="E-mail"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          style={{
-            padding: "10px",
-            backgroundColor: "#3c3c3c",
-            border: "none",
-            color: "white",
-            borderRadius: "4px",
-          }}
-        />
-
-        <input
-          type="password"
-          placeholder="Senha"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          style={{
-            padding: "10px",
-            backgroundColor: "#3c3c3c",
-            border: "none",
-            color: "white",
-            borderRadius: "4px",
-          }}
-        />
-
-        <button
-          type="submit"
-          style={{
-            padding: "10px",
-            backgroundColor: "#0e639c",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-            fontWeight: "bold",
-          }}
+        {/* AQUI ESTÁ A CORREÇÃO PRINCIPAL: A TAG FORM */}
+        <form
+          onSubmit={handleAuth}
+          style={{ display: "flex", flexDirection: "column", gap: "15px" }}
         >
-          {isRegister ? "Criar Conta" : "Entrar"}
-        </button>
+          <input
+            type="email"
+            placeholder="E-mail"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            style={{
+              padding: "12px",
+              backgroundColor: "#3c3c3c",
+              border: "1px solid #555",
+              color: "white",
+              borderRadius: "4px",
+              fontSize: "1rem",
+            }}
+          />
+
+          <input
+            type="password"
+            placeholder="Senha"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            style={{
+              padding: "12px",
+              backgroundColor: "#3c3c3c",
+              border: "1px solid #555",
+              color: "white",
+              borderRadius: "4px",
+              fontSize: "1rem",
+            }}
+          />
+
+          <button
+            type="submit"
+            style={{
+              padding: "12px",
+              backgroundColor: "#0e639c",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontWeight: "bold",
+              fontSize: "1rem",
+              marginTop: "10px",
+              transition: "background 0.2s",
+            }}
+          >
+            {isRegister ? "Cadastrar" : "Entrar"}
+          </button>
+        </form>
 
         <p
-          onClick={() => setIsRegister(!isRegister)}
+          onClick={() => {
+            setIsRegister(!isRegister);
+            setError("");
+          }}
           style={{
             textAlign: "center",
-            fontSize: "0.8rem",
+            marginTop: "20px",
+            fontSize: "0.9rem",
             color: "#aaa",
             cursor: "pointer",
             textDecoration: "underline",
           }}
         >
-          {isRegister ? "Já tem conta? Login" : "Não tem conta? Registrar"}
+          {isRegister
+            ? "Já tem uma conta? Faça login"
+            : "Não tem conta? Crie uma agora"}
         </p>
-      </form>
+      </div>
     </div>
   );
 }

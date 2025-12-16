@@ -1,28 +1,41 @@
-import React from "react"; // <--- Adicione ou garanta esta importação
+import React from "react"; // <--- 1. Adicione a importação do React
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
-import Home from "./pages/Home";
-import CreateProblem from "./pages/CreateProblem"; // Importe
+import Dashboard from "./pages/Dashboard";
+import ClassroomView from "./pages/ClassroomView";
+import CreateProblem from "./pages/CreateProblem";
 
-// CORREÇÃO: Usar React.ReactElement ou React.ReactNode em vez de JSX.Element
-const PrivateRoute = ({ children }: { children: React.ReactElement }) => {
+// 2. Altere o tipo de JSX.Element para React.ReactNode
+function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem("token");
-  return token ? children : <Navigate to="/login" />;
-};
+  // O ReactNode pode ser retornado diretamente
+  return token ? <>{children}</> : <Navigate to="/" />;
+}
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<Login />} />
+        <Route path="/" data-testid="login-route" element={<Login />} />
+
         <Route
-          path="/"
+          path="/dashboard"
           element={
             <PrivateRoute>
-              <Home />
+              <Dashboard />
             </PrivateRoute>
           }
         />
+
+        <Route
+          path="/class/:id"
+          element={
+            <PrivateRoute>
+              <ClassroomView />
+            </PrivateRoute>
+          }
+        />
+
         <Route
           path="/create-problem"
           element={

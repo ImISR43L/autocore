@@ -66,6 +66,17 @@ export class ClassroomsService {
     };
   }
 
+  async findOne(id: number) {
+    const classroom = await this.classroomsRepository.findOne({
+      where: { id },
+      relations: ['problems', 'owner'], // Carrega os problemas e o dono para a IDE
+    });
+
+    if (!classroom) throw new NotFoundException('Turma não encontrada');
+
+    return classroom;
+  }
+
   async isOwner(classroomId: number, userId: number): Promise<boolean> {
     const classroom = await this.classroomsRepository.findOne({
       where: { id: classroomId },

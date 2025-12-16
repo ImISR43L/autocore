@@ -26,7 +26,17 @@ export class SubmissionsService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    console.log('[SEED] Verificando e criando problema padrão...');
+    // CHECAGEM DE SEGURANÇA: Só roda o seed se a tabela estiver vazia
+    const count = await this.problemsRepository.count();
+
+    if (count > 0) {
+      console.log(
+        '[SEED] O banco de dados já possui problemas. Seed ignorado.',
+      );
+      return;
+    }
+
+    console.log('[SEED] Banco vazio detectado. Criando problema padrão...');
     await this.seedProblem();
   }
 
@@ -112,14 +122,6 @@ export class SubmissionsService implements OnModuleInit {
 
   async seedProblem() {
     const title = 'Soma Simples';
-    const existing = await this.problemsRepository.findOne({
-      where: { title },
-    });
-
-    if (existing) {
-      await this.problemsRepository.remove(existing);
-    }
-
     const problem = this.problemsRepository.create({
       title: title,
       description: 'Leia dois valores inteiros e imprima a soma deles.',
