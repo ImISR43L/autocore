@@ -18,12 +18,13 @@ interface Classroom {
   problems: Problem[];
 }
 
-// Mapa de Linguagens
-const LANGUAGE_MAP: { [key: number]: string } = {
+// Mapa de Linguagens (Judge0 ID -> Monaco String)
+const LANGUAGE_MAP: Record<number, string> = {
   71: "python",
   63: "javascript",
+  62: "java",
+  50: "c",
   54: "cpp",
-  51: "csharp",
   60: "go",
 };
 
@@ -99,21 +100,19 @@ export default function ClassroomView() {
   const fetchClassroomData = async () => {
     try {
       const token = localStorage.getItem("token");
-      // Importante: Backend precisa retornar relations ['problems', 'owner']
       const res = await axios.get(`${API_URL}/classrooms/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       setClassroom(res.data);
 
-      // Seleciona o primeiro problema por padrão
       if (res.data.problems && res.data.problems.length > 0) {
         setSelectedProblemId(res.data.problems[0].id);
       }
     } catch (error) {
       console.error("Erro ao carregar turma", error);
       alert("Erro ao carregar turma ou acesso negado.");
-      navigate("/");
+      navigate("/dashboard");
     }
   };
 
@@ -176,7 +175,7 @@ export default function ClassroomView() {
       >
         <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/dashboard")}
             style={{
               background: "none",
               border: "none",
@@ -237,7 +236,6 @@ export default function ClassroomView() {
           backgroundColor: "#252526",
         }}
       >
-        {/* Seletor de Problemas da Turma */}
         <select
           value={selectedProblemId || ""}
           onChange={(e) => setSelectedProblemId(Number(e.target.value))}
@@ -262,7 +260,15 @@ export default function ClassroomView() {
 
         <select
           value={languageId}
-          onChange={(e) => setLanguageId(Number(e.target.value))}
+          onChange={(e) => {
+            const newId = Number(e.target.value);
+            setLanguageId(newId);
+            // Opcional: Atualizar código padrão ao trocar linguagem
+            const defaultCode = LANGUAGES.find(
+              (l) => l.id === newId
+            )?.defaultCode;
+            if (defaultCode) setCode(defaultCode);
+          }}
           style={{
             padding: "8px",
             borderRadius: "4px",
@@ -302,15 +308,21 @@ export default function ClassroomView() {
         <div style={{ flex: 2, borderRight: "1px solid #333" }}>
           <Editor
             height="100%"
+            // CORREÇÃO: Usamos languageId que é o estado definido
+            language={LANGUAGE_MAP[languageId] || "plaintext"}
             theme="vs-dark"
-            language={LANGUAGE_MAP[languageId]}
             value={code}
-            onChange={(value) => setCode(value || "")}
-            options={{ minimap: { enabled: false }, fontSize: 14 }}
+            onChange={(val) => setCode(val || "")}
+            options={{
+              fontSize: 14,
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+            }}
           />
         </div>
 
-        {/* Painel Direito (Descrição + Veredito) */}
+        {/* Painel Direito */}
         <div
           style={{
             flex: 1,
