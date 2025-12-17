@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import Editor from "@monaco-editor/react";
-import { useNavigate } from "react-router-dom"; // [1] Importe isso
+import { useNavigate } from "react-router-dom"; // [1] Importe isso]
+import "../App.css";
+import "../index.css";
 
 // Interfaces para tipagem
 interface Problem {

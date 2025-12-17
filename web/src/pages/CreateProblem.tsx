@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate, useLocation } from "react-router-dom";
+import "../App.css";
 
 interface TestCase {
   input: string;
@@ -12,7 +13,6 @@ export default function CreateProblem() {
   const location = useLocation();
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-  // Recupera o ID da turma passado pelo navigate state
   const classroomId = location.state?.classroomId;
 
   const [title, setTitle] = useState("");
@@ -57,19 +57,12 @@ export default function CreateProblem() {
       const token = localStorage.getItem("token");
       await axios.post(
         `${API_URL}/problems`,
-        {
-          title,
-          description,
-          slug,
-          classroomId,
-          testCases,
-        },
+        { title, description, slug, classroomId, testCases },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       alert("Problema criado com sucesso!");
       navigate(`/class/${classroomId}`);
     } catch (error: any) {
-      console.error(error);
       const msg = error.response?.data?.message || "Erro ao criar problema.";
       alert(`Erro: ${Array.isArray(msg) ? msg.join(", ") : msg}`);
     } finally {
@@ -78,180 +71,129 @@ export default function CreateProblem() {
   };
 
   return (
-    <div
-      style={{
-        padding: "40px",
-        backgroundColor: "#1e1e1e",
-        color: "#fff",
-        minHeight: "100vh",
-        fontFamily: "sans-serif",
-      }}
-    >
-      <button
-        onClick={() => navigate(-1)}
-        style={{
-          background: "none",
-          border: "none",
-          color: "#aaa",
-          cursor: "pointer",
-          marginBottom: "20px",
-        }}
-      >
-        ← Voltar
-      </button>
-      <h2>Novo Exercício</h2>
+    <div className="container">
+      {/* Header */}
+      <div className="page-header">
+        <h1 className="page-title">Novo Exercício</h1>
+        <button onClick={() => navigate(-1)} className="btn btn-secondary">
+          Voltar
+        </button>
+      </div>
+
       <form
         onSubmit={handleSubmit}
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "20px",
-          maxWidth: "800px",
-        }}
+        style={{ maxWidth: "800px", margin: "0 auto" }}
       >
-        <input
-          placeholder="Título"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          style={{
-            padding: "10px",
-            backgroundColor: "#333",
-            border: "1px solid #555",
-            color: "#fff",
-          }}
-          required
-        />
+        {/* Dados Básicos */}
+        <div className="form-group">
+          <label className="form-label">Título</label>
+          <input
+            className="form-input"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+            placeholder="Ex: Soma Simples"
+          />
+        </div>
 
-        <input
-          placeholder="Slug (URL amigável, ex: soma-simples)"
-          value={slug}
-          onChange={(e) => setSlug(e.target.value)}
-          style={{
-            padding: "10px",
-            backgroundColor: "#333",
-            border: "1px solid #555",
-            color: "#fff",
-          }}
-          required
-        />
+        <div className="form-group">
+          <label className="form-label">Slug (URL)</label>
+          <input
+            className="form-input"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            required
+            placeholder="ex: soma-simples"
+          />
+        </div>
 
-        <textarea
-          placeholder="Enunciado"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={5}
-          style={{
-            padding: "10px",
-            backgroundColor: "#333",
-            border: "1px solid #555",
-            color: "#fff",
-          }}
-          required
-        />
+        <div className="form-group">
+          <label className="form-label">Enunciado</label>
+          <textarea
+            className="form-textarea"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={5}
+            required
+            placeholder="Descreva o problema..."
+          />
+        </div>
 
-        <h3>Casos de Teste</h3>
+        <hr style={{ borderColor: "var(--border)", margin: "2rem 0" }} />
+
+        {/* Casos de Teste */}
+        <h3
+          className="page-title"
+          style={{ fontSize: "1.2rem", marginBottom: "1rem" }}
+        >
+          Casos de Teste
+        </h3>
+
         {testCases.map((tc, idx) => (
-          <div
-            key={idx}
-            style={{
-              display: "flex",
-              gap: "10px",
-              backgroundColor: "#2d2d2d",
-              padding: "15px",
-              borderRadius: "5px",
-            }}
-          >
-            <div style={{ flex: 1 }}>
-              <label
-                style={{ display: "block", fontSize: "0.8em", color: "#aaa" }}
-              >
-                Entrada
-              </label>
-              <textarea
-                value={tc.input}
-                onChange={(e) =>
-                  handleTestCaseChange(idx, "input", e.target.value)
-                }
-                style={{
-                  width: "100%",
-                  backgroundColor: "#444",
-                  border: "none",
-                  color: "#fff",
-                  padding: "5px",
-                  fontFamily: "monospace",
-                }}
-                required
-              />
+          <div key={idx} className="test-case-card">
+            <div className="test-case-header">
+              <span>Caso #{idx + 1}</span>
+              {testCases.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeTestCase(idx)}
+                  className="btn btn-danger"
+                  style={{ padding: "0.2rem 0.5rem", fontSize: "0.8rem" }}
+                >
+                  Remover
+                </button>
+              )}
             </div>
-            <div style={{ flex: 1 }}>
-              <label
-                style={{ display: "block", fontSize: "0.8em", color: "#aaa" }}
-              >
-                Saída Esperada
-              </label>
-              <textarea
-                value={tc.expectedOutput}
-                onChange={(e) =>
-                  handleTestCaseChange(idx, "expectedOutput", e.target.value)
-                }
-                style={{
-                  width: "100%",
-                  backgroundColor: "#444",
-                  border: "none",
-                  color: "#fff",
-                  padding: "5px",
-                  fontFamily: "monospace",
-                }}
-                required
-              />
+
+            <div className="test-case-grid">
+              <div>
+                <label className="form-label">Entrada</label>
+                <textarea
+                  className="form-textarea"
+                  value={tc.input}
+                  onChange={(e) =>
+                    handleTestCaseChange(idx, "input", e.target.value)
+                  }
+                  required
+                  rows={2}
+                  style={{ fontFamily: "monospace" }}
+                />
+              </div>
+              <div>
+                <label className="form-label">Saída Esperada</label>
+                <textarea
+                  className="form-textarea"
+                  value={tc.expectedOutput}
+                  onChange={(e) =>
+                    handleTestCaseChange(idx, "expectedOutput", e.target.value)
+                  }
+                  required
+                  rows={2}
+                  style={{ fontFamily: "monospace" }}
+                />
+              </div>
             </div>
-            {testCases.length > 1 && (
-              <button
-                type="button"
-                onClick={() => removeTestCase(idx)}
-                style={{
-                  backgroundColor: "#d9534f",
-                  color: "white",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "0 10px",
-                }}
-              >
-                X
-              </button>
-            )}
           </div>
         ))}
 
-        <button
-          type="button"
-          onClick={addTestCase}
-          style={{
-            padding: "10px",
-            cursor: "pointer",
-            backgroundColor: "#444",
-            color: "#fff",
-            border: "1px dashed #666",
-          }}
-        >
-          + Adicionar Caso de Teste
-        </button>
-
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            padding: "15px",
-            cursor: "pointer",
-            backgroundColor: "#0e639c",
-            color: "#fff",
-            border: "none",
-            fontWeight: "bold",
-            opacity: loading ? 0.7 : 1,
-          }}
-        >
-          {loading ? "Criando..." : "Criar Problema"}
-        </button>
+        <div style={{ display: "flex", gap: "1rem", marginBottom: "3rem" }}>
+          <button
+            type="button"
+            onClick={addTestCase}
+            className="btn btn-secondary"
+            style={{ flex: 1 }}
+          >
+            + Adicionar Caso
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn btn-primary"
+            style={{ flex: 2 }}
+          >
+            {loading ? "Salvando..." : "Salvar Exercício"}
+          </button>
+        </div>
       </form>
     </div>
   );

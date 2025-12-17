@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import Editor from "@monaco-editor/react";
 import { useParams, useNavigate } from "react-router-dom";
+import "../App.css"; // Importa o CSS global com as classes .ide-*
 
 // Interfaces
 interface Problem {
-  id: number;
+  id: string; // [CORREÇÃO] ID agora é string (UUID)
   title: string;
   description: string;
 }
@@ -53,12 +54,13 @@ const LANGUAGES = [
 
 export default function ClassroomView() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
-  const { id } = useParams(); // ID da Turma na URL
+  const { id } = useParams();
   const navigate = useNavigate();
 
-  // Estados
   const [classroom, setClassroom] = useState<Classroom | null>(null);
-  const [selectedProblemId, setSelectedProblemId] = useState<number | null>(
+
+  // [CORREÇÃO] State inicializado como string ou null
+  const [selectedProblemId, setSelectedProblemId] = useState<string | null>(
     null
   );
 
@@ -67,7 +69,6 @@ export default function ClassroomView() {
   const [verdict, setVerdict] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
-  // User ID do Token
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
     if (!token) return null;
@@ -78,9 +79,7 @@ export default function ClassroomView() {
         window
           .atob(base64)
           .split("")
-          .map(function (c) {
-            return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
-          })
+          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
           .join("")
       );
       return JSON.parse(jsonPayload).sub;
@@ -89,32 +88,29 @@ export default function ClassroomView() {
     }
   };
 
-  const myId = getMyUserId();
-  const isOwner = classroom?.owner?.id === myId;
+  const isOwner = classroom?.owner?.id === getMyUserId();
 
-  // Carregar Dados da Turma
   useEffect(() => {
-    fetchClassroomData();
-  }, [id]);
+    const fetchClassroomData = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await axios.get(`${API_URL}/classrooms/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setClassroom(res.data);
 
-  const fetchClassroomData = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get(`${API_URL}/classrooms/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      setClassroom(res.data);
-
-      if (res.data.problems && res.data.problems.length > 0) {
-        setSelectedProblemId(res.data.problems[0].id);
+        // [CORREÇÃO] Seleciona o primeiro problema se existir (ID é string)
+        if (res.data.problems && res.data.problems.length > 0) {
+          setSelectedProblemId(res.data.problems[0].id);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar turma", error);
+        alert("Erro ao carregar turma ou acesso negado.");
+        navigate("/dashboard");
       }
-    } catch (error) {
-      console.error("Erro ao carregar turma", error);
-      alert("Erro ao carregar turma ou acesso negado.");
-      navigate("/dashboard");
-    }
-  };
+    };
+    fetchClassroomData();
+  }, [id, navigate]);
 
   const submitSolution = async () => {
     if (!selectedProblemId) return alert("Selecione um problema!");
@@ -122,134 +118,77 @@ export default function ClassroomView() {
     setVerdict(null);
     try {
       const token = localStorage.getItem("token");
-      const response = await axios.post(
+      const res = await axios.post(
         `${API_URL}/submissions`,
         {
           code,
           language_id: languageId,
           problem_id: selectedProblemId,
         },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-
-      setVerdict(response.data.status);
+      setVerdict(res.data.status);
     } catch (error: any) {
-      setVerdict("Error: " + (error.response?.data?.message || error.message));
+      setVerdict(
+        "Erro: " + (error.response?.data?.message || "Falha na execução")
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  if (!classroom)
-    return (
-      <div style={{ color: "white", padding: "20px" }}>Carregando turma...</div>
-    );
+  if (!classroom) return <div className="container">Carregando turma...</div>;
 
   const currentProblem = classroom.problems.find(
     (p) => p.id === selectedProblemId
   );
 
   return (
-    <div
-      style={{
-        height: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        fontFamily: "sans-serif",
-        backgroundColor: "#1e1e1e",
-        color: "#fff",
-      }}
-    >
-      {/* Header da Turma */}
+    <div className="ide-container">
+      {/* 1. Header (Estilo Page Header mas compacto) */}
       <div
-        style={{
-          padding: "10px 20px",
-          backgroundColor: "#2d2d2d",
-          borderBottom: "1px solid #444",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
+        className="page-header"
+        style={{ padding: "1rem 1.5rem", marginBottom: 0 }}
       >
-        <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           <button
             onClick={() => navigate("/dashboard")}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#aaa",
-              cursor: "pointer",
-              fontSize: "1.2rem",
-            }}
+            className="btn btn-ghost"
+            style={{ padding: "0.2rem" }}
           >
-            ←
+            ← Voltar
           </button>
-          <h2 style={{ margin: 0 }}>{classroom.name}</h2>
-          {isOwner && (
-            <span
-              style={{
-                backgroundColor: "#444",
-                padding: "2px 8px",
-                borderRadius: "4px",
-                fontSize: "0.8rem",
-                color: "#aaa",
-              }}
-            >
-              Código: {classroom.code}
-            </span>
-          )}
+          <h2 className="page-title" style={{ fontSize: "1.2rem" }}>
+            {classroom.name}
+          </h2>
+          {isOwner && <span className="class-code">{classroom.code}</span>}
         </div>
 
-        <div style={{ display: "flex", gap: "10px" }}>
-          {isOwner && (
-            <button
-              onClick={() =>
-                navigate("/create-problem", {
-                  state: { classroomId: classroom.id },
-                })
-              }
-              style={{
-                padding: "8px 15px",
-                backgroundColor: "#28a745",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-              }}
-            >
-              + Novo Exercício
-            </button>
-          )}
-        </div>
+        {isOwner && (
+          <button
+            onClick={() =>
+              navigate("/create-problem", {
+                state: { classroomId: classroom.id },
+              })
+            }
+            className="btn btn-primary"
+          >
+            + Novo Exercício
+          </button>
+        )}
       </div>
 
-      {/* Toolbar IDE */}
-      <div
-        style={{
-          padding: "10px 20px",
-          borderBottom: "1px solid #333",
-          display: "flex",
-          alignItems: "center",
-          gap: "1rem",
-          backgroundColor: "#252526",
-        }}
-      >
+      {/* 2. Toolbar */}
+      <div className="ide-toolbar">
         <select
+          className="form-select"
+          style={{ width: "auto", minWidth: "250px" }}
           value={selectedProblemId || ""}
-          onChange={(e) => setSelectedProblemId(Number(e.target.value))}
-          style={{
-            padding: "8px",
-            borderRadius: "4px",
-            backgroundColor: "#3c3c3c",
-            color: "white",
-            border: "1px solid #555",
-            maxWidth: "250px",
-          }}
+          // [CORREÇÃO] Removemos Number(), pois o ID é string (UUID)
+          onChange={(e) => setSelectedProblemId(e.target.value)}
         >
           {classroom.problems.length === 0 && (
-            <option>Nenhum exercício postado</option>
+            <option>Sem exercícios postados</option>
           )}
           {classroom.problems.map((p) => (
             <option key={p.id} value={p.id}>
@@ -259,22 +198,16 @@ export default function ClassroomView() {
         </select>
 
         <select
+          className="form-select"
+          style={{ width: "auto" }}
           value={languageId}
           onChange={(e) => {
             const newId = Number(e.target.value);
             setLanguageId(newId);
-            // Opcional: Atualizar código padrão ao trocar linguagem
             const defaultCode = LANGUAGES.find(
               (l) => l.id === newId
             )?.defaultCode;
             if (defaultCode) setCode(defaultCode);
-          }}
-          style={{
-            padding: "8px",
-            borderRadius: "4px",
-            backgroundColor: "#3c3c3c",
-            color: "white",
-            border: "none",
           }}
         >
           {LANGUAGES.map((lang) => (
@@ -287,28 +220,19 @@ export default function ClassroomView() {
         <button
           onClick={submitSolution}
           disabled={loading || !selectedProblemId}
-          style={{
-            padding: "8px 25px",
-            cursor: "pointer",
-            fontWeight: "bold",
-            backgroundColor: loading ? "#555" : "#0e639c",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            marginLeft: "auto",
-          }}
+          className="btn btn-primary"
+          style={{ marginLeft: "auto" }}
         >
-          {loading ? "Julgando..." : "Enviar"}
+          {loading ? "Executando..." : "▶ Enviar Solução"}
         </button>
       </div>
 
-      {/* Área Principal */}
-      <div style={{ flex: 1, display: "flex" }}>
-        {/* Editor */}
-        <div style={{ flex: 2, borderRight: "1px solid #333" }}>
+      {/* 3. Grid Principal (Editor + Info) */}
+      <div className="ide-main">
+        <div className="ide-editor-panel">
           <Editor
             height="100%"
-            // CORREÇÃO: Usamos languageId que é o estado definido
+            // [CORREÇÃO] Usa o mapa para traduzir o ID numérico para string do Monaco
             language={LANGUAGE_MAP[languageId] || "plaintext"}
             theme="vs-dark"
             value={code}
@@ -316,74 +240,38 @@ export default function ClassroomView() {
             options={{
               fontSize: 14,
               minimap: { enabled: false },
+              padding: { top: 16 },
               scrollBeyondLastLine: false,
               automaticLayout: true,
             }}
           />
         </div>
 
-        {/* Painel Direito */}
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            backgroundColor: "#1e1e1e",
-            padding: "20px",
-            overflowY: "auto",
-          }}
-        >
-          <div style={{ marginBottom: "2rem" }}>
-            {currentProblem ? (
-              <>
-                <h3
-                  style={{
-                    borderBottom: "1px solid #444",
-                    paddingBottom: "10px",
-                  }}
-                >
-                  {currentProblem.title}
-                </h3>
-                <p
-                  style={{
-                    lineHeight: "1.6",
-                    color: "#ccc",
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {currentProblem.description}
-                </p>
-              </>
-            ) : (
-              <p style={{ color: "#777" }}>
-                Selecione um exercício ou aguarde o professor postar.
-              </p>
-            )}
-          </div>
+        <div className="ide-info-panel">
+          {currentProblem ? (
+            <>
+              <h3 className="ide-info-title">{currentProblem.title}</h3>
+              <p className="ide-description">{currentProblem.description}</p>
+            </>
+          ) : (
+            <p className="ide-description">
+              Selecione um exercício para começar.
+            </p>
+          )}
 
-          <div style={{ marginTop: "auto", textAlign: "center" }}>
-            {verdict && (
-              <div
-                style={{
-                  padding: "15px",
-                  borderRadius: "8px",
-                  backgroundColor: "#2d2d2d",
-                  border: `1px solid ${
-                    verdict === "Accepted" ? "#4caf50" : "#f44336"
-                  }`,
-                }}
-              >
-                <h3
-                  style={{
-                    color: verdict === "Accepted" ? "#4caf50" : "#f44336",
-                    margin: 0,
-                  }}
-                >
-                  {verdict}
-                </h3>
-              </div>
-            )}
-          </div>
+          {verdict && (
+            <div
+              className="ide-verdict"
+              style={{
+                borderColor:
+                  verdict === "Accepted" ? "var(--success)" : "var(--error)",
+                color:
+                  verdict === "Accepted" ? "var(--success)" : "var(--error)",
+              }}
+            >
+              <strong>Resultado:</strong> {verdict}
+            </div>
+          )}
         </div>
       </div>
     </div>
