@@ -22,9 +22,8 @@ export class Submission {
   @Column()
   status: string;
 
-  // ESTES CAMPOS SÃO OBRIGATÓRIOS PARA CORRIGIR O ERRO DA LINHA 100
   @Column({ type: 'text', nullable: true })
-  stdout: string | null; // <--- Adicione "| null" aqui
+  stdout: string | null;
 
   @Column({ type: 'text', nullable: true })
   stderr: string | null;
@@ -32,8 +31,13 @@ export class Submission {
   @CreateDateColumn()
   createdAt: Date;
 
-  @ManyToOne(() => Problem, (problem) => problem.submissions)
+  // --- AQUI ESTÁ A CORREÇÃO ---
+  // Adicione { onDelete: 'CASCADE' } dentro do ManyToOne
+  @ManyToOne(() => Problem, (problem) => problem.submissions, {
+    onDelete: 'CASCADE',
+  })
   problem: Problem;
+  // ----------------------------
 
   @ManyToOne(() => User, (user) => user.submissions)
   user: User;
