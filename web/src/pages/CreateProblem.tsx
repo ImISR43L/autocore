@@ -26,6 +26,9 @@ export default function CreateProblem() {
   ]);
   const [loading, setLoading] = useState(false);
 
+  const [type, setType] = useState("EXERCISE"); // "EXERCISE" ou "EXAM"
+  const [maxAttempts, setMaxAttempts] = useState<number | string>(""); // Vazio se for exercício
+
   useEffect(() => {
     if (!classroomId && !isEditing) {
       toast.error("Turma não identificada.");
@@ -101,7 +104,11 @@ export default function CreateProblem() {
         description,
         slug,
         classroomId,
-        testCases: cleanTestCases, // Envia a versão limpa
+        testCases: cleanTestCases,
+        type,
+        ...(type === "EXAM" && maxAttempts
+          ? { maxAttempts: Number(maxAttempts) }
+          : {}),
       };
 
       if (isEditing) {
@@ -171,6 +178,80 @@ export default function CreateProblem() {
             rows={8}
             required
           />
+        </div>
+
+        <div
+          className="card"
+          style={{
+            marginBottom: "20px",
+            padding: "15px",
+            border: "1px solid #444",
+          }}
+        >
+          <h3 style={{ marginTop: 0, fontSize: "1rem", color: "#ccc" }}>
+            Configurações de Avaliação
+          </h3>
+
+          <div className="form-group">
+            <label className="form-label">Tipo de Atividade</label>
+            <div style={{ display: "flex", gap: "20px", marginTop: "5px" }}>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="radio"
+                  name="problemType"
+                  value="EXERCISE"
+                  checked={type === "EXERCISE"}
+                  onChange={(e) => setType(e.target.value)}
+                />
+                Exercício (Tentativas Livres)
+              </label>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="radio"
+                  name="problemType"
+                  value="EXAM"
+                  checked={type === "EXAM"}
+                  onChange={(e) => setType(e.target.value)}
+                />
+                Prova (Tentativas Limitadas)
+              </label>
+            </div>
+          </div>
+
+          {type === "EXAM" && (
+            <div className="form-group" style={{ marginTop: "15px" }}>
+              <label className="form-label">Número Máximo de Tentativas</label>
+              <input
+                type="number"
+                className="form-input"
+                value={maxAttempts}
+                onChange={(e) => setMaxAttempts(e.target.value)}
+                placeholder="Ex: 3"
+                min="1"
+                required={type === "EXAM"} // Obrigatório se for prova
+                style={{ maxWidth: "150px" }}
+              />
+              <small
+                style={{ color: "#888", display: "block", marginTop: "5px" }}
+              >
+                O aluno receberá bloqueio após errar este número de vezes.
+              </small>
+            </div>
+          )}
         </div>
 
         <hr style={{ borderColor: "var(--border)", margin: "2rem 0" }} />

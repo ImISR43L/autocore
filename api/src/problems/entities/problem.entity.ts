@@ -9,10 +9,15 @@ import { Classroom } from '../../classrooms/entities/classroom.entity';
 import { TestCase } from './test-case.entity';
 import { Submission } from '../../submissions/entities/submission.entity';
 
+export enum ProblemType {
+  EXERCISE = 'EXERCISE',
+  EXAM = 'EXAM',
+}
+
 @Entity()
 export class Problem {
-  @PrimaryGeneratedColumn('uuid') // Ou 'increment', mantenha o que você já usa
-  id: string; // Se mudou para string/uuid, mantenha string. Se for number, number.
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column()
   title: string;
@@ -23,20 +28,31 @@ export class Problem {
   @Column()
   slug: string;
 
+  // --- NOVOS CAMPOS ---
+  @Column({
+    type: 'enum',
+    enum: ProblemType,
+    default: ProblemType.EXERCISE,
+  })
+  type: ProblemType;
+
+  @Column({ type: 'int', nullable: true, default: null })
+  maxAttempts: number | null;
+  // --------------------
+
   @ManyToOne(() => Classroom, (classroom) => classroom.problems, {
-    onDelete: 'CASCADE', // Se apagar a turma, apaga o problema
+    onDelete: 'CASCADE',
   })
   classroom: Classroom;
 
   @OneToMany(() => TestCase, (testCase) => testCase.problem, {
-    cascade: true, // Permite salvar/editar testCases junto com o problema
-    onDelete: 'CASCADE', // <--- CORREÇÃO: Se apagar problema, apaga os testes
+    cascade: true,
+    onDelete: 'CASCADE',
   })
   testCases: TestCase[];
 
-  // Adicione a relação com Submissions se ainda não tiver, para garantir o Cascade
   @OneToMany(() => Submission, (submission) => submission.problem, {
-    onDelete: 'CASCADE', // <--- CORREÇÃO: Se apagar problema, apaga as submissões
+    onDelete: 'CASCADE',
   })
   submissions: Submission[];
 }

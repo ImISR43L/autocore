@@ -36,26 +36,26 @@ export class ProblemsService {
       );
     }
 
+    const testCases = (createProblemDto.testCases || []).map((tc) =>
+      this.testCasesRepository.create({
+        input: tc.input,
+        expectedOutput: tc.expectedOutput,
+      }),
+    );
+
     const problem = this.problemsRepository.create({
       title: createProblemDto.title,
       description: createProblemDto.description,
       slug: createProblemDto.slug,
-      classroom: classroom,
+      type: createProblemDto.type, // Se adicionou o enum
+      maxAttempts: createProblemDto.maxAttempts, // Se adicionou o campo
+      classroom,
+      testCases, // Associa os casos de teste criados
     });
-
-    const savedProblem = await this.problemsRepository.save(problem);
-
-    const testCases = createProblemDto.testCases.map((tc) =>
-      this.testCasesRepository.create({
-        input: tc.input,
-        expectedOutput: tc.expectedOutput,
-        problem: savedProblem,
-      }),
-    );
 
     await this.testCasesRepository.save(testCases);
 
-    return savedProblem;
+    return this.problemsRepository.save(problem);
   }
 
   findAll() {

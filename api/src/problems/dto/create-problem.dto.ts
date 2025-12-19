@@ -1,17 +1,12 @@
-import { IsString, IsNotEmpty, ValidateNested, IsArray } from 'class-validator';
-import { Type } from 'class-transformer';
-
-class TestCaseDto {
-  @IsNotEmpty()
-  @IsString()
-  input: string;
-
-  // Atenção: O Frontend deve enviar 'expectedOutput' (camelCase) ou você deve ajustar aqui para match
-  // Como sua entidade usa expectedOutput, recomendo padronizar tudo para camelCase
-  @IsNotEmpty()
-  @IsString()
-  expectedOutput: string;
-}
+import {
+  IsNotEmpty,
+  IsString,
+  IsEnum,
+  IsOptional,
+  IsNumber,
+  Min,
+} from 'class-validator';
+import { ProblemType } from '../entities/problem.entity';
 
 export class CreateProblemDto {
   @IsString()
@@ -24,13 +19,22 @@ export class CreateProblemDto {
 
   @IsString()
   @IsNotEmpty()
-  slug: string; // <--- ADICIONE ISTO
-
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => TestCaseDto)
-  testCases: TestCaseDto[];
+  slug: string;
 
   @IsNotEmpty()
   classroomId: number;
+
+  // --- NOVAS VALIDAÇÕES ---
+  @IsEnum(ProblemType)
+  @IsOptional()
+  type?: ProblemType;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  maxAttempts?: number;
+  // -----------------------
+
+  @IsOptional()
+  testCases?: any[];
 }

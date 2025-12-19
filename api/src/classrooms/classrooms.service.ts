@@ -84,9 +84,30 @@ export class ClassroomsService {
   async findOne(id: number) {
     const classroom = await this.classroomsRepository.findOne({
       where: { id },
-      relations: ['owner', 'students', 'problems'],
+      // ATUALIZE A LINHA 'relations' PARA INCLUIR 'announcements' e 'announcements.author'
+      relations: [
+        'owner',
+        'students',
+        'problems',
+        'announcements',
+        'announcements.author',
+      ],
+      order: {
+        // Ordena avisos do mais recente para o mais antigo
+        announcements: {
+          createdAt: 'DESC',
+        },
+      } as any, // Cast necessario dependendo da versao do TypeORM se reclamar do nested order
     });
     if (!classroom) throw new NotFoundException('Turma não encontrada');
+
+    // Pequena ordenação manual caso o order do findOne falhe em relações aninhadas
+    if (classroom.announcements) {
+      classroom.announcements.sort(
+        (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+      );
+    }
+
     return classroom;
   }
 

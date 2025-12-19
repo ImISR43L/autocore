@@ -5,6 +5,7 @@ import { SubmissionsModule } from './submissions/submissions.module';
 import { ProblemsModule } from './problems/problems.module'; // [Novo]
 import { AuthModule } from './auth/auth.module';
 import { ClassroomsModule } from './classrooms/classrooms.module';
+import { AnnouncementsModule } from './announcements/announcements.module';
 
 @Module({
   imports: [
@@ -22,7 +23,8 @@ import { ClassroomsModule } from './classrooms/classrooms.module';
     AuthModule,
     ClassroomsModule,
     SubmissionsModule,
-    ProblemsModule, // Adicione o novo módulo aqui
+    ProblemsModule,
+    AnnouncementsModule,
   ],
 })
 export class AppModule {}

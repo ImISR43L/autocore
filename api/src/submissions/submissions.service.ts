@@ -1,10 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import axios from 'axios';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { Submission } from './entities/submission.entity';
-import { Problem } from '../problems/entities/problem.entity';
+import { Problem, ProblemType } from '../problems/entities/problem.entity'; // Importe o Enum
 
 @Injectable()
 export class SubmissionsService {
@@ -24,6 +28,23 @@ export class SubmissionsService {
     });
 
     if (!problem) throw new NotFoundException('Exercício não encontrado');
+
+    if (problem.type === ProblemType.EXAM && problem.maxAttempts) {
+      const attempts = await this.submissionsRepository.count({
+        where: {
+          problem: { id: problem.id },
+          user: { id: userId },
+        },
+      });
+
+      if (attempts >= problem.maxAttempts) {
+        // Retorna um erro amigável ou lança exceção.
+        // Lançar exceção impede a criação da linha no banco, o que é ideal.
+        throw new ForbiddenException(
+          `Limite de tentativas excedido (${problem.maxAttempts}/${problem.maxAttempts}). A questão foi encerrada.`,
+        );
+      }
+    }
 
     let finalVerdict = 'Accepted';
     let executionStdout: string | null = null;

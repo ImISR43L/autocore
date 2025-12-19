@@ -1,0 +1,29 @@
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+} from 'typeorm';
+import { User } from '../../users/entities/user.entity';
+import { Classroom } from '../../classrooms/entities/classroom.entity';
+
+@Entity()
+export class Announcement {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column('text')
+  content: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @ManyToOne(() => User, { eager: true }) // Carrega o autor automaticamente
+  author: User;
+
+  @ManyToOne(() => Classroom, (classroom) => classroom.announcements, {
+    onDelete: 'CASCADE', // Se apagar a turma, apaga os avisos
+  })
+  classroom: Classroom;
+}
