@@ -1,19 +1,30 @@
-// api/src/submissions/submissions.controller.ts
-import { Controller, Post, Get, Body } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { SubmissionsService } from './submissions.service';
+import { CreateSubmissionDto } from './dto/create-submission.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('submissions')
 export class SubmissionsController {
   constructor(private readonly submissionsService: SubmissionsService) {}
 
+  @UseGuards(JwtAuthGuard)
   @Post()
-  create(@Body() body: any) {
-    return this.submissionsService.executeCode(body);
+  create(@Body() createSubmissionDto: CreateSubmissionDto, @Request() req) {
+    return this.submissionsService.create(createSubmissionDto, req.user.userId);
   }
 
-  @Post('seed') // Endpoint temporário para criar o problema no banco
-  seed() {
-    return this.submissionsService.seedProblem();
+  @UseGuards(JwtAuthGuard)
+  @Get('problem/:id')
+  findAllByProblem(@Param('id') id: string) {
+    return this.submissionsService.findAllByProblem(id);
   }
 
   @Get()

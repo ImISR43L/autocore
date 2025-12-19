@@ -1,15 +1,15 @@
-import { IsString, IsNumber, IsOptional, IsNotEmpty } from 'class-validator';
+import { IsInt, IsNotEmpty, IsString } from 'class-validator';
 
 export class CreateSubmissionDto {
-  @IsNotEmpty()
   @IsString()
+  @IsNotEmpty()
   code: string;
 
+  @IsInt()
   @IsNotEmpty()
-  @IsNumber()
   language_id: number;
 
-  @IsOptional()
   @IsString()
-  stdin?: string;
+  @IsNotEmpty()
+  problem_id: string;
 }

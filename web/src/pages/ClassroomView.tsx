@@ -3,6 +3,9 @@ import axios from "axios";
 import Editor from "@monaco-editor/react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
+import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
 
 // Interfaces
@@ -22,7 +25,14 @@ interface Classroom {
   problems: Problem[];
 }
 
-// Mapa de Linguagens (Judge0 ID -> Monaco String)
+interface Submission {
+  id: string;
+  status: string;
+  created_at: string;
+  user: { email: string };
+  executionTime?: number;
+}
+
 const LANGUAGE_MAP: Record<number, string> = {
   71: "python",
   63: "javascript",
@@ -32,37 +42,32 @@ const LANGUAGE_MAP: Record<number, string> = {
   60: "go",
 };
 
-// Lista completa de Templates
 const LANGUAGES = [
-  {
-    id: 71,
-    name: "Python (3.8.1)",
-    defaultCode: `import sys\n\n# Leia a entrada padrão\nline = sys.stdin.read().split()\nif len(line) >= 2:\n    a = int(line[0])\n    b = int(line[1])\n    print(a + b)`,
-  },
+  { id: 71, name: "Python (3.8.1)", defaultCode: `print("Hello World")` },
   {
     id: 63,
-    name: "JavaScript (Node.js 12.14)",
-    defaultCode: `const fs = require('fs');\nconst input = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);\n\nif(input.length >= 2) {\n    const a = parseInt(input[0]);\n    const b = parseInt(input[1]);\n    console.log(a + b);\n}`,
+    name: "JavaScript (Node.js)",
+    defaultCode: `console.log("Hello World");`,
   },
   {
     id: 62,
     name: "Java (OpenJDK 13.0.1)",
-    defaultCode: `import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner scanner = new Scanner(System.in);\n        if (scanner.hasNextInt()) {\n            int a = scanner.nextInt();\n            int b = scanner.nextInt();\n            System.out.println(a + b);\n        }\n    }\n}`,
+    defaultCode: `public class Main { public static void main(String[] args) { System.out.println("Hello"); } }`,
   },
   {
     id: 50,
     name: "C (GCC 9.2.0)",
-    defaultCode: `#include <stdio.h>\n\nint main() {\n    int a, b;\n    if (scanf("%d %d", &a, &b) == 2) {\n        printf("%d", a + b);\n    }\n    return 0;\n}`,
+    defaultCode: `#include <stdio.h>\nint main() { printf("Hello"); return 0; }`,
   },
   {
     id: 54,
     name: "C++ (GCC 9.2.0)",
-    defaultCode: `#include <iostream>\nusing namespace std;\n\nint main() {\n    int a, b;\n    if (cin >> a >> b) {\n        cout << (a + b);\n    }\n    return 0;\n}`,
+    defaultCode: `#include <iostream>\nint main() { std::cout << "Hello"; return 0; }`,
   },
   {
     id: 60,
     name: "Go (1.13.5)",
-    defaultCode: `package main\nimport (\n    "fmt"\n)\n\nfunc main() {\n    var a, b int\n    if _, err := fmt.Scan(&a, &b); err == nil {\n        fmt.Println(a + b)\n    }\n}`,
+    defaultCode: `package main\nimport "fmt"\nfunc main() { fmt.Println("Hello") }`,
   },
 ];
 
@@ -76,9 +81,13 @@ export default function ClassroomView() {
     null
   );
   const [languageId, setLanguageId] = useState<number>(71);
-  const [code, setCode] = useState<string>(LANGUAGES[0].defaultCode);
+  const [code, setCode] = useState<string>("");
   const [verdict, setVerdict] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+
+  // Estado para Modal de Submissões
+  const [showSubmissions, setShowSubmissions] = useState(false);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
 
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
@@ -109,38 +118,56 @@ export default function ClassroomView() {
     }
   };
 
+  const fetchSubmissions = async () => {
+    if (!selectedProblemId) return;
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get(
+        `${API_URL}/submissions/problem/${selectedProblemId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      setSubmissions(res.data);
+      setShowSubmissions(true);
+    } catch (error) {
+      toast.error("Erro ao carregar submissões.");
+    }
+  };
+
   useEffect(() => {
     fetchClassroomData();
   }, [id]);
 
-  const handleDeleteProblem = async () => {
-    if (!selectedProblemId) return;
-    if (!confirm("Tem certeza que deseja excluir este exercício?")) return;
+  useEffect(() => {
+    if (!code) {
+      const lang = LANGUAGES.find((l) => l.id === languageId);
+      if (lang) setCode(lang.defaultCode);
+    }
+  }, [languageId]);
 
+  const handleDeleteProblem = async () => {
+    if (!selectedProblemId || !confirm("Tem a certeza?")) return;
     try {
       const token = localStorage.getItem("token");
       await axios.delete(`${API_URL}/problems/${selectedProblemId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      toast.success("Exercício excluído!");
+      toast.success("Eliminado!");
       setSelectedProblemId(null);
       fetchClassroomData();
     } catch (error) {
-      toast.error("Erro ao excluir.");
+      toast.error("Erro ao eliminar.");
     }
   };
 
   const handleEditProblem = () => {
     if (!selectedProblemId || !classroom) return;
     const problem = classroom.problems.find((p) => p.id === selectedProblemId);
-    if (!problem) return;
-
-    navigate("/create-problem", {
-      state: {
-        classroomId: classroom.id,
-        problemToEdit: problem,
-      },
-    });
+    if (problem)
+      navigate("/create-problem", {
+        state: { classroomId: classroom.id, problemToEdit: problem },
+      });
   };
 
   const submitSolution = async () => {
@@ -155,9 +182,9 @@ export default function ClassroomView() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setVerdict(res.data.status);
-      if (res.data.status === "Accepted") toast.success("Solução Aceita!");
+      if (res.data.status === "Accepted") toast.success("Solução Aceite!");
       else toast.error("Resposta Incorreta");
-    } catch (error: any) {
+    } catch (error) {
       setVerdict("Erro");
       toast.error("Falha na submissão");
     } finally {
@@ -166,13 +193,107 @@ export default function ClassroomView() {
   };
 
   if (!classroom) return <div className="container">Carregando...</div>;
-
   const currentProblem = classroom.problems.find(
     (p) => p.id === selectedProblemId
   );
 
   return (
     <div className="ide-container">
+      {/* Modal de Submissões */}
+      {showSubmissions && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            backgroundColor: "rgba(0,0,0,0.8)",
+            zIndex: 1000,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#1e1e1e",
+              padding: "2rem",
+              borderRadius: "8px",
+              width: "80%",
+              maxWidth: "800px",
+              maxHeight: "80vh",
+              overflowY: "auto",
+              border: "1px solid #444",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: "1rem",
+              }}
+            >
+              <h2>Submissões: {currentProblem?.title}</h2>
+              <button
+                onClick={() => setShowSubmissions(false)}
+                className="btn btn-secondary"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                textAlign: "left",
+              }}
+            >
+              <thead>
+                <tr style={{ borderBottom: "1px solid #444" }}>
+                  <th style={{ padding: "10px" }}>Aluno</th>
+                  <th style={{ padding: "10px" }}>Veredito</th>
+                  <th style={{ padding: "10px" }}>Data</th>
+                </tr>
+              </thead>
+              <tbody>
+                {submissions.map((sub) => (
+                  <tr key={sub.id} style={{ borderBottom: "1px solid #333" }}>
+                    <td style={{ padding: "10px", color: "#ccc" }}>
+                      {sub.user?.email || "Desconhecido"}
+                    </td>
+                    <td
+                      style={{
+                        padding: "10px",
+                        fontWeight: "bold",
+                        color:
+                          sub.status === "Accepted" ? "#4caf50" : "#f44336",
+                      }}
+                    >
+                      {sub.status}
+                    </td>
+                    <td style={{ padding: "10px", color: "#888" }}>
+                      {new Date(sub.created_at).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+                {submissions.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={3}
+                      style={{ padding: "20px", textAlign: "center" }}
+                    >
+                      Nenhuma submissão encontrada.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div
         className="page-header"
@@ -189,7 +310,6 @@ export default function ClassroomView() {
             {classroom.name}
           </h2>
         </div>
-
         {isOwner && (
           <button
             onClick={() =>
@@ -220,24 +340,30 @@ export default function ClassroomView() {
           ))}
         </select>
 
-        {/* Ações do Professor */}
         {isOwner && selectedProblemId && (
           <div style={{ display: "flex", gap: "5px", marginLeft: "10px" }}>
             <button
               onClick={handleEditProblem}
               className="btn btn-secondary"
-              title="Editar Exercício"
-              style={{ padding: "8px 12px" }}
+              title="Editar"
             >
               ✏️
             </button>
             <button
               onClick={handleDeleteProblem}
               className="btn btn-danger"
-              title="Excluir Exercício"
-              style={{ padding: "8px 12px" }}
+              title="Excluir"
             >
               🗑️
+            </button>
+            {/* Novo Botão */}
+            <button
+              onClick={fetchSubmissions}
+              className="btn btn-primary"
+              title="Ver Submissões"
+              style={{ backgroundColor: "#555" }}
+            >
+              📊 Ver Submissões
             </button>
           </div>
         )}
@@ -247,15 +373,7 @@ export default function ClassroomView() {
             className="form-select"
             style={{ width: "auto" }}
             value={languageId}
-            onChange={(e) => {
-              const newId = Number(e.target.value);
-              setLanguageId(newId);
-              // Atualiza o código se houver um padrão para a linguagem selecionada
-              const defaultCode = LANGUAGES.find(
-                (l) => l.id === newId
-              )?.defaultCode;
-              if (defaultCode) setCode(defaultCode);
-            }}
+            onChange={(e) => setLanguageId(Number(e.target.value))}
           >
             {LANGUAGES.map((lang) => (
               <option key={lang.id} value={lang.id}>
@@ -263,7 +381,6 @@ export default function ClassroomView() {
               </option>
             ))}
           </select>
-
           <button
             onClick={submitSolution}
             disabled={loading || !selectedProblemId}
@@ -286,19 +403,19 @@ export default function ClassroomView() {
             options={{ minimap: { enabled: false }, automaticLayout: true }}
           />
         </div>
-
         <div className="ide-info-panel">
           {currentProblem ? (
             <>
               <h3 className="ide-info-title">{currentProblem.title}</h3>
-              <p className="ide-description">{currentProblem.description}</p>
+              <div className="ide-description markdown-body">
+                <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+                  {currentProblem.description}
+                </ReactMarkdown>
+              </div>
             </>
           ) : (
-            <p className="ide-description">
-              Selecione um exercício para começar.
-            </p>
+            <p className="ide-description">Selecione um exercício.</p>
           )}
-
           {verdict && (
             <div
               className={`ide-verdict ${

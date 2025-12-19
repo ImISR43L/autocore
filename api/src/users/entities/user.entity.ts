@@ -6,6 +6,7 @@ import {
   ManyToMany,
 } from 'typeorm';
 import { Classroom } from '../../classrooms/entities/classroom.entity';
+import { Submission } from '../../submissions/entities/submission.entity';
 
 @Entity()
 export class User {
@@ -25,4 +26,7 @@ export class User {
   // Turmas que participo (Aluno)
   @ManyToMany(() => Classroom, (classroom) => classroom.students)
   joinedClassrooms: Classroom[];
+
+  @OneToMany(() => Submission, (submission) => submission.user)
+  submissions: Submission[];
 }

@@ -1,30 +1,35 @@
 import {
   Entity,
-  Column,
   PrimaryGeneratedColumn,
+  Column,
   CreateDateColumn,
   ManyToOne,
 } from 'typeorm';
+import { User } from '../../users/entities/user.entity';
 import { Problem } from '../../problems/entities/problem.entity';
 
 @Entity()
 export class Submission {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @Column('text')
+  @Column({ type: 'text' })
   code: string;
 
   @Column()
   language_id: number;
 
-  @Column({ nullable: true })
-  status: string; // Accepted, Wrong Answer, etc.
-
-  // Vincula a submissão a um problema específico
-  @ManyToOne(() => Problem)
-  problem: Problem;
+  @Column()
+  status: string;
 
   @CreateDateColumn()
   created_at: Date;
+
+  @ManyToOne(() => User, (user) => user.submissions, { eager: true })
+  user: User;
+
+  @ManyToOne(() => Problem, (problem) => problem.submissions, {
+    onDelete: 'CASCADE',
+  })
+  problem: Problem;
 }
