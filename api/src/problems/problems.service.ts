@@ -3,12 +3,12 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { UpdateProblemDto } from './dto/update-problem.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { CreateProblemDto } from './dto/create-problem.dto';
+import { UpdateProblemDto } from './dto/update-problem.dto';
 import { Problem } from './entities/problem.entity';
 import { TestCase } from './entities/test-case.entity';
-import { CreateProblemDto } from './dto/create-problem.dto';
 import { Classroom } from '../classrooms/entities/classroom.entity';
 
 @Injectable()
@@ -18,12 +18,11 @@ export class ProblemsService {
     private problemsRepository: Repository<Problem>,
     @InjectRepository(TestCase)
     private testCasesRepository: Repository<TestCase>,
-    @InjectRepository(Classroom) // Injeção Correta
+    @InjectRepository(Classroom)
     private classroomsRepository: Repository<Classroom>,
   ) {}
 
   async create(createProblemDto: CreateProblemDto, userId: number) {
-    // 1. Validar Turma e Dono
     const classroom = await this.classroomsRepository.findOne({
       where: { id: createProblemDto.classroomId },
       relations: ['owner'],
@@ -37,21 +36,19 @@ export class ProblemsService {
       );
     }
 
-    // 2. Criar Problema vinculado à Turma
     const problem = this.problemsRepository.create({
       title: createProblemDto.title,
       description: createProblemDto.description,
-      slug: createProblemDto.slug, // <--- GARANTA QUE ISTO ESTÁ AQUI
+      slug: createProblemDto.slug,
       classroom: classroom,
     });
 
     const savedProblem = await this.problemsRepository.save(problem);
 
-    // 3. Salvar Casos de Teste
     const testCases = createProblemDto.testCases.map((tc) =>
       this.testCasesRepository.create({
         input: tc.input,
-        expectedOutput: tc.expectedOutput, // Padronize camelCase
+        expectedOutput: tc.expectedOutput,
         problem: savedProblem,
       }),
     );
@@ -61,16 +58,14 @@ export class ProblemsService {
     return savedProblem;
   }
 
-  async findAll() {
-    return this.problemsRepository.find({
-      relations: ['testCases', 'classroom'],
-    });
+  findAll() {
+    return this.problemsRepository.find({ relations: ['classroom'] });
   }
 
   async findOne(id: string) {
     const problem = await this.problemsRepository.findOne({
       where: { id },
-      relations: ['testCases', 'classroom', 'classroom.owner'], // <--- ADICIONE 'testCases'
+      relations: ['testCases', 'classroom', 'classroom.owner'],
     });
 
     if (!problem) throw new NotFoundException('Exercício não encontrado');
@@ -78,31 +73,49 @@ export class ProblemsService {
   }
 
   async update(id: string, updateProblemDto: UpdateProblemDto, userId: number) {
-    // 1. Buscar o problema e a turma (com o dono)
+    // 1. Buscar o problema existente com seus relacionamentos
     const problem = await this.problemsRepository.findOne({
       where: { id },
-      relations: ['classroom', 'classroom.owner'],
+      relations: ['classroom', 'classroom.owner', 'testCases'],
     });
 
     if (!problem) throw new NotFoundException('Exercício não encontrado');
 
-    // 2. Verificar se o usuário é o dono da turma
+    // 2. Validar permissão
     if (problem.classroom.owner.id !== userId) {
       throw new ForbiddenException(
         'Apenas o dono da turma pode editar este exercício.',
       );
     }
 
-    // 3. Atualizar campos básicos
-    // Nota: Atualizar testCases é mais complexo, por enquanto vamos focar nos dados básicos
+    // 3. Separar os dados: testCases vs dados do problema
     const { testCases, classroomId, ...dataToUpdate } = updateProblemDto;
 
+    // 4. Atualizar dados básicos do problema
     Object.assign(problem, dataToUpdate);
+    await this.problemsRepository.save(problem);
 
-    return this.problemsRepository.save(problem);
+    // 5. Atualizar os Casos de Teste (Estratégia: Substituição Completa)
+    if (testCases) {
+      // Remove os casos de teste antigos
+      // AVISO: Isso apaga todos os testes anteriores deste problema
+      await this.testCasesRepository.delete({ problem: { id: problem.id } });
+
+      // Cria os novos casos de teste
+      const newTestCases = testCases.map((tc) =>
+        this.testCasesRepository.create({
+          input: tc.input,
+          expectedOutput: tc.expectedOutput,
+          problem: problem,
+        }),
+      );
+
+      await this.testCasesRepository.save(newTestCases);
+    }
+
+    return this.findOne(id); // Retorna o problema atualizado
   }
 
-  // ADICIONE ESTE MÉTODO:
   async remove(id: string, userId: number) {
     const problem = await this.problemsRepository.findOne({
       where: { id },

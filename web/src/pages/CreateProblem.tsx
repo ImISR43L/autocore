@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import "../App.css";
 
 interface TestCase {
+  id?: string; // Opcional, pois pode não existir na criação
   input: string;
   expectedOutput: string;
 }
@@ -14,11 +15,9 @@ export default function CreateProblem() {
   const location = useLocation();
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-  // Recupera dados passados pela navegação
   const { classroomId, problemToEdit } = location.state || {};
-  const isEditing = !!problemToEdit; // Booleano: Estamos editando?
+  const isEditing = !!problemToEdit;
 
-  // Estados do formulário
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [slug, setSlug] = useState("");
@@ -27,21 +26,17 @@ export default function CreateProblem() {
   ]);
   const [loading, setLoading] = useState(false);
 
-  // Efeito para carregar dados se for edição
   useEffect(() => {
-    // 1. Validação básica de turma
     if (!classroomId && !isEditing) {
       toast.error("Turma não identificada.");
       navigate("/dashboard");
       return;
     }
 
-    // 2. Lógica de Carregamento para EDIÇÃO
     const loadProblemData = async () => {
       if (isEditing && problemToEdit?.id) {
         try {
           const token = localStorage.getItem("token");
-          // Buscamos os dados frescos do backend (que agora inclui testCases graças ao Passo 2)
           const res = await axios.get(
             `${API_URL}/problems/${problemToEdit.id}`,
             {
@@ -50,12 +45,10 @@ export default function CreateProblem() {
           );
 
           const fullProblem = res.data;
-
           setTitle(fullProblem.title);
           setDescription(fullProblem.description);
           setSlug(fullProblem.slug || "");
 
-          // Agora sim teremos os casos de teste
           if (fullProblem.testCases && fullProblem.testCases.length > 0) {
             setTestCases(fullProblem.testCases);
           }
@@ -95,16 +88,28 @@ export default function CreateProblem() {
     try {
       const token = localStorage.getItem("token");
       const headers = { Authorization: `Bearer ${token}` };
-      const payload = { title, description, slug, classroomId, testCases };
+
+      // CORREÇÃO PRINCIPAL:
+      // Removemos o 'id' dos testCases para não dar erro de validação no backend
+      const cleanTestCases = testCases.map(({ input, expectedOutput }) => ({
+        input,
+        expectedOutput,
+      }));
+
+      const payload = {
+        title,
+        description,
+        slug,
+        classroomId,
+        testCases: cleanTestCases, // Envia a versão limpa
+      };
 
       if (isEditing) {
-        // MODO EDIÇÃO: PATCH
         await axios.patch(`${API_URL}/problems/${problemToEdit.id}`, payload, {
           headers,
         });
         toast.success("Exercício atualizado!", { id: toastId });
       } else {
-        // MODO CRIAÇÃO: POST
         await axios.post(`${API_URL}/problems`, payload, { headers });
         toast.success("Exercício criado!", { id: toastId });
       }
@@ -113,7 +118,8 @@ export default function CreateProblem() {
     } catch (error: any) {
       console.error(error);
       const msg = error.response?.data?.message || "Erro ao salvar.";
-      toast.error(Array.isArray(msg) ? msg[0] : msg, { id: toastId });
+      // Exibe mensagem de erro formatada
+      toast.error(Array.isArray(msg) ? msg.join(", ") : msg, { id: toastId });
     } finally {
       setLoading(false);
     }
