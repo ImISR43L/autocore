@@ -2,11 +2,11 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
   ManyToOne,
+  CreateDateColumn,
 } from 'typeorm';
-import { User } from '../../users/entities/user.entity';
 import { Problem } from '../../problems/entities/problem.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity()
 export class Submission {
@@ -22,15 +22,19 @@ export class Submission {
   @Column()
   status: string;
 
-  // CORREÇÃO: Mudamos para camelCase (padrão JS/TS)
+  // ESTES CAMPOS SÃO OBRIGATÓRIOS PARA CORRIGIR O ERRO DA LINHA 100
+  @Column({ type: 'text', nullable: true })
+  stdout: string | null; // <--- Adicione "| null" aqui
+
+  @Column({ type: 'text', nullable: true })
+  stderr: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
-  @ManyToOne(() => User, (user) => user.submissions, { eager: true })
-  user: User;
-
-  @ManyToOne(() => Problem, (problem) => problem.submissions, {
-    onDelete: 'CASCADE',
-  })
+  @ManyToOne(() => Problem, (problem) => problem.submissions)
   problem: Problem;
+
+  @ManyToOne(() => User, (user) => user.submissions)
+  user: User;
 }

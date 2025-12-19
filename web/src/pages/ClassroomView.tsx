@@ -1,3 +1,4 @@
+// web/src/pages/ClassroomView.tsx
 import { useState, useEffect } from "react";
 import axios from "axios";
 import Editor from "@monaco-editor/react";
@@ -27,10 +28,47 @@ interface Classroom {
 interface Submission {
   id: string;
   status: string;
-  createdAt: string; // CORREÇÃO: Padrão camelCase
+  code: string; // <--- Importante para inspeção
+  stdout?: string; // <--- Importante para inspeção
+  stderr?: string; // <--- Importante para inspeção
+  createdAt: string;
   user: { email: string };
   executionTime?: number;
 }
+
+// Templates de Código (IO Corrigido)
+const LANGUAGES = [
+  {
+    id: 71,
+    name: "Python (3.8.1)",
+    defaultCode: `import sys\n\n# Lê a entrada padrão\ninput_data = sys.stdin.read().split()\n\nif len(input_data) >= 2:\n    # Exemplo: Soma dois números\n    a = int(input_data[0])\n    b = int(input_data[1])\n    print(a + b)`,
+  },
+  {
+    id: 63,
+    name: "JavaScript (Node.js)",
+    defaultCode: `const fs = require('fs');\nconst input = fs.readFileSync('/dev/stdin').toString().trim().split(/\\s+/);\n\n// Exemplo: Soma dois números\nconst a = parseInt(input[0]);\nconst b = parseInt(input[1]);\nconsole.log(a + b);`,
+  },
+  {
+    id: 62,
+    name: "Java (OpenJDK 13.0.1)",
+    defaultCode: `import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner scanner = new Scanner(System.in);\n        if (scanner.hasNextInt()) {\n            int a = scanner.nextInt();\n            int b = scanner.nextInt();\n            System.out.println(a + b);\n        }\n        scanner.close();\n    }\n}`,
+  },
+  {
+    id: 50,
+    name: "C (GCC 9.2.0)",
+    defaultCode: `#include <stdio.h>\n\nint main() {\n    int a, b;\n    if (scanf("%d %d", &a, &b) == 2) {\n        printf("%d", a + b);\n    }\n    return 0;\n}`,
+  },
+  {
+    id: 54,
+    name: "C++ (GCC 9.2.0)",
+    defaultCode: `#include <iostream>\n\nint main() {\n    int a, b;\n    if (std::cin >> a >> b) {\n        std::cout << (a + b);\n    }\n    return 0;\n}`,
+  },
+  {
+    id: 60,
+    name: "Go (1.13.5)",
+    defaultCode: `package main\nimport "fmt"\n\nfunc main() {\n    var a, b int\n    if _, err := fmt.Scan(&a, &b); err == nil {\n        fmt.Println(a + b)\n    }\n}`,
+  },
+];
 
 const LANGUAGE_MAP: Record<number, string> = {
   71: "python",
@@ -40,35 +78,6 @@ const LANGUAGE_MAP: Record<number, string> = {
   54: "cpp",
   60: "go",
 };
-
-const LANGUAGES = [
-  { id: 71, name: "Python (3.8.1)", defaultCode: `print("Hello World")` },
-  {
-    id: 63,
-    name: "JavaScript (Node.js)",
-    defaultCode: `console.log("Hello World");`,
-  },
-  {
-    id: 62,
-    name: "Java (OpenJDK 13.0.1)",
-    defaultCode: `public class Main { public static void main(String[] args) { System.out.println("Hello"); } }`,
-  },
-  {
-    id: 50,
-    name: "C (GCC 9.2.0)",
-    defaultCode: `#include <stdio.h>\nint main() { printf("Hello"); return 0; }`,
-  },
-  {
-    id: 54,
-    name: "C++ (GCC 9.2.0)",
-    defaultCode: `#include <iostream>\nint main() { std::cout << "Hello"; return 0; }`,
-  },
-  {
-    id: 60,
-    name: "Go (1.13.5)",
-    defaultCode: `package main\nimport "fmt"\nfunc main() { fmt.Println("Hello") }`,
-  },
-];
 
 export default function ClassroomView() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
@@ -81,11 +90,18 @@ export default function ClassroomView() {
   );
   const [languageId, setLanguageId] = useState<number>(71);
   const [code, setCode] = useState<string>("");
+
+  // Estados de Execução (Feedback Imediato)
   const [verdict, setVerdict] = useState<string | null>(null);
+  const [executionOutput, setExecutionOutput] = useState<string | null>(null);
+  const [executionError, setExecutionError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
+  // Estados de Histórico (Professor)
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [inspectingSubmission, setInspectingSubmission] =
+    useState<Submission | null>(null);
 
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
@@ -122,9 +138,7 @@ export default function ClassroomView() {
       const token = localStorage.getItem("token");
       const res = await axios.get(
         `${API_URL}/submissions/problem/${selectedProblemId}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       setSubmissions(res.data);
       setShowSubmissions(true);
@@ -137,10 +151,11 @@ export default function ClassroomView() {
     fetchClassroomData();
   }, [id]);
 
+  // Atualiza o template quando troca a linguagem
   useEffect(() => {
-    if (!code) {
-      const lang = LANGUAGES.find((l) => l.id === languageId);
-      if (lang) setCode(lang.defaultCode);
+    const lang = LANGUAGES.find((l) => l.id === languageId);
+    if (lang) {
+      setCode(lang.defaultCode);
     }
   }, [languageId]);
 
@@ -172,6 +187,9 @@ export default function ClassroomView() {
     if (!selectedProblemId) return toast.warning("Selecione um exercício!");
     setLoading(true);
     setVerdict(null);
+    setExecutionOutput(null);
+    setExecutionError(null);
+
     try {
       const token = localStorage.getItem("token");
       const res = await axios.post(
@@ -179,11 +197,16 @@ export default function ClassroomView() {
         { code, language_id: languageId, problem_id: selectedProblemId },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setVerdict(res.data.status);
-      if (res.data.status === "Accepted") toast.success("Solução Aceite!");
-      else toast.error("Resposta Incorreta");
+
+      const data = res.data;
+      setVerdict(data.status);
+      setExecutionOutput(data.stdout);
+      setExecutionError(data.stderr);
+
+      if (data.status === "Accepted") toast.success("Solução Aceite!");
+      else toast.error("Resposta Incorreta ou Erro");
     } catch (error) {
-      setVerdict("Erro");
+      setVerdict("Erro de Comunicação");
       toast.error("Falha na submissão");
     } finally {
       setLoading(false);
@@ -197,40 +220,11 @@ export default function ClassroomView() {
 
   return (
     <div className="ide-container">
+      {/* MODAL DE LISTAGEM DE SUBMISSÕES */}
       {showSubmissions && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            backgroundColor: "rgba(0,0,0,0.8)",
-            zIndex: 1000,
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: "#1e1e1e",
-              padding: "2rem",
-              borderRadius: "8px",
-              width: "80%",
-              maxWidth: "800px",
-              maxHeight: "80vh",
-              overflowY: "auto",
-              border: "1px solid #444",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: "1rem",
-              }}
-            >
+        <div className="modal-overlay">
+          <div className="modal-content large">
+            <div className="modal-header">
               <h2>Submissões: {currentProblem?.title}</h2>
               <button
                 onClick={() => setShowSubmissions(false)}
@@ -240,48 +234,43 @@ export default function ClassroomView() {
               </button>
             </div>
 
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                textAlign: "left",
-              }}
-            >
+            <table className="custom-table">
               <thead>
-                <tr style={{ borderBottom: "1px solid #444" }}>
-                  <th style={{ padding: "10px" }}>Aluno</th>
-                  <th style={{ padding: "10px" }}>Veredito</th>
-                  <th style={{ padding: "10px" }}>Data</th>
+                <tr>
+                  <th>Aluno</th>
+                  <th>Veredito</th>
+                  <th>Data</th>
+                  <th>Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {submissions.map((sub) => (
-                  <tr key={sub.id} style={{ borderBottom: "1px solid #333" }}>
-                    <td style={{ padding: "10px", color: "#ccc" }}>
-                      {sub.user?.email || "Desconhecido"}
+                  <tr key={sub.id}>
+                    <td>{sub.user?.email || "Desconhecido"}</td>
+                    <td>
+                      <span
+                        className={`status-badge ${
+                          sub.status === "Accepted" ? "success" : "error"
+                        }`}
+                      >
+                        {sub.status}
+                      </span>
                     </td>
-                    <td
-                      style={{
-                        padding: "10px",
-                        fontWeight: "bold",
-                        color:
-                          sub.status === "Accepted" ? "#4caf50" : "#f44336",
-                      }}
-                    >
-                      {sub.status}
-                    </td>
-                    <td style={{ padding: "10px", color: "#888" }}>
-                      {new Date(sub.createdAt).toLocaleString()}
+                    <td>{new Date(sub.createdAt).toLocaleString()}</td>
+                    <td>
+                      <button
+                        className="btn btn-sm btn-primary"
+                        onClick={() => setInspectingSubmission(sub)}
+                      >
+                        🔍 Inspecionar
+                      </button>
                     </td>
                   </tr>
                 ))}
                 {submissions.length === 0 && (
                   <tr>
-                    <td
-                      colSpan={3}
-                      style={{ padding: "20px", textAlign: "center" }}
-                    >
-                      Nenhuma submissão encontrada.
+                    <td colSpan={4} className="text-center">
+                      Nenhuma submissão.
                     </td>
                   </tr>
                 )}
@@ -291,6 +280,74 @@ export default function ClassroomView() {
         </div>
       )}
 
+      {/* MODAL DE INSPEÇÃO DETALHADA */}
+      {inspectingSubmission && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content x-large">
+            <div className="modal-header">
+              <h3>Inspecionando: {inspectingSubmission.user?.email}</h3>
+              <button
+                onClick={() => setInspectingSubmission(null)}
+                className="btn btn-secondary"
+              >
+                Voltar
+              </button>
+            </div>
+
+            <div className="inspection-grid">
+              <div className="inspection-code">
+                <h4 className="label">Código Submetido</h4>
+                <Editor
+                  height="50vh"
+                  language={LANGUAGE_MAP[71]} // Idealmente salvar lang_id no DB e usar aqui
+                  theme="vs-dark"
+                  value={inspectingSubmission.code}
+                  options={{ readOnly: true, minimap: { enabled: false } }}
+                />
+              </div>
+              <div className="inspection-output">
+                <div className="output-block">
+                  <h4 className="label">Status</h4>
+                  <div
+                    className={`status-box ${
+                      inspectingSubmission.status === "Accepted"
+                        ? "success"
+                        : "error"
+                    }`}
+                  >
+                    {inspectingSubmission.status}
+                  </div>
+                </div>
+
+                {inspectingSubmission.stderr && (
+                  <div className="output-block">
+                    <h4 className="label error">Erro (Stderr)</h4>
+                    <pre className="code-block error">
+                      {inspectingSubmission.stderr}
+                    </pre>
+                  </div>
+                )}
+
+                {inspectingSubmission.stdout && (
+                  <div className="output-block">
+                    <h4 className="label">Saída (Stdout)</h4>
+                    <pre className="code-block">
+                      {inspectingSubmission.stdout}
+                    </pre>
+                  </div>
+                )}
+
+                {!inspectingSubmission.stdout &&
+                  !inspectingSubmission.stderr && (
+                    <p className="text-muted">Sem saída gerada.</p>
+                  )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HEADER DA PÁGINA */}
       <div
         className="page-header"
         style={{ padding: "1rem 1.5rem", marginBottom: 0 }}
@@ -320,6 +377,7 @@ export default function ClassroomView() {
         )}
       </div>
 
+      {/* TOOLBAR */}
       <div className="ide-toolbar">
         <select
           className="form-select"
@@ -354,7 +412,6 @@ export default function ClassroomView() {
             <button
               onClick={fetchSubmissions}
               className="btn btn-primary"
-              title="Ver Submissões"
               style={{ backgroundColor: "#555" }}
             >
               📊 Ver Submissões
@@ -385,6 +442,7 @@ export default function ClassroomView() {
         </div>
       </div>
 
+      {/* ÁREA PRINCIPAL (IDE) */}
       <div className="ide-main">
         <div className="ide-editor-panel">
           <Editor
@@ -396,6 +454,8 @@ export default function ClassroomView() {
             options={{ minimap: { enabled: false }, automaticLayout: true }}
           />
         </div>
+
+        {/* PAINEL DE INFORMAÇÕES E FEEDBACK DO ALUNO */}
         <div className="ide-info-panel">
           {currentProblem ? (
             <>
@@ -409,13 +469,30 @@ export default function ClassroomView() {
           ) : (
             <p className="ide-description">Selecione um exercício.</p>
           )}
+
           {verdict && (
             <div
-              className={`ide-verdict ${
-                verdict === "Accepted" ? "accepted" : "error"
+              className={`ide-feedback-box ${
+                verdict === "Accepted" ? "success" : "error"
               }`}
             >
-              <strong>Resultado:</strong> {verdict}
+              <div className="feedback-header">
+                <strong>Resultado:</strong> {verdict}
+              </div>
+
+              {executionError && (
+                <div className="feedback-section">
+                  <span className="feedback-label">Erro:</span>
+                  <pre className="feedback-code error">{executionError}</pre>
+                </div>
+              )}
+
+              {executionOutput && verdict !== "Accepted" && (
+                <div className="feedback-section">
+                  <span className="feedback-label">Sua Saída:</span>
+                  <pre className="feedback-code">{executionOutput}</pre>
+                </div>
+              )}
             </div>
           )}
         </div>

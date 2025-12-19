@@ -26,17 +26,17 @@ export class SubmissionsService {
     if (!problem) throw new NotFoundException('Exercício não encontrado');
 
     let finalVerdict = 'Accepted';
+    let executionStdout: string | null = null;
+    let executionStderr: string | null = null;
 
-    // URL da RapidAPI
     const judgeUrl = 'https://judge0-ce.p.rapidapi.com/submissions';
+    const rapidApiKey = process.env.RAPIDAPI_KEY;
 
-    // Chave da API (Busca do .env ou usa uma string vazia se não tiver)
-    // RECOMENDADO: Coloque sua chave no arquivo .env da API
-    const rapidApiKey =
-      process.env.RAPIDAPI_KEY ||
-      'b634d42f29mshb773397ed4902e0p1b001ejsn545bd3de7177';
-
-    if (problem.testCases && problem.testCases.length > 0) {
+    if (!rapidApiKey) {
+      // Log para debug do servidor apenas
+      console.error('RAPIDAPI_KEY não configurada.');
+      finalVerdict = 'Internal Error';
+    } else if (problem.testCases && problem.testCases.length > 0) {
       for (const testCase of problem.testCases) {
         try {
           const payload = {
@@ -55,14 +55,33 @@ export class SubmissionsService {
               headers: {
                 'Content-Type': 'application/json',
                 'x-rapidapi-host': 'judge0-ce.p.rapidapi.com',
-                'x-rapidapi-key': rapidApiKey, // Cabeçalho obrigatório
+                'x-rapidapi-key': rapidApiKey,
               },
-              timeout: 10000, // Timeout de 10s
+              timeout: 10000,
             },
           );
 
-          if (response.data.status.id !== 3) {
-            finalVerdict = response.data.status.description;
+          // Captura dados da execução atual
+          const result = response.data;
+
+          // Se houver erro ou resposta errada, capturamos o output e paramos
+          if (result.status.id !== 3) {
+            finalVerdict = result.status.description;
+            // Decodifica Base64 se existir
+            executionStdout = result.stdout
+              ? Buffer.from(result.stdout, 'base64').toString()
+              : null;
+            executionStderr = result.stderr
+              ? Buffer.from(result.stderr, 'base64').toString()
+              : null;
+
+            // Se for erro de compilação, o stderr costuma vir no campo 'compile_output'
+            if (result.compile_output) {
+              executionStderr = Buffer.from(
+                result.compile_output,
+                'base64',
+              ).toString();
+            }
             break;
           }
         } catch (error) {
@@ -70,7 +89,7 @@ export class SubmissionsService {
             'Judge0 API Error:',
             error.response?.data || error.message,
           );
-          finalVerdict = 'Execution Error'; // Erro na API ou na chave
+          finalVerdict = 'Execution Error';
           break;
         }
       }
@@ -80,6 +99,8 @@ export class SubmissionsService {
       code,
       language_id,
       status: finalVerdict,
+      stdout: executionStdout, // Salva o output
+      stderr: executionStderr, // Salva o erro
       problem,
       user: { id: userId } as any,
     });
