@@ -6,17 +6,24 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # Configurações do Banco para a API
       - DB_HOST=db
       - DB_PORT=5432
-      - DB_USERNAME=autocore_user # <--- Alinhado
-      - DB_PASSWORD=autocore_password # <--- Alinhado
+      - DB_USERNAME=autocore_user
+      - DB_PASSWORD=autocore_password
       - DB_DATABASE=autocore_db
       - JWT_SECRET=secretKey
-      # Chave da RapidAPI (Certifique-se de que está no .env ou coloque aqui)
       - RAPIDAPI_KEY=${RAPIDAPI_KEY}
     depends_on:
       - db
+    # --- CONFIGURAÇÃO DO WATCH (BACKEND) ---
+    develop:
+      watch:
+        - action: sync
+          path: ./api/src
+          target: /app/src
+        - action: rebuild
+          path: ./api/package.json
+    # Mantemos volumes para compatibilidade, mas o watch cuida da sincronia
     volumes:
       - ./api:/app
       - /app/node_modules
@@ -24,18 +31,25 @@ services:
   web:
     build: ./web
     ports:
-      - "8080:80"
+      - "8080:80" # Nota: Se estiver em dev (Vite), certifique-se que o Dockerfile expõe a porta certa
     environment:
       - VITE_API_URL=http://localhost:3000
     depends_on:
       - api
+    # --- CONFIGURAÇÃO DO WATCH (FRONTEND) ---
+    develop:
+      watch:
+        - action: sync
+          path: ./web/src
+          target: /app/src
+        - action: rebuild
+          path: ./web/package.json
 
   db:
     image: postgres:13
     environment:
-      # Configurações de Criação do Banco
-      - POSTGRES_USER=autocore_user # <--- Alinhado
-      - POSTGRES_PASSWORD=autocore_password # <--- Alinhado
+      - POSTGRES_USER=autocore_user
+      - POSTGRES_PASSWORD=autocore_password
       - POSTGRES_DB=autocore_db
     ports:
       - "5432:5432"

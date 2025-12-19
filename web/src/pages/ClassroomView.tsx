@@ -346,124 +346,87 @@ export default function ClassroomView() {
       {/* --- CONTEÚDO: MURAL --- */}
       {activeTab === "stream" && (
         <div className="stream-container">
+          {/* Banner da Turma */}
           <div className="stream-banner">
             <h1 className="stream-title">{classroom.name}</h1>
-            <div style={{ marginTop: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <strong>Código da Turma:</strong>
-              <br />
-              <span className="stream-code">{classroom.code}</span>
+              <span className="stream-code-box">{classroom.code}</span>
             </div>
           </div>
 
-          {/* ÁREA DE POSTAGEM (SÓ PROFESSOR) */}
+          {/* Área de Postagem (Apenas Professor) */}
           {isOwner && (
-            <div
-              className="stream-card"
-              style={{
-                marginBottom: "30px",
-                border: "1px solid #444",
-                boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-              }}
-            >
+            <div className="stream-input-card">
               <form onSubmit={handlePostAnnouncement}>
                 <textarea
-                  className="form-textarea"
+                  className="stream-textarea"
                   placeholder="Anuncie algo para a turma..."
                   value={newAnnouncement}
                   onChange={(e) => setNewAnnouncement(e.target.value)}
-                  rows={3}
-                  style={{
-                    width: "100%",
-                    background: "transparent",
-                    border: "none",
-                    color: "#fff",
-                    resize: "none",
-                    outline: "none",
-                    fontSize: "1rem",
-                  }}
+                  // Expandir automaticamente ao clicar (opcional) ou manter fixo
+                  onClick={() => {}}
                 />
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    borderTop: "1px solid #333",
-                    paddingTop: "10px",
-                    marginTop: "10px",
-                  }}
-                >
+                <div className="stream-actions">
                   <button
                     type="submit"
                     disabled={posting || !newAnnouncement.trim()}
                     className="btn btn-primary"
                   >
-                    {posting ? "Postando..." : "Postar Aviso"}
+                    {posting ? "Postando..." : "Postar"}
                   </button>
                 </div>
               </form>
             </div>
           )}
 
-          {/* LISTA DE AVISOS */}
+          {/* Lista de Avisos */}
           <div className="announcements-list">
-            {classroom.announcements?.length === 0 && (
+            {(!classroom.announcements ||
+              classroom.announcements.length === 0) && (
               <div
-                className="stream-card"
-                style={{ textAlign: "center", color: "#666", padding: "40px" }}
+                style={{
+                  textAlign: "center",
+                  color: "#666",
+                  padding: "40px",
+                  border: "1px dashed #333",
+                  borderRadius: "8px",
+                }}
               >
-                Nenhum aviso ainda.
+                <p>Nenhum aviso publicado ainda.</p>
               </div>
             )}
 
             {classroom.announcements?.map((announcement) => (
-              <div key={announcement.id} className="stream-card">
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    marginBottom: "15px",
-                  }}
-                >
-                  <div
-                    className="person-avatar"
-                    style={{
-                      width: "36px",
-                      height: "36px",
-                      fontSize: "0.9rem",
-                    }}
-                  >
+              <div key={announcement.id} className="announcement-card">
+                <div className="announcement-header">
+                  <div className="announcement-avatar">
                     {announcement.author?.email.charAt(0).toUpperCase()}
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: "bold", fontSize: "0.95rem" }}>
+                  <div className="announcement-meta">
+                    <span className="announcement-author">
                       {announcement.author?.email}
-                    </div>
-                    <div style={{ fontSize: "0.8rem", color: "#888" }}>
-                      {new Date(announcement.createdAt).toLocaleDateString()} às{" "}
+                    </span>
+                    <span className="announcement-date">
+                      {new Date(announcement.createdAt).toLocaleDateString()} •{" "}
                       {new Date(announcement.createdAt)
                         .toLocaleTimeString()
                         .slice(0, 5)}
-                    </div>
+                    </span>
                   </div>
+
                   {isOwner && (
                     <button
                       onClick={() => handleDeleteAnnouncement(announcement.id)}
-                      className="btn btn-ghost"
-                      style={{ color: "#666", padding: "5px" }}
+                      className="options-btn"
                       title="Apagar aviso"
                     >
                       ⋮
                     </button>
                   )}
                 </div>
-                <div
-                  style={{
-                    whiteSpace: "pre-wrap",
-                    lineHeight: "1.5",
-                    color: "#ddd",
-                  }}
-                >
-                  {announcement.content}
-                </div>
+
+                <div className="announcement-body">{announcement.content}</div>
               </div>
             ))}
           </div>
