@@ -2,13 +2,16 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import Editor from "@monaco-editor/react";
 import { useParams, useNavigate } from "react-router-dom";
-import "../App.css"; // Importa o CSS global com as classes .ide-*
+import { toast } from "sonner";
+import "../App.css";
 
 // Interfaces
 interface Problem {
-  id: string; // [CORREÇÃO] ID agora é string (UUID)
+  id: string;
   title: string;
   description: string;
+  slug: string;
+  testCases?: any[];
 }
 
 interface Classroom {
@@ -29,6 +32,7 @@ const LANGUAGE_MAP: Record<number, string> = {
   60: "go",
 };
 
+// Lista completa de Templates
 const LANGUAGES = [
   {
     id: 71,
@@ -39,6 +43,16 @@ const LANGUAGES = [
     id: 63,
     name: "JavaScript (Node.js 12.14)",
     defaultCode: `const fs = require('fs');\nconst input = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);\n\nif(input.length >= 2) {\n    const a = parseInt(input[0]);\n    const b = parseInt(input[1]);\n    console.log(a + b);\n}`,
+  },
+  {
+    id: 62,
+    name: "Java (OpenJDK 13.0.1)",
+    defaultCode: `import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner scanner = new Scanner(System.in);\n        if (scanner.hasNextInt()) {\n            int a = scanner.nextInt();\n            int b = scanner.nextInt();\n            System.out.println(a + b);\n        }\n    }\n}`,
+  },
+  {
+    id: 50,
+    name: "C (GCC 9.2.0)",
+    defaultCode: `#include <stdio.h>\n\nint main() {\n    int a, b;\n    if (scanf("%d %d", &a, &b) == 2) {\n        printf("%d", a + b);\n    }\n    return 0;\n}`,
   },
   {
     id: 54,
@@ -58,12 +72,9 @@ export default function ClassroomView() {
   const navigate = useNavigate();
 
   const [classroom, setClassroom] = useState<Classroom | null>(null);
-
-  // [CORREÇÃO] State inicializado como string ou null
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(
     null
   );
-
   const [languageId, setLanguageId] = useState<number>(71);
   const [code, setCode] = useState<string>(LANGUAGES[0].defaultCode);
   const [verdict, setVerdict] = useState<string | null>(null);
@@ -73,71 +84,88 @@ export default function ClassroomView() {
     const token = localStorage.getItem("token");
     if (!token) return null;
     try {
-      const base64Url = token.split(".")[1];
-      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-      const jsonPayload = decodeURIComponent(
-        window
-          .atob(base64)
-          .split("")
-          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
-          .join("")
-      );
-      return JSON.parse(jsonPayload).sub;
-    } catch (e) {
+      return JSON.parse(atob(token.split(".")[1])).sub;
+    } catch {
       return null;
     }
   };
 
   const isOwner = classroom?.owner?.id === getMyUserId();
 
-  useEffect(() => {
-    const fetchClassroomData = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const res = await axios.get(`${API_URL}/classrooms/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setClassroom(res.data);
+  const fetchClassroomData = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get(`${API_URL}/classrooms/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setClassroom(res.data);
 
-        // [CORREÇÃO] Seleciona o primeiro problema se existir (ID é string)
-        if (res.data.problems && res.data.problems.length > 0) {
-          setSelectedProblemId(res.data.problems[0].id);
-        }
-      } catch (error) {
-        console.error("Erro ao carregar turma", error);
-        alert("Erro ao carregar turma ou acesso negado.");
-        navigate("/dashboard");
+      if (res.data.problems?.length > 0 && !selectedProblemId) {
+        setSelectedProblemId(res.data.problems[0].id);
       }
-    };
+    } catch (error) {
+      toast.error("Erro ao carregar turma.");
+      navigate("/dashboard");
+    }
+  };
+
+  useEffect(() => {
     fetchClassroomData();
-  }, [id, navigate]);
+  }, [id]);
+
+  const handleDeleteProblem = async () => {
+    if (!selectedProblemId) return;
+    if (!confirm("Tem certeza que deseja excluir este exercício?")) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      await axios.delete(`${API_URL}/problems/${selectedProblemId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success("Exercício excluído!");
+      setSelectedProblemId(null);
+      fetchClassroomData();
+    } catch (error) {
+      toast.error("Erro ao excluir.");
+    }
+  };
+
+  const handleEditProblem = () => {
+    if (!selectedProblemId || !classroom) return;
+    const problem = classroom.problems.find((p) => p.id === selectedProblemId);
+    if (!problem) return;
+
+    navigate("/create-problem", {
+      state: {
+        classroomId: classroom.id,
+        problemToEdit: problem,
+      },
+    });
+  };
 
   const submitSolution = async () => {
-    if (!selectedProblemId) return alert("Selecione um problema!");
+    if (!selectedProblemId) return toast.warning("Selecione um exercício!");
     setLoading(true);
     setVerdict(null);
     try {
       const token = localStorage.getItem("token");
       const res = await axios.post(
         `${API_URL}/submissions`,
-        {
-          code,
-          language_id: languageId,
-          problem_id: selectedProblemId,
-        },
+        { code, language_id: languageId, problem_id: selectedProblemId },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setVerdict(res.data.status);
+      if (res.data.status === "Accepted") toast.success("Solução Aceita!");
+      else toast.error("Resposta Incorreta");
     } catch (error: any) {
-      setVerdict(
-        "Erro: " + (error.response?.data?.message || "Falha na execução")
-      );
+      setVerdict("Erro");
+      toast.error("Falha na submissão");
     } finally {
       setLoading(false);
     }
   };
 
-  if (!classroom) return <div className="container">Carregando turma...</div>;
+  if (!classroom) return <div className="container">Carregando...</div>;
 
   const currentProblem = classroom.problems.find(
     (p) => p.id === selectedProblemId
@@ -145,7 +173,7 @@ export default function ClassroomView() {
 
   return (
     <div className="ide-container">
-      {/* 1. Header (Estilo Page Header mas compacto) */}
+      {/* Header */}
       <div
         className="page-header"
         style={{ padding: "1rem 1.5rem", marginBottom: 0 }}
@@ -154,14 +182,12 @@ export default function ClassroomView() {
           <button
             onClick={() => navigate("/dashboard")}
             className="btn btn-ghost"
-            style={{ padding: "0.2rem" }}
           >
-            ← Voltar
+            ←
           </button>
           <h2 className="page-title" style={{ fontSize: "1.2rem" }}>
             {classroom.name}
           </h2>
-          {isOwner && <span className="class-code">{classroom.code}</span>}
         </div>
 
         {isOwner && (
@@ -178,18 +204,15 @@ export default function ClassroomView() {
         )}
       </div>
 
-      {/* 2. Toolbar */}
+      {/* Toolbar */}
       <div className="ide-toolbar">
         <select
           className="form-select"
           style={{ width: "auto", minWidth: "250px" }}
           value={selectedProblemId || ""}
-          // [CORREÇÃO] Removemos Number(), pois o ID é string (UUID)
           onChange={(e) => setSelectedProblemId(e.target.value)}
         >
-          {classroom.problems.length === 0 && (
-            <option>Sem exercícios postados</option>
-          )}
+          {classroom.problems.length === 0 && <option>Sem exercícios</option>}
           {classroom.problems.map((p) => (
             <option key={p.id} value={p.id}>
               {p.title}
@@ -197,53 +220,70 @@ export default function ClassroomView() {
           ))}
         </select>
 
-        <select
-          className="form-select"
-          style={{ width: "auto" }}
-          value={languageId}
-          onChange={(e) => {
-            const newId = Number(e.target.value);
-            setLanguageId(newId);
-            const defaultCode = LANGUAGES.find(
-              (l) => l.id === newId
-            )?.defaultCode;
-            if (defaultCode) setCode(defaultCode);
-          }}
-        >
-          {LANGUAGES.map((lang) => (
-            <option key={lang.id} value={lang.id}>
-              {lang.name}
-            </option>
-          ))}
-        </select>
+        {/* Ações do Professor */}
+        {isOwner && selectedProblemId && (
+          <div style={{ display: "flex", gap: "5px", marginLeft: "10px" }}>
+            <button
+              onClick={handleEditProblem}
+              className="btn btn-secondary"
+              title="Editar Exercício"
+              style={{ padding: "8px 12px" }}
+            >
+              ✏️
+            </button>
+            <button
+              onClick={handleDeleteProblem}
+              className="btn btn-danger"
+              title="Excluir Exercício"
+              style={{ padding: "8px 12px" }}
+            >
+              🗑️
+            </button>
+          </div>
+        )}
 
-        <button
-          onClick={submitSolution}
-          disabled={loading || !selectedProblemId}
-          className="btn btn-primary"
-          style={{ marginLeft: "auto" }}
-        >
-          {loading ? "Executando..." : "▶ Enviar Solução"}
-        </button>
+        <div style={{ marginLeft: "auto", display: "flex", gap: "10px" }}>
+          <select
+            className="form-select"
+            style={{ width: "auto" }}
+            value={languageId}
+            onChange={(e) => {
+              const newId = Number(e.target.value);
+              setLanguageId(newId);
+              // Atualiza o código se houver um padrão para a linguagem selecionada
+              const defaultCode = LANGUAGES.find(
+                (l) => l.id === newId
+              )?.defaultCode;
+              if (defaultCode) setCode(defaultCode);
+            }}
+          >
+            {LANGUAGES.map((lang) => (
+              <option key={lang.id} value={lang.id}>
+                {lang.name}
+              </option>
+            ))}
+          </select>
+
+          <button
+            onClick={submitSolution}
+            disabled={loading || !selectedProblemId}
+            className="btn btn-primary"
+          >
+            {loading ? "..." : "▶ Enviar"}
+          </button>
+        </div>
       </div>
 
-      {/* 3. Grid Principal (Editor + Info) */}
+      {/* Main Area */}
       <div className="ide-main">
         <div className="ide-editor-panel">
           <Editor
             height="100%"
-            // [CORREÇÃO] Usa o mapa para traduzir o ID numérico para string do Monaco
             language={LANGUAGE_MAP[languageId] || "plaintext"}
             theme="vs-dark"
             value={code}
             onChange={(val) => setCode(val || "")}
-            options={{
-              fontSize: 14,
-              minimap: { enabled: false },
-              padding: { top: 16 },
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-            }}
+            options={{ minimap: { enabled: false }, automaticLayout: true }}
           />
         </div>
 
@@ -261,13 +301,9 @@ export default function ClassroomView() {
 
           {verdict && (
             <div
-              className="ide-verdict"
-              style={{
-                borderColor:
-                  verdict === "Accepted" ? "var(--success)" : "var(--error)",
-                color:
-                  verdict === "Accepted" ? "var(--success)" : "var(--error)",
-              }}
+              className={`ide-verdict ${
+                verdict === "Accepted" ? "accepted" : "error"
+              }`}
             >
               <strong>Resultado:</strong> {verdict}
             </div>

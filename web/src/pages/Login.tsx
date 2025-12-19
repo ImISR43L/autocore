@@ -1,7 +1,9 @@
+// web/src/pages/Login.tsx
 import { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import "../App.css"; // Garanta que está importado
+import { toast } from "sonner"; // <--- IMPORTAR TOAST
+import "../App.css";
 
 export default function Login() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
@@ -10,11 +12,16 @@ export default function Login() {
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  // Removemos o estado 'error' local para usar o toast, ou mantemos ambos.
+  // Vamos usar toast para erros de sistema e manter visual limpo.
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+
+    // Feedback visual imediato
+    const toastId = toast.loading(
+      isRegister ? "Criando conta..." : "Autenticando..."
+    );
 
     try {
       const endpoint = isRegister ? "/auth/register" : "/auth/login";
@@ -23,14 +30,19 @@ export default function Login() {
 
       if (!isRegister) {
         localStorage.setItem("token", res.data.access_token);
+        toast.success("Login realizado com sucesso!", { id: toastId }); // Atualiza o loading
         navigate("/dashboard");
       } else {
         setIsRegister(false);
-        alert("Conta criada com sucesso! Faça login.");
+        toast.success("Conta criada! Faça login para continuar.", {
+          id: toastId,
+        });
       }
     } catch (err: any) {
       console.error(err);
-      setError(err.response?.data?.message || "Erro na autenticação");
+      const msg = err.response?.data?.message || "Erro na autenticação";
+      // Exibe o erro no Toast
+      toast.error(Array.isArray(msg) ? msg[0] : msg, { id: toastId });
     }
   };
 
@@ -40,8 +52,6 @@ export default function Login() {
         <h2 className="auth-title">
           {isRegister ? "Criar Conta" : "Bem-vindo"}
         </h2>
-
-        {error && <div className="alert alert-error">{error}</div>}
 
         <form onSubmit={handleAuth}>
           <div className="form-group">
@@ -77,13 +87,7 @@ export default function Login() {
           </button>
         </form>
 
-        <p
-          className="auth-toggle"
-          onClick={() => {
-            setIsRegister(!isRegister);
-            setError("");
-          }}
-        >
+        <p className="auth-toggle" onClick={() => setIsRegister(!isRegister)}>
           {isRegister
             ? "Já possui conta? Faça Login"
             : "Novo por aqui? Crie uma conta"}

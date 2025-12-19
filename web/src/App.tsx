@@ -1,22 +1,26 @@
-import React from "react"; // <--- 1. Adicione a importação do React
+// web/src/App.tsx
+import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "sonner"; // <--- 1. IMPORTAR
+
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import ClassroomView from "./pages/ClassroomView";
 import CreateProblem from "./pages/CreateProblem";
 
-// 2. Altere o tipo de JSX.Element para React.ReactNode
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem("token");
-  // O ReactNode pode ser retornado diretamente
   return token ? <>{children}</> : <Navigate to="/" />;
 }
 
 function App() {
   return (
     <BrowserRouter>
+      {/* 2. ADICIONAR O TOASTER AQUI (pode ser antes ou depois das Routes) */}
+      <Toaster position="top-right" richColors expand={true} />
+
       <Routes>
-        <Route path="/" data-testid="login-route" element={<Login />} />
+        <Route path="/" element={<Login />} />
 
         <Route
           path="/dashboard"

@@ -2,7 +2,8 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
-} from '@nestjs/common'; // Adicionados Imports
+} from '@nestjs/common';
+import { UpdateProblemDto } from './dto/update-problem.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Problem } from './entities/problem.entity';
@@ -64,5 +65,58 @@ export class ProblemsService {
     return this.problemsRepository.find({
       relations: ['testCases', 'classroom'],
     });
+  }
+
+  async findOne(id: string) {
+    const problem = await this.problemsRepository.findOne({
+      where: { id },
+      relations: ['testCases', 'classroom', 'classroom.owner'], // <--- ADICIONE 'testCases'
+    });
+
+    if (!problem) throw new NotFoundException('Exercício não encontrado');
+    return problem;
+  }
+
+  async update(id: string, updateProblemDto: UpdateProblemDto, userId: number) {
+    // 1. Buscar o problema e a turma (com o dono)
+    const problem = await this.problemsRepository.findOne({
+      where: { id },
+      relations: ['classroom', 'classroom.owner'],
+    });
+
+    if (!problem) throw new NotFoundException('Exercício não encontrado');
+
+    // 2. Verificar se o usuário é o dono da turma
+    if (problem.classroom.owner.id !== userId) {
+      throw new ForbiddenException(
+        'Apenas o dono da turma pode editar este exercício.',
+      );
+    }
+
+    // 3. Atualizar campos básicos
+    // Nota: Atualizar testCases é mais complexo, por enquanto vamos focar nos dados básicos
+    const { testCases, classroomId, ...dataToUpdate } = updateProblemDto;
+
+    Object.assign(problem, dataToUpdate);
+
+    return this.problemsRepository.save(problem);
+  }
+
+  // ADICIONE ESTE MÉTODO:
+  async remove(id: string, userId: number) {
+    const problem = await this.problemsRepository.findOne({
+      where: { id },
+      relations: ['classroom', 'classroom.owner'],
+    });
+
+    if (!problem) throw new NotFoundException('Exercício não encontrado');
+
+    if (problem.classroom.owner.id !== userId) {
+      throw new ForbiddenException(
+        'Apenas o dono da turma pode excluir este exercício.',
+      );
+    }
+
+    return this.problemsRepository.remove(problem);
   }
 }

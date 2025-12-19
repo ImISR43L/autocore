@@ -299,3 +299,39 @@
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
 }
+
+@keyframes pulse {
+  0% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0.5;
+  }
+}
+
+.skeleton {
+  background-color: var(--bg-input); /* Usa a cor dos inputs/cards */
+  border-radius: var(--radius);
+  animation: pulse 1.5s infinite ease-in-out;
+  border: 1px solid transparent;
+}
+
+.skeleton-text {
+  height: 1.2rem;
+  margin-bottom: 0.5rem;
+  width: 70%;
+}
+
+.skeleton-title {
+  height: 2rem;
+  width: 40%;
+  margin-bottom: 1rem;
+}
+
+.skeleton-card {
+  height: 140px;
+  width: 100%;
+}
