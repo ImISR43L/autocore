@@ -46,6 +46,12 @@ export class SubmissionsService {
       }
     }
 
+    if (problem.deadline && new Date() > new Date(problem.deadline)) {
+      throw new ForbiddenException(
+        `O prazo para entrega desta atividade encerrou em ${new Date(problem.deadline).toLocaleString()}.`,
+      );
+    }
+
     let finalVerdict = 'Accepted';
     let executionStdout: string | null = null;
     let executionStderr: string | null = null;

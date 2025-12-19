@@ -9,6 +9,14 @@ import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
 
+// Interfaces
+interface Announcement {
+  id: string;
+  content: string;
+  createdAt: string;
+  author: { email: string };
+}
+
 interface Problem {
   id: string;
   title: string;
@@ -17,6 +25,7 @@ interface Problem {
   testCases?: any[];
   type: "EXERCISE" | "EXAM";
   maxAttempts?: number;
+  deadline?: string;
 }
 
 interface Classroom {
@@ -24,7 +33,7 @@ interface Classroom {
   name: string;
   code: string;
   owner: { id: number; email: string };
-  students: { id: number; email: string }[]; // <--- Adicionado
+  students: { id: number; email: string }[];
   problems: Problem[];
   announcements: Announcement[];
 }
@@ -39,13 +48,7 @@ interface Submission {
   user: { id: number; email: string };
 }
 
-interface Announcement {
-  id: string;
-  content: string;
-  createdAt: string;
-  author: { email: string };
-}
-
+// Templates de Linguagem
 const LANGUAGES = [
   {
     id: 71,
@@ -93,31 +96,33 @@ export default function ClassroomView() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  // --- NOVO ESTADO DE ABAS ---
   const [activeTab, setActiveTab] = useState<"stream" | "classwork" | "people">(
     "stream"
   );
-
   const [classroom, setClassroom] = useState<Classroom | null>(null);
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(
     null
   );
+
+  // Estado da Linguagem e Código
   const [languageId, setLanguageId] = useState<number>(71);
   const [code, setCode] = useState<string>("");
 
+  // Estados de Execução e UI
   const [verdict, setVerdict] = useState<string | null>(null);
   const [executionOutput, setExecutionOutput] = useState<string | null>(null);
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [inspectingSubmission, setInspectingSubmission] =
     useState<Submission | null>(null);
 
+  // Estados do Mural
   const [newAnnouncement, setNewAnnouncement] = useState("");
   const [posting, setPosting] = useState(false);
 
+  // --- Helpers de Usuário ---
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
     if (!token) return null;
@@ -131,6 +136,60 @@ export default function ClassroomView() {
 
   const myUserId = getMyUserId();
   const isOwner = classroom?.owner?.id === myUserId;
+
+  // --- LÓGICA DE SALVAMENTO AUTOMÁTICO (LOCAL STORAGE) ---
+  const getStorageKey = (probId: string, langId: number) => {
+    if (!myUserId) return null;
+    return `autosave_${myUserId}_${probId}_${langId}`;
+  };
+
+  // Carrega código ao trocar problema ou linguagem
+  useEffect(() => {
+    const lang = LANGUAGES.find((l) => l.id === languageId);
+    if (!selectedProblemId || !lang) return;
+
+    const storageKey = getStorageKey(selectedProblemId, languageId);
+    const savedCode = storageKey ? localStorage.getItem(storageKey) : null;
+
+    if (savedCode) {
+      setCode(savedCode);
+    } else {
+      setCode(lang.defaultCode);
+    }
+  }, [languageId, selectedProblemId, myUserId]);
+
+  // Salva no LocalStorage a cada digitação
+  const handleCodeChange = (value: string | undefined) => {
+    const val = value || "";
+    setCode(val);
+
+    if (selectedProblemId) {
+      const key = getStorageKey(selectedProblemId, languageId);
+      if (key) localStorage.setItem(key, val);
+    }
+  };
+
+  // Botão de Resetar Código
+  const handleResetCode = () => {
+    if (
+      !confirm(
+        "Isso apagará seu código atual e restaurará o modelo original. Continuar?"
+      )
+    )
+      return;
+
+    const lang = LANGUAGES.find((l) => l.id === languageId);
+    if (lang) {
+      setCode(lang.defaultCode);
+      // Limpa o storage também
+      if (selectedProblemId) {
+        const key = getStorageKey(selectedProblemId, languageId);
+        if (key) localStorage.removeItem(key);
+      }
+      toast.success("Código resetado.");
+    }
+  };
+  // --------------------------------------------------------
 
   const fetchClassroomData = async () => {
     try {
@@ -173,13 +232,43 @@ export default function ClassroomView() {
     }
   }, [selectedProblemId, activeTab]);
 
-  useEffect(() => {
-    const lang = LANGUAGES.find((l) => l.id === languageId);
-    if (lang && !code) {
-      // Só carrega default se code estiver vazio para não sobrescrever trabalho
-      setCode(lang.defaultCode);
+  const handlePostAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAnnouncement.trim()) return;
+    setPosting(true);
+    try {
+      const token = localStorage.getItem("token");
+      await axios.post(
+        `${API_URL}/announcements`,
+        {
+          content: newAnnouncement,
+          classroomId: classroom?.id,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast.success("Aviso postado!");
+      setNewAnnouncement("");
+      fetchClassroomData();
+    } catch (error) {
+      toast.error("Erro ao postar.");
+    } finally {
+      setPosting(false);
     }
-  }, [languageId]);
+  };
+
+  const handleDeleteAnnouncement = async (id: string) => {
+    if (!confirm("Apagar aviso?")) return;
+    try {
+      const token = localStorage.getItem("token");
+      await axios.delete(`${API_URL}/announcements/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success("Removido.");
+      fetchClassroomData();
+    } catch (error) {
+      toast.error("Erro ao remover.");
+    }
+  };
 
   const handleDeleteProblem = async () => {
     if (!selectedProblemId || !confirm("Tem a certeza?")) return;
@@ -243,6 +332,7 @@ export default function ClassroomView() {
     }
   };
 
+  // Cálculo de Tentativas (Hooks antes do retorno)
   const myAttemptsCount = useMemo(() => {
     if (!myUserId) return 0;
     return (submissions || []).filter((s) => s.user?.id === myUserId).length;
@@ -255,54 +345,22 @@ export default function ClassroomView() {
   );
   const isExam = currentProblem?.type === "EXAM";
   const maxAttempts = currentProblem?.maxAttempts || 0;
+
+  // Verifica prazo
+  const isDeadlinePassed = currentProblem?.deadline
+    ? new Date() > new Date(currentProblem.deadline)
+    : false;
+
   const attemptsLeft = isExam
     ? Math.max(0, maxAttempts - myAttemptsCount)
     : Infinity;
-  const isBlocked = isExam && !isOwner && attemptsLeft === 0;
-
-  const handlePostAnnouncement = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newAnnouncement.trim()) return;
-
-    setPosting(true);
-    try {
-      const token = localStorage.getItem("token");
-      await axios.post(
-        `${API_URL}/announcements`,
-        {
-          content: newAnnouncement,
-          classroomId: classroom?.id,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      toast.success("Aviso postado!");
-      setNewAnnouncement("");
-      fetchClassroomData(); // Recarrega para mostrar o novo aviso
-    } catch (error) {
-      toast.error("Erro ao postar aviso.");
-    } finally {
-      setPosting(false);
-    }
-  };
-
-  const handleDeleteAnnouncement = async (id: string) => {
-    if (!confirm("Apagar este aviso?")) return;
-    try {
-      const token = localStorage.getItem("token");
-      await axios.delete(`${API_URL}/announcements/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      toast.success("Aviso removido.");
-      fetchClassroomData();
-    } catch (error) {
-      toast.error("Erro ao remover.");
-    }
-  };
+  const isBlocked =
+    (isExam && !isOwner && attemptsLeft === 0) ||
+    (!isOwner && isDeadlinePassed);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      {/* --- HEADER COM ABAS --- */}
+      {/* HEADER */}
       <header className="classroom-header">
         <div
           style={{
@@ -343,10 +401,9 @@ export default function ClassroomView() {
         </nav>
       </header>
 
-      {/* --- CONTEÚDO: MURAL --- */}
+      {/* MURAL */}
       {activeTab === "stream" && (
         <div className="stream-container">
-          {/* Banner da Turma */}
           <div className="stream-banner">
             <h1 className="stream-title">{classroom.name}</h1>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -355,7 +412,6 @@ export default function ClassroomView() {
             </div>
           </div>
 
-          {/* Área de Postagem (Apenas Professor) */}
           {isOwner && (
             <div className="stream-input-card">
               <form onSubmit={handlePostAnnouncement}>
@@ -364,8 +420,6 @@ export default function ClassroomView() {
                   placeholder="Anuncie algo para a turma..."
                   value={newAnnouncement}
                   onChange={(e) => setNewAnnouncement(e.target.value)}
-                  // Expandir automaticamente ao clicar (opcional) ou manter fixo
-                  onClick={() => {}}
                 />
                 <div className="stream-actions">
                   <button
@@ -380,7 +434,6 @@ export default function ClassroomView() {
             </div>
           )}
 
-          {/* Lista de Avisos */}
           <div className="announcements-list">
             {(!classroom.announcements ||
               classroom.announcements.length === 0) && (
@@ -396,7 +449,6 @@ export default function ClassroomView() {
                 <p>Nenhum aviso publicado ainda.</p>
               </div>
             )}
-
             {classroom.announcements?.map((announcement) => (
               <div key={announcement.id} className="announcement-card">
                 <div className="announcement-header">
@@ -414,7 +466,6 @@ export default function ClassroomView() {
                         .slice(0, 5)}
                     </span>
                   </div>
-
                   {isOwner && (
                     <button
                       onClick={() => handleDeleteAnnouncement(announcement.id)}
@@ -425,7 +476,6 @@ export default function ClassroomView() {
                     </button>
                   )}
                 </div>
-
                 <div className="announcement-body">{announcement.content}</div>
               </div>
             ))}
@@ -433,7 +483,7 @@ export default function ClassroomView() {
         </div>
       )}
 
-      {/* --- CONTEÚDO: ALUNOS --- */}
+      {/* ALUNOS */}
       {activeTab === "people" && (
         <div className="people-container">
           <div style={{ marginBottom: "40px" }}>
@@ -447,7 +497,6 @@ export default function ClassroomView() {
               <span>{classroom.owner.email}</span>
             </div>
           </div>
-
           <div>
             <div className="section-header">
               <span>Estudantes</span>
@@ -461,7 +510,6 @@ export default function ClassroomView() {
                   {student.email.charAt(0).toUpperCase()}
                 </div>
                 <span>{student.email}</span>
-                {/* Se quiser adicionar botão de remover aluno, seria aqui */}
               </div>
             ))}
             {(!classroom.students || classroom.students.length === 0) && (
@@ -473,12 +521,245 @@ export default function ClassroomView() {
         </div>
       )}
 
-      {/* --- CONTEÚDO: ATIVIDADES (IDE ANTIGA) --- */}
+      {/* ATIVIDADES */}
       {activeTab === "classwork" && (
         <div className="ide-container" style={{ flex: 1, borderTop: "none" }}>
-          {" "}
-          {/* Ajuste de altura */}
-          {/* ... MODAIS (Mantidos da versão anterior) ... */}
+          {/* TOOLBAR */}
+          <div className="ide-toolbar">
+            <select
+              className="form-select"
+              style={{ width: "auto", minWidth: "250px" }}
+              value={selectedProblemId || ""}
+              onChange={(e) => setSelectedProblemId(e.target.value)}
+            >
+              {classroom.problems.length === 0 && (
+                <option value="">Sem exercícios</option>
+              )}
+              {classroom.problems.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                </option>
+              ))}
+            </select>
+
+            {isOwner && (
+              <div style={{ display: "flex", gap: "5px", marginLeft: "10px" }}>
+                {selectedProblemId && (
+                  <>
+                    <button
+                      onClick={handleEditProblem}
+                      className="btn btn-secondary"
+                      title="Editar"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={handleDeleteProblem}
+                      className="btn btn-danger"
+                      title="Excluir"
+                    >
+                      🗑️
+                    </button>
+                    <button
+                      onClick={() => setShowSubmissions(true)}
+                      className="btn btn-primary"
+                      style={{ backgroundColor: "#555" }}
+                    >
+                      📊 Ver Submissões
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() =>
+                    navigate("/create-problem", {
+                      state: { classroomId: classroom.id },
+                    })
+                  }
+                  className="btn btn-primary"
+                  style={{ marginLeft: selectedProblemId ? "10px" : "0" }}
+                >
+                  + Novo
+                </button>
+              </div>
+            )}
+
+            {/* Indicador de Prazo */}
+            {currentProblem?.deadline && !isOwner && (
+              <div
+                style={{
+                  padding: "5px 12px",
+                  background: isDeadlinePassed
+                    ? "rgba(244, 67, 54, 0.2)"
+                    : "#2d2d30",
+                  borderRadius: "4px",
+                  border: `1px solid ${isDeadlinePassed ? "#f44336" : "#444"}`,
+                  color: isDeadlinePassed ? "#f44336" : "#ccc",
+                  fontSize: "0.85rem",
+                  marginRight: "10px",
+                  marginLeft: "auto",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
+                }}
+              >
+                <span>🕒</span>
+                {isDeadlinePassed ? (
+                  <strong>
+                    Encerrado em{" "}
+                    {new Date(currentProblem.deadline).toLocaleString()}
+                  </strong>
+                ) : (
+                  <span>
+                    Entrega até:{" "}
+                    {new Date(currentProblem.deadline).toLocaleString()}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {isExam && !isOwner && (
+              <div
+                style={{
+                  padding: "5px 12px",
+                  background:
+                    attemptsLeft === 0
+                      ? "rgba(244, 67, 54, 0.2)"
+                      : attemptsLeft <= 1
+                      ? "rgba(255, 152, 0, 0.2)"
+                      : "#2d2d30",
+                  borderRadius: "4px",
+                  border: `1px solid ${
+                    attemptsLeft === 0
+                      ? "#f44336"
+                      : attemptsLeft <= 1
+                      ? "#ff9800"
+                      : "#444"
+                  }`,
+                  color:
+                    attemptsLeft === 0
+                      ? "#f44336"
+                      : attemptsLeft <= 1
+                      ? "#ff9800"
+                      : "#ccc",
+                  fontSize: "0.85rem",
+                  fontWeight: "bold",
+                  marginRight: "10px",
+                  marginLeft: !currentProblem?.deadline ? "auto" : "0",
+                }}
+              >
+                {attemptsLeft === 0
+                  ? "🚫 Esgotadas"
+                  : `⚠️ ${attemptsLeft}/${maxAttempts} tentativas`}
+              </div>
+            )}
+
+            <div
+              style={{
+                marginLeft:
+                  ((isExam || currentProblem?.deadline) && !isOwner) || isOwner
+                    ? "0"
+                    : "auto",
+                display: "flex",
+                gap: "10px",
+              }}
+            >
+              {/* Botão Resetar Código */}
+              <button
+                onClick={handleResetCode}
+                className="btn btn-secondary"
+                title="Resetar para o template original"
+                disabled={!selectedProblemId}
+              >
+                ↺ Reset
+              </button>
+
+              <select
+                className="form-select"
+                style={{ width: "auto" }}
+                value={languageId}
+                onChange={(e) => setLanguageId(Number(e.target.value))}
+              >
+                {LANGUAGES.map((lang) => (
+                  <option key={lang.id} value={lang.id}>
+                    {lang.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={submitSolution}
+                disabled={loading || !selectedProblemId || isBlocked}
+                className="btn btn-primary"
+                style={isBlocked ? { opacity: 0.5, cursor: "not-allowed" } : {}}
+              >
+                {loading
+                  ? "..."
+                  : isDeadlinePassed
+                  ? "🔒 Encerrado"
+                  : isBlocked
+                  ? "🔒 Bloqueado"
+                  : "▶ Enviar"}
+              </button>
+            </div>
+          </div>
+
+          {/* IDE MAIN */}
+          <div className="ide-main">
+            <div className="ide-editor-panel">
+              <Editor
+                height="100%"
+                language={LANGUAGE_MAP[languageId] || "plaintext"}
+                theme="vs-dark"
+                value={code}
+                // Alterado para salvar no onChange
+                onChange={handleCodeChange}
+                options={{ minimap: { enabled: false }, automaticLayout: true }}
+              />
+            </div>
+            <div className="ide-info-panel">
+              {currentProblem ? (
+                <>
+                  <h3 className="ide-info-title">{currentProblem.title}</h3>
+                  <div className="ide-description markdown-body">
+                    <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+                      {currentProblem.description}
+                    </ReactMarkdown>
+                  </div>
+                </>
+              ) : (
+                <p className="ide-description">
+                  Selecione ou crie um exercício.
+                </p>
+              )}
+
+              {verdict && (
+                <div
+                  className={`ide-feedback-box ${
+                    verdict === "Accepted" ? "success" : "error"
+                  }`}
+                >
+                  <div className="feedback-header">
+                    <strong>Resultado:</strong> {verdict}
+                  </div>
+                  {executionError && (
+                    <div className="feedback-section">
+                      <span className="feedback-label">Erro:</span>
+                      <pre className="feedback-code error">
+                        {executionError}
+                      </pre>
+                    </div>
+                  )}
+                  {executionOutput && verdict !== "Accepted" && (
+                    <div className="feedback-section">
+                      <span className="feedback-label">Sua Saída:</span>
+                      <pre className="feedback-code">{executionOutput}</pre>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* MODAIS (MANTIDOS) */}
           {showSubmissions && (
             <div className="modal-overlay">
               <div className="modal-content large">
@@ -530,7 +811,6 @@ export default function ClassroomView() {
             </div>
           )}
           {inspectingSubmission && (
-            /* ... Modal de Inspeção ... */
             <div className="modal-overlay" style={{ zIndex: 1100 }}>
               <div className="modal-content x-large">
                 <div className="modal-header">
@@ -586,179 +866,6 @@ export default function ClassroomView() {
               </div>
             </div>
           )}
-          {/* TOOLBAR DA IDE */}
-          <div className="ide-toolbar">
-            <select
-              className="form-select"
-              style={{ width: "auto", minWidth: "250px" }}
-              value={selectedProblemId || ""}
-              onChange={(e) => setSelectedProblemId(e.target.value)}
-            >
-              {classroom.problems.length === 0 && (
-                <option>Sem exercícios</option>
-              )}
-              {classroom.problems.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
-                </option>
-              ))}
-            </select>
-
-            {isOwner && selectedProblemId && (
-              <div style={{ display: "flex", gap: "5px", marginLeft: "10px" }}>
-                <button
-                  onClick={handleEditProblem}
-                  className="btn btn-secondary"
-                  title="Editar"
-                >
-                  ✏️
-                </button>
-                <button
-                  onClick={handleDeleteProblem}
-                  className="btn btn-danger"
-                  title="Excluir"
-                >
-                  🗑️
-                </button>
-                <button
-                  onClick={() => setShowSubmissions(true)}
-                  className="btn btn-primary"
-                  style={{ backgroundColor: "#555" }}
-                >
-                  📊 Ver Submissões
-                </button>
-                <button
-                  onClick={() =>
-                    navigate("/create-problem", {
-                      state: { classroomId: classroom.id },
-                    })
-                  }
-                  className="btn btn-primary"
-                  style={{ marginLeft: "10px" }}
-                >
-                  + Novo
-                </button>
-              </div>
-            )}
-
-            {isExam && !isOwner && (
-              <div
-                style={{
-                  padding: "5px 12px",
-                  background:
-                    attemptsLeft === 0
-                      ? "rgba(244, 67, 54, 0.2)"
-                      : attemptsLeft <= 1
-                      ? "rgba(255, 152, 0, 0.2)"
-                      : "#2d2d30",
-                  borderRadius: "4px",
-                  border: `1px solid ${
-                    attemptsLeft === 0
-                      ? "#f44336"
-                      : attemptsLeft <= 1
-                      ? "#ff9800"
-                      : "#444"
-                  }`,
-                  color:
-                    attemptsLeft === 0
-                      ? "#f44336"
-                      : attemptsLeft <= 1
-                      ? "#ff9800"
-                      : "#ccc",
-                  fontSize: "0.85rem",
-                  fontWeight: "bold",
-                  marginRight: "10px",
-                  marginLeft: "auto",
-                }}
-              >
-                {attemptsLeft === 0
-                  ? "🚫 Esgotadas"
-                  : `⚠️ ${attemptsLeft}/${maxAttempts} tentativas`}
-              </div>
-            )}
-
-            <div
-              style={{
-                marginLeft: isExam && !isOwner ? "10px" : "auto",
-                display: "flex",
-                gap: "10px",
-              }}
-            >
-              <select
-                className="form-select"
-                style={{ width: "auto" }}
-                value={languageId}
-                onChange={(e) => setLanguageId(Number(e.target.value))}
-              >
-                {LANGUAGES.map((lang) => (
-                  <option key={lang.id} value={lang.id}>
-                    {lang.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={submitSolution}
-                disabled={loading || !selectedProblemId || isBlocked}
-                className="btn btn-primary"
-                style={isBlocked ? { opacity: 0.5, cursor: "not-allowed" } : {}}
-              >
-                {loading ? "..." : isBlocked ? "Bloqueado" : "▶ Enviar"}
-              </button>
-            </div>
-          </div>
-          {/* ÁREA PRINCIPAL DA IDE */}
-          <div className="ide-main">
-            <div className="ide-editor-panel">
-              <Editor
-                height="100%"
-                language={LANGUAGE_MAP[languageId] || "plaintext"}
-                theme="vs-dark"
-                value={code}
-                onChange={(val) => setCode(val || "")}
-                options={{ minimap: { enabled: false }, automaticLayout: true }}
-              />
-            </div>
-            <div className="ide-info-panel">
-              {currentProblem ? (
-                <>
-                  <h3 className="ide-info-title">{currentProblem.title}</h3>
-                  <div className="ide-description markdown-body">
-                    <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
-                      {currentProblem.description}
-                    </ReactMarkdown>
-                  </div>
-                </>
-              ) : (
-                <p className="ide-description">Selecione um exercício acima.</p>
-              )}
-
-              {verdict && (
-                <div
-                  className={`ide-feedback-box ${
-                    verdict === "Accepted" ? "success" : "error"
-                  }`}
-                >
-                  <div className="feedback-header">
-                    <strong>Resultado:</strong> {verdict}
-                  </div>
-                  {executionError && (
-                    <div className="feedback-section">
-                      <span className="feedback-label">Erro:</span>
-                      <pre className="feedback-code error">
-                        {executionError}
-                      </pre>
-                    </div>
-                  )}
-                  {executionOutput && verdict !== "Accepted" && (
-                    <div className="feedback-section">
-                      <span className="feedback-label">Sua Saída:</span>
-                      <pre className="feedback-code">{executionOutput}</pre>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       )}
     </div>

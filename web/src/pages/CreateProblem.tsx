@@ -29,6 +29,8 @@ export default function CreateProblem() {
   const [type, setType] = useState("EXERCISE"); // "EXERCISE" ou "EXAM"
   const [maxAttempts, setMaxAttempts] = useState<number | string>(""); // Vazio se for exercício
 
+  const [deadline, setDeadline] = useState("");
+
   useEffect(() => {
     if (!classroomId && !isEditing) {
       toast.error("Turma não identificada.");
@@ -54,6 +56,17 @@ export default function CreateProblem() {
 
           if (fullProblem.testCases && fullProblem.testCases.length > 0) {
             setTestCases(fullProblem.testCases);
+          }
+
+          if (problemToEdit.deadline) {
+            const date = new Date(problemToEdit.deadline);
+            // Ajuste simples para fuso horário local no input
+            const localIso = new Date(
+              date.getTime() - date.getTimezoneOffset() * 60000
+            )
+              .toISOString()
+              .slice(0, 16);
+            setDeadline(localIso);
           }
         } catch (error) {
           console.error(error);
@@ -109,6 +122,7 @@ export default function CreateProblem() {
         ...(type === "EXAM" && maxAttempts
           ? { maxAttempts: Number(maxAttempts) }
           : {}),
+        deadline: deadline ? new Date(deadline).toISOString() : null,
       };
 
       if (isEditing) {
@@ -252,6 +266,24 @@ export default function CreateProblem() {
               </small>
             </div>
           )}
+
+          <div className="form-group" style={{ marginTop: "15px" }}>
+            <label className="form-label">
+              Data Limite de Entrega (Opcional)
+            </label>
+            <input
+              type="datetime-local"
+              className="form-input"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+              style={{ maxWidth: "250px" }}
+            />
+            <small
+              style={{ color: "#888", display: "block", marginTop: "5px" }}
+            >
+              Deixe em branco para sem prazo.
+            </small>
+          </div>
         </div>
 
         <hr style={{ borderColor: "var(--border)", margin: "2rem 0" }} />

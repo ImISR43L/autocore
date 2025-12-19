@@ -55,4 +55,7 @@ export class Problem {
     onDelete: 'CASCADE',
   })
   submissions: Submission[];
+
+  @Column({ type: 'timestamp', nullable: true, default: null })
+  deadline: Date | null;
 }

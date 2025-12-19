@@ -47,10 +47,11 @@ export class ProblemsService {
       title: createProblemDto.title,
       description: createProblemDto.description,
       slug: createProblemDto.slug,
-      type: createProblemDto.type, // Se adicionou o enum
-      maxAttempts: createProblemDto.maxAttempts, // Se adicionou o campo
+      type: createProblemDto.type,
+      maxAttempts: createProblemDto.maxAttempts,
+      deadline: createProblemDto.deadline, // <--- ADICIONE ISTO
       classroom,
-      testCases, // Associa os casos de teste criados
+      testCases,
     });
 
     await this.testCasesRepository.save(testCases);

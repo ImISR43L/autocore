@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsNumber,
   Min,
+  IsISO8601,
 } from 'class-validator';
 import { ProblemType } from '../entities/problem.entity';
 
@@ -37,4 +38,8 @@ export class CreateProblemDto {
 
   @IsOptional()
   testCases?: any[];
+
+  @IsISO8601()
+  @IsOptional()
+  deadline?: string;
 }
