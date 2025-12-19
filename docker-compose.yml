@@ -1,53 +1,46 @@
 version: "3.8"
 
 services:
-  # 1. Banco de Dados
-  db:
-    image: postgres:13.0
-    container_name: autocore_db
-    environment:
-      - POSTGRES_USER=autocore_user
-      - POSTGRES_PASSWORD=autocore_pass
-      - POSTGRES_DB=autocore_db
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - app-network
-
-  # 2. API (Backend)
   api:
     build: ./api
-    container_name: autocore_api
     ports:
       - "3000:3000"
-    # CORREÇÃO: Adicione esta linha para ler o arquivo que você criou
-    env_file:
-      - ./api/.env
     environment:
-      # As variáveis abaixo podem ser mantidas aqui ou movidas para o .env também
+      # Configurações do Banco para a API
       - DB_HOST=db
-      - DB_USER=autocore_user
-      - DB_PASS=autocore_pass
-      - DB_NAME=autocore_db
+      - DB_PORT=5432
+      - DB_USERNAME=autocore_user # <--- Alinhado
+      - DB_PASSWORD=autocore_password # <--- Alinhado
+      - DB_DATABASE=autocore_db
+      - JWT_SECRET=secretKey
+      # Chave da RapidAPI (Certifique-se de que está no .env ou coloque aqui)
+      - RAPIDAPI_KEY=${RAPIDAPI_KEY}
     depends_on:
       - db
-    networks:
-      - app-network
+    volumes:
+      - ./api:/app
+      - /app/node_modules
 
-  # 3. Web (Frontend)
   web:
     build: ./web
-    container_name: autocore_web
     ports:
-      - "8080:80" # Site acessível na porta 8080
+      - "8080:80"
+    environment:
+      - VITE_API_URL=http://localhost:3000
     depends_on:
       - api
-    networks:
-      - app-network
+
+  db:
+    image: postgres:13
+    environment:
+      # Configurações de Criação do Banco
+      - POSTGRES_USER=autocore_user # <--- Alinhado
+      - POSTGRES_PASSWORD=autocore_password # <--- Alinhado
+      - POSTGRES_DB=autocore_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - autocore_db_data:/var/lib/postgresql/data
 
 volumes:
-  postgres_data:
-
-networks:
-  app-network:
-    driver: bridge
+  autocore_db_data:

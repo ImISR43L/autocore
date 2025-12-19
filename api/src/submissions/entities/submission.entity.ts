@@ -22,8 +22,9 @@ export class Submission {
   @Column()
   status: string;
 
+  // CORREÇÃO: Mudamos para camelCase (padrão JS/TS)
   @CreateDateColumn()
-  created_at: Date;
+  createdAt: Date;
 
   @ManyToOne(() => User, (user) => user.submissions, { eager: true })
   user: User;

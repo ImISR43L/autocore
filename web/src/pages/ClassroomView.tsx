@@ -8,7 +8,6 @@ import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
 
-// Interfaces
 interface Problem {
   id: string;
   title: string;
@@ -28,7 +27,7 @@ interface Classroom {
 interface Submission {
   id: string;
   status: string;
-  created_at: string;
+  createdAt: string; // CORREÇÃO: Padrão camelCase
   user: { email: string };
   executionTime?: number;
 }
@@ -85,7 +84,6 @@ export default function ClassroomView() {
   const [verdict, setVerdict] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
-  // Estado para Modal de Submissões
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
 
@@ -199,7 +197,6 @@ export default function ClassroomView() {
 
   return (
     <div className="ide-container">
-      {/* Modal de Submissões */}
       {showSubmissions && (
         <div
           style={{
@@ -274,7 +271,7 @@ export default function ClassroomView() {
                       {sub.status}
                     </td>
                     <td style={{ padding: "10px", color: "#888" }}>
-                      {new Date(sub.created_at).toLocaleString()}
+                      {new Date(sub.createdAt).toLocaleString()}
                     </td>
                   </tr>
                 ))}
@@ -294,7 +291,6 @@ export default function ClassroomView() {
         </div>
       )}
 
-      {/* Header */}
       <div
         className="page-header"
         style={{ padding: "1rem 1.5rem", marginBottom: 0 }}
@@ -324,7 +320,6 @@ export default function ClassroomView() {
         )}
       </div>
 
-      {/* Toolbar */}
       <div className="ide-toolbar">
         <select
           className="form-select"
@@ -356,7 +351,6 @@ export default function ClassroomView() {
             >
               🗑️
             </button>
-            {/* Novo Botão */}
             <button
               onClick={fetchSubmissions}
               className="btn btn-primary"
@@ -391,7 +385,6 @@ export default function ClassroomView() {
         </div>
       </div>
 
-      {/* Main Area */}
       <div className="ide-main">
         <div className="ide-editor-panel">
           <Editor

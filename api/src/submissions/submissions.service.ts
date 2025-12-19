@@ -23,12 +23,18 @@ export class SubmissionsService {
       relations: ['testCases'],
     });
 
-    if (!problem) {
-      throw new NotFoundException('Exercício não encontrado');
-    }
+    if (!problem) throw new NotFoundException('Exercício não encontrado');
 
     let finalVerdict = 'Accepted';
-    const judgeUrl = process.env.JUDGE0_URL || 'http://judge0:2358';
+
+    // URL da RapidAPI
+    const judgeUrl = 'https://judge0-ce.p.rapidapi.com/submissions';
+
+    // Chave da API (Busca do .env ou usa uma string vazia se não tiver)
+    // RECOMENDADO: Coloque sua chave no arquivo .env da API
+    const rapidApiKey =
+      process.env.RAPIDAPI_KEY ||
+      'b634d42f29mshb773397ed4902e0p1b001ejsn545bd3de7177';
 
     if (problem.testCases && problem.testCases.length > 0) {
       for (const testCase of problem.testCases) {
@@ -43,8 +49,16 @@ export class SubmissionsService {
           };
 
           const response = await axios.post(
-            `${judgeUrl}/submissions/?base64_encoded=true&wait=true`,
+            `${judgeUrl}?base64_encoded=true&wait=true`,
             payload,
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'x-rapidapi-host': 'judge0-ce.p.rapidapi.com',
+                'x-rapidapi-key': rapidApiKey, // Cabeçalho obrigatório
+              },
+              timeout: 10000, // Timeout de 10s
+            },
           );
 
           if (response.data.status.id !== 3) {
@@ -52,20 +66,22 @@ export class SubmissionsService {
             break;
           }
         } catch (error) {
-          console.error('Judge0 Error:', error.message);
-          finalVerdict = 'Internal Error';
+          console.error(
+            'Judge0 API Error:',
+            error.response?.data || error.message,
+          );
+          finalVerdict = 'Execution Error'; // Erro na API ou na chave
           break;
         }
       }
     }
 
-    // Criação da entidade usando os nomes corretos
     const submission = this.submissionsRepository.create({
-      code: code,
-      language_id: language_id,
+      code,
+      language_id,
       status: finalVerdict,
-      problem: problem,
-      user: { id: userId } as any, // Força a associação pelo ID
+      problem,
+      user: { id: userId } as any,
     });
 
     return this.submissionsRepository.save(submission);
@@ -75,7 +91,7 @@ export class SubmissionsService {
     return this.submissionsRepository.find({
       where: { problem: { id: problemId } },
       relations: ['user'],
-      order: { created_at: 'DESC' },
+      order: { createdAt: 'DESC' },
     });
   }
 
