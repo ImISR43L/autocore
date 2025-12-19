@@ -12,11 +12,10 @@ import { ClassroomsModule } from './classrooms/classrooms.module';
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST || 'localhost',
-      port: 5432,
-      username: process.env.DB_USER || 'autocore_user',
-      password: process.env.DB_PASS || 'autocore_pass',
-      database: process.env.DB_NAME || 'autocore_db',
-      // Adicione User à lista de entidades
+      port: Number(process.env.DB_PORT || 5432), // Boa prática converter para Int
+      username: process.env.DB_USERNAME || 'autocore_user', // CORRIGIDO: de DB_USER para DB_USERNAME
+      password: process.env.DB_PASSWORD || 'autocore_password', // CORRIGIDO: de DB_PASS para DB_PASSWORD e atualizado o fallback
+      database: process.env.DB_DATABASE || 'autocore_db', // CORRIGIDO: de DB_NAME para DB_DATABASE (para manter padrão)
       autoLoadEntities: true,
       synchronize: true,
     }),
