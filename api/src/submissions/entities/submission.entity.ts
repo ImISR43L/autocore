@@ -28,16 +28,21 @@ export class Submission {
   @Column({ type: 'text', nullable: true })
   stderr: string | null;
 
+  // --- NOVOS CAMPOS PARA O SISTEMA DE NOTAS ---
+  @Column({ type: 'float', nullable: true, default: null })
+  grade: number | null;
+
+  @Column({ type: 'text', nullable: true, default: null })
+  teacherComment: string | null;
+  // -------------------------------------------
+
   @CreateDateColumn()
   createdAt: Date;
 
-  // --- AQUI ESTÁ A CORREÇÃO ---
-  // Adicione { onDelete: 'CASCADE' } dentro do ManyToOne
   @ManyToOne(() => Problem, (problem) => problem.submissions, {
     onDelete: 'CASCADE',
   })
   problem: Problem;
-  // ----------------------------
 
   @ManyToOne(() => User, (user) => user.submissions)
   user: User;

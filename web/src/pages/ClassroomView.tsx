@@ -9,7 +9,7 @@ import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
 
-// Interfaces
+// --- INTERFACES ---
 interface Announcement {
   id: string;
   content: string;
@@ -46,9 +46,12 @@ interface Submission {
   stderr?: string;
   createdAt: string;
   user: { id: number; email: string };
+  // Novos campos para o sistema de notas
+  grade?: number;
+  teacherComment?: string;
 }
 
-// Templates de Linguagem
+// --- TEMPLATES DE LINGUAGEM ---
 const LANGUAGES = [
   {
     id: 71,
@@ -96,33 +99,44 @@ export default function ClassroomView() {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  // --- ESTADOS DE CONTEXTO ---
   const [activeTab, setActiveTab] = useState<"stream" | "classwork" | "people">(
-    "stream"
+    () => (localStorage.getItem(`activeTab_${id}`) as any) || "stream"
   );
+  const [languageId, setLanguageId] = useState<number>(
+    () => Number(localStorage.getItem(`languageId`)) || 71
+  );
+
+  useEffect(() => {
+    if (id) localStorage.setItem(`activeTab_${id}`, activeTab);
+  }, [activeTab, id]);
+  useEffect(() => {
+    localStorage.setItem(`languageId`, String(languageId));
+  }, [languageId]);
+
   const [classroom, setClassroom] = useState<Classroom | null>(null);
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(
     null
   );
-
-  // Estado da Linguagem e Código
-  const [languageId, setLanguageId] = useState<number>(71);
   const [code, setCode] = useState<string>("");
 
-  // Estados de Execução e UI
+  // Estados de Execução
   const [verdict, setVerdict] = useState<string | null>(null);
   const [executionOutput, setExecutionOutput] = useState<string | null>(null);
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+
+  // Estados de Submissões e Notas
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [inspectingSubmission, setInspectingSubmission] =
     useState<Submission | null>(null);
+  const [gradingGrade, setGradingGrade] = useState<string | number>("");
+  const [gradingComment, setGradingComment] = useState("");
 
-  // Estados do Mural
   const [newAnnouncement, setNewAnnouncement] = useState("");
   const [posting, setPosting] = useState(false);
 
-  // --- Helpers de Usuário ---
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
     if (!token) return null;
@@ -137,60 +151,95 @@ export default function ClassroomView() {
   const myUserId = getMyUserId();
   const isOwner = classroom?.owner?.id === myUserId;
 
-  // --- LÓGICA DE SALVAMENTO AUTOMÁTICO (LOCAL STORAGE) ---
   const getStorageKey = (probId: string, langId: number) => {
     if (!myUserId) return null;
     return `autosave_${myUserId}_${probId}_${langId}`;
   };
 
-  // Carrega código ao trocar problema ou linguagem
+  // --- EDITOR & AUTOSAVE ---
   useEffect(() => {
     const lang = LANGUAGES.find((l) => l.id === languageId);
-    if (!selectedProblemId || !lang) return;
+    if (!lang) return;
+    if (!selectedProblemId) {
+      setCode(lang.defaultCode);
+      return;
+    }
 
     const storageKey = getStorageKey(selectedProblemId, languageId);
     const savedCode = storageKey ? localStorage.getItem(storageKey) : null;
+    const isPolluted = LANGUAGES.some(
+      (l) => l.id !== languageId && l.defaultCode === savedCode
+    );
 
-    if (savedCode) {
-      setCode(savedCode);
-    } else {
-      setCode(lang.defaultCode);
-    }
+    if (savedCode && !isPolluted) setCode(savedCode);
+    else setCode(lang.defaultCode);
   }, [languageId, selectedProblemId, myUserId]);
 
-  // Salva no LocalStorage a cada digitação
   const handleCodeChange = (value: string | undefined) => {
     const val = value || "";
     setCode(val);
-
     if (selectedProblemId) {
       const key = getStorageKey(selectedProblemId, languageId);
       if (key) localStorage.setItem(key, val);
     }
   };
 
-  // Botão de Resetar Código
   const handleResetCode = () => {
-    if (
-      !confirm(
-        "Isso apagará seu código atual e restaurará o modelo original. Continuar?"
-      )
-    )
-      return;
-
+    if (!confirm("Restaurar o código original?")) return;
     const lang = LANGUAGES.find((l) => l.id === languageId);
     if (lang) {
       setCode(lang.defaultCode);
-      // Limpa o storage também
       if (selectedProblemId) {
         const key = getStorageKey(selectedProblemId, languageId);
         if (key) localStorage.removeItem(key);
       }
-      toast.success("Código resetado.");
+      toast.success("Restaurado.");
     }
   };
-  // --------------------------------------------------------
 
+  // --- LÓGICA DE AVALIAÇÃO ---
+  const handleInspect = (sub: Submission) => {
+    setInspectingSubmission(sub);
+    // Preenche os campos com os valores existentes (se houver)
+    setGradingGrade(
+      sub.grade !== null && sub.grade !== undefined ? sub.grade : ""
+    );
+    setGradingComment(sub.teacherComment || "");
+  };
+
+  const handleSaveGrade = async () => {
+    if (!inspectingSubmission) return;
+    try {
+      const token = localStorage.getItem("token");
+      // Faz PATCH para atualizar a nota
+      await axios.patch(
+        `${API_URL}/submissions/${inspectingSubmission.id}/grade`,
+        {
+          grade: gradingGrade === "" ? null : Number(gradingGrade),
+          teacherComment: gradingComment,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      toast.success("Nota salva com sucesso!");
+
+      // Recarrega lista e atualiza modal visualmente
+      fetchSubmissions();
+      setInspectingSubmission((prev) =>
+        prev
+          ? {
+              ...prev,
+              grade: gradingGrade === "" ? undefined : Number(gradingGrade),
+              teacherComment: gradingComment,
+            }
+          : null
+      );
+    } catch (error) {
+      toast.error("Erro ao salvar nota.");
+    }
+  };
+
+  // --- CARREGAMENTO DE DADOS ---
   const fetchClassroomData = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -198,15 +247,32 @@ export default function ClassroomView() {
         headers: { Authorization: `Bearer ${token}` },
       });
       setClassroom(res.data);
-
-      if (res.data.problems?.length > 0 && !selectedProblemId) {
-        setSelectedProblemId(res.data.problems[0].id);
+      if (res.data.problems?.length > 0) {
+        const storedProbId = localStorage.getItem(`lastProblemId_${id}`);
+        const problemExists = res.data.problems.find(
+          (p: Problem) => p.id === storedProbId
+        );
+        if (storedProbId && problemExists) setSelectedProblemId(storedProbId);
+        else setSelectedProblemId(res.data.problems[0].id);
       }
-    } catch (error) {
+    } catch {
       toast.error("Erro ao carregar turma.");
       navigate("/dashboard");
     }
   };
+
+  useEffect(() => {
+    fetchClassroomData();
+  }, [id]);
+
+  useEffect(() => {
+    if (selectedProblemId && id)
+      localStorage.setItem(`lastProblemId_${id}`, selectedProblemId);
+  }, [selectedProblemId, id]);
+
+  useEffect(() => {
+    if (selectedProblemId && activeTab === "classwork") fetchSubmissions();
+  }, [selectedProblemId, activeTab]);
 
   const fetchSubmissions = async () => {
     if (!selectedProblemId) return;
@@ -218,19 +284,9 @@ export default function ClassroomView() {
       );
       setSubmissions(res.data);
     } catch (error) {
-      console.error("Erro ao carregar submissões", error);
+      console.error(error);
     }
   };
-
-  useEffect(() => {
-    fetchClassroomData();
-  }, [id]);
-
-  useEffect(() => {
-    if (selectedProblemId && activeTab === "classwork") {
-      fetchSubmissions();
-    }
-  }, [selectedProblemId, activeTab]);
 
   const handlePostAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -240,24 +296,20 @@ export default function ClassroomView() {
       const token = localStorage.getItem("token");
       await axios.post(
         `${API_URL}/announcements`,
-        {
-          content: newAnnouncement,
-          classroomId: classroom?.id,
-        },
+        { content: newAnnouncement, classroomId: classroom?.id },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       toast.success("Aviso postado!");
       setNewAnnouncement("");
       fetchClassroomData();
-    } catch (error) {
-      toast.error("Erro ao postar.");
+    } catch {
+      toast.error("Erro.");
     } finally {
       setPosting(false);
     }
   };
-
   const handleDeleteAnnouncement = async (id: string) => {
-    if (!confirm("Apagar aviso?")) return;
+    if (!confirm("Apagar?")) return;
     try {
       const token = localStorage.getItem("token");
       await axios.delete(`${API_URL}/announcements/${id}`, {
@@ -265,13 +317,12 @@ export default function ClassroomView() {
       });
       toast.success("Removido.");
       fetchClassroomData();
-    } catch (error) {
-      toast.error("Erro ao remover.");
+    } catch {
+      toast.error("Erro.");
     }
   };
-
   const handleDeleteProblem = async () => {
-    if (!selectedProblemId || !confirm("Tem a certeza?")) return;
+    if (!selectedProblemId || !confirm("Certeza?")) return;
     try {
       const token = localStorage.getItem("token");
       await axios.delete(`${API_URL}/problems/${selectedProblemId}`, {
@@ -280,18 +331,18 @@ export default function ClassroomView() {
       toast.success("Eliminado!");
       setSelectedProblemId(null);
       fetchClassroomData();
-    } catch (error) {
-      toast.error("Erro ao eliminar.");
+    } catch {
+      toast.error("Erro.");
     }
   };
-
   const handleEditProblem = () => {
-    if (!selectedProblemId || !classroom) return;
-    const problem = classroom.problems.find((p) => p.id === selectedProblemId);
-    if (problem)
-      navigate("/create-problem", {
-        state: { classroomId: classroom.id, problemToEdit: problem },
-      });
+    if (selectedProblemId && classroom) {
+      const p = classroom.problems.find((p) => p.id === selectedProblemId);
+      if (p)
+        navigate("/create-problem", {
+          state: { classroomId: classroom.id, problemToEdit: p },
+        });
+    }
   };
 
   const submitSolution = async () => {
@@ -300,7 +351,6 @@ export default function ClassroomView() {
     setVerdict(null);
     setExecutionOutput(null);
     setExecutionError(null);
-
     try {
       const token = localStorage.getItem("token");
       const res = await axios.post(
@@ -308,15 +358,12 @@ export default function ClassroomView() {
         { code, language_id: languageId, problem_id: selectedProblemId },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
       const data = res.data;
       setVerdict(data.status);
       setExecutionOutput(data.stdout);
       setExecutionError(data.stderr);
-
       if (data.status === "Accepted") toast.success("Solução Aceite!");
-      else toast.error("Resposta Incorreta ou Erro");
-
+      else toast.error("Erro/Incorreto");
       fetchSubmissions();
     } catch (error: any) {
       if (error.response?.status === 403) {
@@ -324,7 +371,7 @@ export default function ClassroomView() {
         setExecutionError(error.response.data.message);
         toast.error(error.response.data.message);
       } else {
-        setVerdict("Erro de Comunicação");
+        setVerdict("Erro");
         toast.error("Falha na submissão");
       }
     } finally {
@@ -332,7 +379,6 @@ export default function ClassroomView() {
     }
   };
 
-  // Cálculo de Tentativas (Hooks antes do retorno)
   const myAttemptsCount = useMemo(() => {
     if (!myUserId) return 0;
     return (submissions || []).filter((s) => s.user?.id === myUserId).length;
@@ -345,12 +391,9 @@ export default function ClassroomView() {
   );
   const isExam = currentProblem?.type === "EXAM";
   const maxAttempts = currentProblem?.maxAttempts || 0;
-
-  // Verifica prazo
   const isDeadlinePassed = currentProblem?.deadline
     ? new Date() > new Date(currentProblem.deadline)
     : false;
-
   const attemptsLeft = isExam
     ? Math.max(0, maxAttempts - myAttemptsCount)
     : Infinity;
@@ -360,7 +403,6 @@ export default function ClassroomView() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      {/* HEADER */}
       <header className="classroom-header">
         <div
           style={{
@@ -407,17 +449,16 @@ export default function ClassroomView() {
           <div className="stream-banner">
             <h1 className="stream-title">{classroom.name}</h1>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <strong>Código da Turma:</strong>
+              <strong>Código:</strong>
               <span className="stream-code-box">{classroom.code}</span>
             </div>
           </div>
-
           {isOwner && (
             <div className="stream-input-card">
               <form onSubmit={handlePostAnnouncement}>
                 <textarea
                   className="stream-textarea"
-                  placeholder="Anuncie algo para a turma..."
+                  placeholder="Anuncie algo..."
                   value={newAnnouncement}
                   onChange={(e) => setNewAnnouncement(e.target.value)}
                 />
@@ -427,56 +468,45 @@ export default function ClassroomView() {
                     disabled={posting || !newAnnouncement.trim()}
                     className="btn btn-primary"
                   >
-                    {posting ? "Postando..." : "Postar"}
+                    {posting ? "..." : "Postar"}
                   </button>
                 </div>
               </form>
             </div>
           )}
-
           <div className="announcements-list">
             {(!classroom.announcements ||
               classroom.announcements.length === 0) && (
               <div
-                style={{
-                  textAlign: "center",
-                  color: "#666",
-                  padding: "40px",
-                  border: "1px dashed #333",
-                  borderRadius: "8px",
-                }}
+                style={{ textAlign: "center", color: "#666", padding: "40px" }}
               >
-                <p>Nenhum aviso publicado ainda.</p>
+                Nenhum aviso.
               </div>
             )}
-            {classroom.announcements?.map((announcement) => (
-              <div key={announcement.id} className="announcement-card">
+            {classroom.announcements?.map((a) => (
+              <div key={a.id} className="announcement-card">
                 <div className="announcement-header">
                   <div className="announcement-avatar">
-                    {announcement.author?.email.charAt(0).toUpperCase()}
+                    {a.author?.email.charAt(0).toUpperCase()}
                   </div>
                   <div className="announcement-meta">
                     <span className="announcement-author">
-                      {announcement.author?.email}
+                      {a.author?.email}
                     </span>
                     <span className="announcement-date">
-                      {new Date(announcement.createdAt).toLocaleDateString()} •{" "}
-                      {new Date(announcement.createdAt)
-                        .toLocaleTimeString()
-                        .slice(0, 5)}
+                      {new Date(a.createdAt).toLocaleDateString()}
                     </span>
                   </div>
                   {isOwner && (
                     <button
-                      onClick={() => handleDeleteAnnouncement(announcement.id)}
+                      onClick={() => handleDeleteAnnouncement(a.id)}
                       className="options-btn"
-                      title="Apagar aviso"
                     >
                       ⋮
                     </button>
                   )}
                 </div>
-                <div className="announcement-body">{announcement.content}</div>
+                <div className="announcement-body">{a.content}</div>
               </div>
             ))}
           </div>
@@ -499,24 +529,16 @@ export default function ClassroomView() {
           </div>
           <div>
             <div className="section-header">
-              <span>Estudantes</span>
-              <span style={{ fontSize: "1rem", color: "#666" }}>
-                {classroom.students?.length || 0} alunos
-              </span>
+              <span>Estudantes ({classroom.students?.length || 0})</span>
             </div>
-            {classroom.students?.map((student) => (
-              <div key={student.id} className="person-item">
+            {classroom.students?.map((s) => (
+              <div key={s.id} className="person-item">
                 <div className="person-avatar">
-                  {student.email.charAt(0).toUpperCase()}
+                  {s.email.charAt(0).toUpperCase()}
                 </div>
-                <span>{student.email}</span>
+                <span>{s.email}</span>
               </div>
             ))}
-            {(!classroom.students || classroom.students.length === 0) && (
-              <p style={{ color: "#666", fontStyle: "italic" }}>
-                Nenhum aluno matriculado ainda.
-              </p>
-            )}
           </div>
         </div>
       )}
@@ -524,7 +546,6 @@ export default function ClassroomView() {
       {/* ATIVIDADES */}
       {activeTab === "classwork" && (
         <div className="ide-container" style={{ flex: 1, borderTop: "none" }}>
-          {/* TOOLBAR */}
           <div className="ide-toolbar">
             <select
               className="form-select"
@@ -549,14 +570,12 @@ export default function ClassroomView() {
                     <button
                       onClick={handleEditProblem}
                       className="btn btn-secondary"
-                      title="Editar"
                     >
                       ✏️
                     </button>
                     <button
                       onClick={handleDeleteProblem}
                       className="btn btn-danger"
-                      title="Excluir"
                     >
                       🗑️
                     </button>
@@ -565,7 +584,7 @@ export default function ClassroomView() {
                       className="btn btn-primary"
                       style={{ backgroundColor: "#555" }}
                     >
-                      📊 Ver Submissões
+                      📊
                     </button>
                   </>
                 )}
@@ -583,105 +602,75 @@ export default function ClassroomView() {
               </div>
             )}
 
-            {/* Indicador de Prazo */}
-            {currentProblem?.deadline && !isOwner && (
-              <div
-                style={{
-                  padding: "5px 12px",
-                  background: isDeadlinePassed
-                    ? "rgba(244, 67, 54, 0.2)"
-                    : "#2d2d30",
-                  borderRadius: "4px",
-                  border: `1px solid ${isDeadlinePassed ? "#f44336" : "#444"}`,
-                  color: isDeadlinePassed ? "#f44336" : "#ccc",
-                  fontSize: "0.85rem",
-                  marginRight: "10px",
-                  marginLeft: "auto",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                }}
-              >
-                <span>🕒</span>
-                {isDeadlinePassed ? (
-                  <strong>
-                    Encerrado em{" "}
-                    {new Date(currentProblem.deadline).toLocaleString()}
-                  </strong>
-                ) : (
-                  <span>
-                    Entrega até:{" "}
-                    {new Date(currentProblem.deadline).toLocaleString()}
-                  </span>
-                )}
-              </div>
-            )}
-
-            {isExam && !isOwner && (
-              <div
-                style={{
-                  padding: "5px 12px",
-                  background:
-                    attemptsLeft === 0
-                      ? "rgba(244, 67, 54, 0.2)"
-                      : attemptsLeft <= 1
-                      ? "rgba(255, 152, 0, 0.2)"
-                      : "#2d2d30",
-                  borderRadius: "4px",
-                  border: `1px solid ${
-                    attemptsLeft === 0
-                      ? "#f44336"
-                      : attemptsLeft <= 1
-                      ? "#ff9800"
-                      : "#444"
-                  }`,
-                  color:
-                    attemptsLeft === 0
-                      ? "#f44336"
-                      : attemptsLeft <= 1
-                      ? "#ff9800"
-                      : "#ccc",
-                  fontSize: "0.85rem",
-                  fontWeight: "bold",
-                  marginRight: "10px",
-                  marginLeft: !currentProblem?.deadline ? "auto" : "0",
-                }}
-              >
-                {attemptsLeft === 0
-                  ? "🚫 Esgotadas"
-                  : `⚠️ ${attemptsLeft}/${maxAttempts} tentativas`}
-              </div>
-            )}
-
             <div
               style={{
-                marginLeft:
-                  ((isExam || currentProblem?.deadline) && !isOwner) || isOwner
-                    ? "0"
-                    : "auto",
+                marginLeft: "auto",
+                marginRight: "10px",
                 display: "flex",
                 gap: "10px",
               }}
             >
-              {/* Botão Resetar Código */}
+              {currentProblem?.deadline && !isOwner && (
+                <div
+                  style={{
+                    padding: "5px 12px",
+                    background: isDeadlinePassed
+                      ? "rgba(244,67,54,0.2)"
+                      : "#2d2d30",
+                    borderRadius: "4px",
+                    border: `1px solid ${
+                      isDeadlinePassed ? "#f44336" : "#444"
+                    }`,
+                    color: isDeadlinePassed ? "#f44336" : "#ccc",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  {isDeadlinePassed
+                    ? "🔒 Encerrado"
+                    : `🕒 Até ${new Date(
+                        currentProblem.deadline
+                      ).toLocaleDateString()}`}
+                </div>
+              )}
+              {isExam && !isOwner && (
+                <div
+                  style={{
+                    padding: "5px 12px",
+                    background:
+                      attemptsLeft === 0 ? "rgba(244,67,54,0.2)" : "#2d2d30",
+                    borderRadius: "4px",
+                    border: `1px solid ${
+                      attemptsLeft === 0 ? "#f44336" : "#444"
+                    }`,
+                    color: attemptsLeft === 0 ? "#f44336" : "#ccc",
+                    fontSize: "0.85rem",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {attemptsLeft === 0
+                    ? "🚫 Esgotadas"
+                    : `⚠️ ${attemptsLeft} restam`}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: "10px" }}>
               <button
                 onClick={handleResetCode}
                 className="btn btn-secondary"
-                title="Resetar para o template original"
-                disabled={!selectedProblemId}
+                title="Resetar código"
               >
-                ↺ Reset
+                ↺
               </button>
-
               <select
                 className="form-select"
                 style={{ width: "auto" }}
                 value={languageId}
                 onChange={(e) => setLanguageId(Number(e.target.value))}
               >
-                {LANGUAGES.map((lang) => (
-                  <option key={lang.id} value={lang.id}>
-                    {lang.name}
+                {LANGUAGES.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
                   </option>
                 ))}
               </select>
@@ -691,26 +680,19 @@ export default function ClassroomView() {
                 className="btn btn-primary"
                 style={isBlocked ? { opacity: 0.5, cursor: "not-allowed" } : {}}
               >
-                {loading
-                  ? "..."
-                  : isDeadlinePassed
-                  ? "🔒 Encerrado"
-                  : isBlocked
-                  ? "🔒 Bloqueado"
-                  : "▶ Enviar"}
+                {loading ? "..." : isBlocked ? "🔒" : "▶ Enviar"}
               </button>
             </div>
           </div>
 
-          {/* IDE MAIN */}
           <div className="ide-main">
             <div className="ide-editor-panel">
               <Editor
+                key={`${languageId}-${selectedProblemId || "empty"}`}
                 height="100%"
                 language={LANGUAGE_MAP[languageId] || "plaintext"}
                 theme="vs-dark"
                 value={code}
-                // Alterado para salvar no onChange
                 onChange={handleCodeChange}
                 options={{ minimap: { enabled: false }, automaticLayout: true }}
               />
@@ -726,11 +708,8 @@ export default function ClassroomView() {
                   </div>
                 </>
               ) : (
-                <p className="ide-description">
-                  Selecione ou crie um exercício.
-                </p>
+                <p className="ide-description">Selecione um exercício.</p>
               )}
-
               {verdict && (
                 <div
                   className={`ide-feedback-box ${
@@ -741,30 +720,22 @@ export default function ClassroomView() {
                     <strong>Resultado:</strong> {verdict}
                   </div>
                   {executionError && (
-                    <div className="feedback-section">
-                      <span className="feedback-label">Erro:</span>
-                      <pre className="feedback-code error">
-                        {executionError}
-                      </pre>
-                    </div>
+                    <pre className="feedback-code error">{executionError}</pre>
                   )}
                   {executionOutput && verdict !== "Accepted" && (
-                    <div className="feedback-section">
-                      <span className="feedback-label">Sua Saída:</span>
-                      <pre className="feedback-code">{executionOutput}</pre>
-                    </div>
+                    <pre className="feedback-code">{executionOutput}</pre>
                   )}
                 </div>
               )}
             </div>
           </div>
 
-          {/* MODAIS (MANTIDOS) */}
+          {/* MODAL DE LISTA DE SUBMISSÕES */}
           {showSubmissions && (
             <div className="modal-overlay">
               <div className="modal-content large">
                 <div className="modal-header">
-                  <h2>Submissões: {currentProblem?.title}</h2>
+                  <h2>Submissões</h2>
                   <button
                     onClick={() => setShowSubmissions(false)}
                     className="btn btn-secondary"
@@ -776,15 +747,16 @@ export default function ClassroomView() {
                   <thead>
                     <tr>
                       <th>Aluno</th>
-                      <th>Veredito</th>
+                      <th>Status</th>
+                      <th>Nota</th>
                       <th>Data</th>
-                      <th>Ações</th>
+                      <th>Ação</th>
                     </tr>
                   </thead>
                   <tbody>
                     {submissions.map((sub) => (
                       <tr key={sub.id}>
-                        <td>{sub.user?.email || "Desconhecido"}</td>
+                        <td>{sub.user?.email}</td>
                         <td>
                           <span
                             className={`status-badge ${
@@ -794,13 +766,25 @@ export default function ClassroomView() {
                             {sub.status}
                           </span>
                         </td>
+                        {/* NOVA COLUNA: NOTA */}
+                        <td>
+                          {sub.grade !== null && sub.grade !== undefined ? (
+                            <span
+                              style={{ fontWeight: "bold", color: "#4caf50" }}
+                            >
+                              {sub.grade}
+                            </span>
+                          ) : (
+                            <span style={{ color: "#666" }}>-</span>
+                          )}
+                        </td>
                         <td>{new Date(sub.createdAt).toLocaleString()}</td>
                         <td>
                           <button
                             className="btn btn-sm btn-primary"
-                            onClick={() => setInspectingSubmission(sub)}
+                            onClick={() => handleInspect(sub)}
                           >
-                            🔍 Inspecionar
+                            Inspecionar
                           </button>
                         </td>
                       </tr>
@@ -810,11 +794,15 @@ export default function ClassroomView() {
               </div>
             </div>
           )}
+
+          {/* MODAL DE INSPEÇÃO E AVALIAÇÃO */}
           {inspectingSubmission && (
             <div className="modal-overlay" style={{ zIndex: 1100 }}>
               <div className="modal-content x-large">
                 <div className="modal-header">
-                  <h3>Inspecionando: {inspectingSubmission.user?.email}</h3>
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    <h3>Inspecionando: {inspectingSubmission.user?.email}</h3>
+                  </div>
                   <button
                     onClick={() => setInspectingSubmission(null)}
                     className="btn btn-secondary"
@@ -822,6 +810,7 @@ export default function ClassroomView() {
                     Voltar
                   </button>
                 </div>
+
                 <div className="inspection-grid">
                   <div className="inspection-code">
                     <Editor
@@ -832,34 +821,183 @@ export default function ClassroomView() {
                       options={{ readOnly: true, minimap: { enabled: false } }}
                     />
                   </div>
-                  <div className="inspection-output">
-                    <div className="output-block">
-                      <h4>Status</h4>
+
+                  <div
+                    className="inspection-output"
+                    style={{ overflowY: "auto", maxHeight: "50vh" }}
+                  >
+                    {/* PAINEL DE NOTAS E COMENTÁRIOS */}
+                    {(isOwner ||
+                      inspectingSubmission.grade != null ||
+                      inspectingSubmission.teacherComment) && (
                       <div
-                        className={`status-box ${
-                          inspectingSubmission.status === "Accepted"
-                            ? "success"
-                            : "error"
-                        }`}
+                        className="output-block"
+                        style={{
+                          border: "1px solid #4caf50",
+                          padding: "15px",
+                          borderRadius: "4px",
+                          background: "rgba(76, 175, 80, 0.05)",
+                          marginBottom: "20px",
+                        }}
                       >
-                        {inspectingSubmission.status}
-                      </div>
-                    </div>
-                    {inspectingSubmission.stderr && (
-                      <div className="output-block">
-                        <h4 className="label error">Erro</h4>
-                        <pre className="code-block error">
-                          {inspectingSubmission.stderr}
-                        </pre>
+                        <h4
+                          className="label"
+                          style={{
+                            color: "#4caf50",
+                            marginTop: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "5px",
+                          }}
+                        >
+                          📝 Feedback da Avaliação
+                        </h4>
+
+                        {/* SE FOR PROFESSOR: MOSTRA CAMPOS PARA EDITAR */}
+                        {isOwner ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "15px",
+                              marginTop: "15px",
+                            }}
+                          >
+                            <div>
+                              <label
+                                style={{
+                                  fontSize: "0.9rem",
+                                  color: "#ccc",
+                                  display: "block",
+                                  marginBottom: "5px",
+                                }}
+                              >
+                                Nota (0-100)
+                              </label>
+                              <input
+                                type="number"
+                                className="form-input"
+                                value={gradingGrade}
+                                onChange={(e) =>
+                                  setGradingGrade(e.target.value)
+                                }
+                                placeholder="Ex: 100"
+                                min="0"
+                                max="100"
+                                style={{ width: "100px" }}
+                              />
+                            </div>
+                            <div>
+                              <label
+                                style={{
+                                  fontSize: "0.9rem",
+                                  color: "#ccc",
+                                  display: "block",
+                                  marginBottom: "5px",
+                                }}
+                              >
+                                Comentário / Feedback
+                              </label>
+                              <textarea
+                                className="form-textarea"
+                                rows={4}
+                                value={gradingComment}
+                                onChange={(e) =>
+                                  setGradingComment(e.target.value)
+                                }
+                                placeholder="Escreva aqui o feedback para o aluno..."
+                                style={{ width: "100%" }}
+                              />
+                            </div>
+                            <button
+                              onClick={handleSaveGrade}
+                              className="btn btn-primary"
+                              style={{ alignSelf: "flex-end" }}
+                            >
+                              Salvar Avaliação
+                            </button>
+                          </div>
+                        ) : (
+                          // SE FOR ALUNO: APENAS LEITURA
+                          <div style={{ marginTop: "10px" }}>
+                            {inspectingSubmission.grade != null ? (
+                              <div
+                                style={{
+                                  fontSize: "1.2rem",
+                                  marginBottom: "10px",
+                                  color: "#fff",
+                                }}
+                              >
+                                Nota:{" "}
+                                <strong style={{ color: "#4caf50" }}>
+                                  {inspectingSubmission.grade} / 100
+                                </strong>
+                              </div>
+                            ) : (
+                              <div
+                                style={{
+                                  color: "#888",
+                                  fontStyle: "italic",
+                                  marginBottom: "10px",
+                                }}
+                              >
+                                Sem nota atribuída.
+                              </div>
+                            )}
+
+                            {inspectingSubmission.teacherComment ? (
+                              <div
+                                style={{
+                                  background: "#1e1e1e",
+                                  padding: "10px",
+                                  borderRadius: "4px",
+                                  borderLeft: "3px solid #4caf50",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontSize: "0.85rem",
+                                    color: "#888",
+                                    marginBottom: "5px",
+                                  }}
+                                >
+                                  Comentário do Professor:
+                                </div>
+                                <div
+                                  style={{
+                                    whiteSpace: "pre-wrap",
+                                    color: "#ddd",
+                                    lineHeight: "1.5",
+                                  }}
+                                >
+                                  {inspectingSubmission.teacherComment}
+                                </div>
+                              </div>
+                            ) : (
+                              <div
+                                style={{ color: "#666", fontStyle: "italic" }}
+                              >
+                                Sem comentários.
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
+
+                    <div className="output-block">
+                      <h4>Status da Execução</h4>
+                      <div>{inspectingSubmission.status}</div>
+                    </div>
                     {inspectingSubmission.stdout && (
-                      <div className="output-block">
-                        <h4 className="label">Saída</h4>
-                        <pre className="code-block">
-                          {inspectingSubmission.stdout}
-                        </pre>
-                      </div>
+                      <pre className="code-block">
+                        {inspectingSubmission.stdout}
+                      </pre>
+                    )}
+                    {inspectingSubmission.stderr && (
+                      <pre className="code-block error">
+                        {inspectingSubmission.stderr}
+                      </pre>
                     )}
                   </div>
                 </div>

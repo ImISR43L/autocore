@@ -9,6 +9,7 @@ import axios from 'axios';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { Submission } from './entities/submission.entity';
 import { Problem, ProblemType } from '../problems/entities/problem.entity'; // Importe o Enum
+import { GradeSubmissionDto } from './dto/grade-submission.dto'; // Importe o DTO
 
 @Injectable()
 export class SubmissionsService {
@@ -149,5 +150,28 @@ export class SubmissionsService {
 
   async seedProblem() {
     return { msg: 'ok' };
+  }
+
+  async grade(id: string, gradeDto: GradeSubmissionDto, userId: number) {
+    const submission = await this.submissionsRepository.findOne({
+      where: { id },
+      relations: ['problem', 'problem.classroom', 'problem.classroom.owner'],
+    });
+
+    if (!submission) {
+      throw new NotFoundException('Submissão não encontrada');
+    }
+
+    if (submission.problem.classroom.owner.id !== userId) {
+      throw new ForbiddenException(
+        'Apenas o professor desta turma pode avaliar.',
+      );
+    }
+
+    if (gradeDto.grade !== undefined) submission.grade = gradeDto.grade;
+    if (gradeDto.teacherComment !== undefined)
+      submission.teacherComment = gradeDto.teacherComment;
+
+    return this.submissionsRepository.save(submission);
   }
 }
