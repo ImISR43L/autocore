@@ -1,3 +1,4 @@
+// api/src/classrooms/classrooms.service.ts
 import {
   Injectable,
   NotFoundException,
@@ -6,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { CreateClassroomDto } from './dto/create-classroom.dto'; // <--- Importar DTO
+import { CreateClassroomDto } from './dto/create-classroom.dto';
 import { Classroom } from './entities/classroom.entity';
 import { User } from '../users/entities/user.entity';
 
@@ -19,18 +20,16 @@ export class ClassroomsService {
     private usersRepository: Repository<User>,
   ) {}
 
-  // CORREÇÃO: Assinatura atualizada para receber o DTO
   async create(createClassroomDto: CreateClassroomDto, ownerId: number) {
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-    // Busca o dono pelo ID (mais seguro que cast manual)
     const owner = await this.usersRepository.findOne({
       where: { id: ownerId },
     });
     if (!owner) throw new NotFoundException('Usuário não encontrado');
 
     const classroom = this.classroomsRepository.create({
-      ...createClassroomDto, // Espalha as propriedades do DTO (name)
+      ...createClassroomDto,
       code,
       owner,
     });
@@ -41,25 +40,22 @@ export class ClassroomsService {
   async join(code: string, userId: number) {
     const classroom = await this.classroomsRepository.findOne({
       where: { code },
-      relations: ['owner', 'students'], // <--- Importante carregar 'owner' para a validação
+      relations: ['owner', 'students'],
     });
 
     if (!classroom) throw new NotFoundException('Código inválido');
 
-    // 1. Validação: Dono não pode entrar na própria turma
     if (classroom.owner.id === userId) {
       throw new ForbiddenException(
         'Você é o professor desta turma e não pode entrar como aluno.',
       );
     }
 
-    // 2. Validação: Evitar duplicidade
     const alreadyEnrolled = classroom.students.some((s) => s.id === userId);
     if (alreadyEnrolled) {
       throw new ConflictException('Você já está matriculado nesta turma.');
     }
 
-    // Se passou, adiciona o aluno
     const user = await this.usersRepository.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('Usuário inválido');
 
@@ -67,24 +63,32 @@ export class ClassroomsService {
     return this.classroomsRepository.save(classroom);
   }
 
+  // --- CORREÇÃO AQUI ---
   async findMyClassrooms(userId: number) {
-    // Busca turmas onde sou dono
+    // 1. Turmas que eu ensino
     const teaching = await this.classroomsRepository.find({
       where: { owner: { id: userId } },
+      relations: ['owner'], // Garante dados completos
     });
 
-    // Busca turmas onde sou aluno
+    // 2. Turmas que eu estudo
     const enrolled = await this.classroomsRepository.find({
       where: { students: { id: userId } },
+      relations: ['owner'], // Importante para mostrar o nome do professor no card
     });
 
-    return { teaching, enrolled };
+    // 3. RETORNAR UM ARRAY ÚNICO (FLAT LIST)
+    // Adicionamos a propriedade virtual 'isOwner' para o front saber filtrar
+    return [
+      ...teaching.map((c) => ({ ...c, isOwner: true })),
+      ...enrolled.map((c) => ({ ...c, isOwner: false })),
+    ];
   }
+  // ---------------------
 
   async findOne(id: number) {
     const classroom = await this.classroomsRepository.findOne({
       where: { id },
-      // ATUALIZE A LINHA 'relations' PARA INCLUIR 'announcements' e 'announcements.author'
       relations: [
         'owner',
         'students',
@@ -93,15 +97,13 @@ export class ClassroomsService {
         'announcements.author',
       ],
       order: {
-        // Ordena avisos do mais recente para o mais antigo
         announcements: {
           createdAt: 'DESC',
         },
-      } as any, // Cast necessario dependendo da versao do TypeORM se reclamar do nested order
+      } as any,
     });
     if (!classroom) throw new NotFoundException('Turma não encontrada');
 
-    // Pequena ordenação manual caso o order do findOne falhe em relações aninhadas
     if (classroom.announcements) {
       classroom.announcements.sort(
         (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
@@ -114,12 +116,11 @@ export class ClassroomsService {
   async leave(id: number, userId: number) {
     const classroom = await this.classroomsRepository.findOne({
       where: { id },
-      relations: ['students'], // Precisamos carregar a lista para modificá-la
+      relations: ['students'],
     });
 
     if (!classroom) throw new NotFoundException('Turma não encontrada');
 
-    // Filtra a lista de estudantes removendo o usuário atual
     const initialCount = classroom.students.length;
     classroom.students = classroom.students.filter(
       (student) => student.id !== userId,
@@ -146,8 +147,6 @@ export class ClassroomsService {
       );
     }
 
-    // O método remove do TypeORM lida com a tabela de junção (students) automaticamente.
-    // Graças ao onDelete: 'CASCADE' na entidade Problem, os exercícios também somem.
     return this.classroomsRepository.remove(classroom);
   }
 }
