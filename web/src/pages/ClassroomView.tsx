@@ -6,10 +6,22 @@ import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
+
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
 
-// Interfaces
+// --- INTERFACES ---
 interface Announcement {
   id: string;
   content: string;
@@ -50,6 +62,19 @@ interface Submission {
   teacherComment?: string;
 }
 
+interface StatData {
+  name: string;
+  Accepted: number;
+  Error: number;
+}
+
+interface ProblemStat {
+  name: string;
+  value: number;
+  fill: string;
+}
+
+// --- TEMPLATES DE LINGUAGEM ---
 const LANGUAGES = [
   {
     id: 71,
@@ -97,42 +122,38 @@ export default function ClassroomView() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  // Estados de Contexto
-  const [activeTab, setActiveTab] = useState<"stream" | "classwork" | "people">(
-    () => (localStorage.getItem(`activeTab_${id}`) as any) || "stream"
-  );
+  // Estados
+  const [activeTab, setActiveTab] = useState<
+    "stream" | "classwork" | "people" | "analytics"
+  >("stream");
   const [languageId, setLanguageId] = useState<number>(
     () => Number(localStorage.getItem(`languageId`)) || 71
   );
-
-  useEffect(() => {
-    if (id) localStorage.setItem(`activeTab_${id}`, activeTab);
-  }, [activeTab, id]);
-  useEffect(() => {
-    localStorage.setItem(`languageId`, String(languageId));
-  }, [languageId]);
-
   const [classroom, setClassroom] = useState<Classroom | null>(null);
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(
     null
   );
   const [code, setCode] = useState<string>("");
 
+  // UI & Execução
   const [verdict, setVerdict] = useState<string | null>(null);
   const [executionOutput, setExecutionOutput] = useState<string | null>(null);
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [inspectingSubmission, setInspectingSubmission] =
     useState<Submission | null>(null);
   const [gradingGrade, setGradingGrade] = useState<string | number>("");
   const [gradingComment, setGradingComment] = useState("");
-
   const [newAnnouncement, setNewAnnouncement] = useState("");
   const [posting, setPosting] = useState(false);
 
+  // Estados dos Gráficos
+  const [stats, setStats] = useState<StatData[]>([]);
+  const [problemStats, setProblemStats] = useState<ProblemStat[]>([]);
+
+  // Helpers
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
     if (!token) return null;
@@ -152,6 +173,17 @@ export default function ClassroomView() {
     return `autosave_${myUserId}_${probId}_${langId}`;
   };
 
+  // Efeitos
+  useEffect(() => {
+    if (id) localStorage.setItem(`activeTab_${id}`, activeTab);
+  }, [activeTab, id]);
+  useEffect(() => {
+    localStorage.setItem(`languageId`, String(languageId));
+  }, [languageId]);
+  useEffect(() => {
+    fetchClassroomData();
+  }, [id]);
+
   useEffect(() => {
     const lang = LANGUAGES.find((l) => l.id === languageId);
     if (!lang) return;
@@ -159,16 +191,59 @@ export default function ClassroomView() {
       setCode(lang.defaultCode);
       return;
     }
-
     const storageKey = getStorageKey(selectedProblemId, languageId);
     const savedCode = storageKey ? localStorage.getItem(storageKey) : null;
     const isPolluted = LANGUAGES.some(
       (l) => l.id !== languageId && l.defaultCode === savedCode
     );
-
     if (savedCode && !isPolluted) setCode(savedCode);
     else setCode(lang.defaultCode);
   }, [languageId, selectedProblemId, myUserId]);
+
+  useEffect(() => {
+    if (selectedProblemId && activeTab === "classwork") {
+      fetchSubmissions();
+      if (isOwner) fetchProblemStats(selectedProblemId);
+    }
+  }, [selectedProblemId, activeTab, isOwner]);
+
+  useEffect(() => {
+    if (activeTab === "analytics" && isOwner && id) {
+      fetchStats();
+    }
+  }, [activeTab, isOwner, id]);
+
+  // Actions
+  const fetchStats = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get(
+        `${API_URL}/submissions/stats/classroom/${id}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      setStats(res.data);
+    } catch (error) {
+      console.error("Erro stats");
+    }
+  };
+
+  const fetchProblemStats = async (probId: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get(
+        `${API_URL}/submissions/stats/problem/${probId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      // Usa os dados diretamente para ter colunas separadas (Acertos, Erros)
+      setProblemStats(res.data);
+    } catch (error) {
+      console.error("Erro problem stats");
+    }
+  };
 
   const handleCodeChange = (value: string | undefined) => {
     const val = value || "";
@@ -180,7 +255,7 @@ export default function ClassroomView() {
   };
 
   const handleResetCode = () => {
-    if (!confirm("Restaurar o código original?")) return;
+    if (!confirm("Restaurar código original?")) return;
     const lang = LANGUAGES.find((l) => l.id === languageId);
     if (lang) {
       setCode(lang.defaultCode);
@@ -212,8 +287,7 @@ export default function ClassroomView() {
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
-      toast.success("Avaliação salva!");
+      toast.success("Nota salva!");
       fetchSubmissions();
       setInspectingSubmission((prev) =>
         prev
@@ -249,19 +323,6 @@ export default function ClassroomView() {
       navigate("/dashboard");
     }
   };
-
-  useEffect(() => {
-    fetchClassroomData();
-  }, [id]);
-
-  useEffect(() => {
-    if (selectedProblemId && id)
-      localStorage.setItem(`lastProblemId_${id}`, selectedProblemId);
-  }, [selectedProblemId, id]);
-
-  useEffect(() => {
-    if (selectedProblemId && activeTab === "classwork") fetchSubmissions();
-  }, [selectedProblemId, activeTab]);
 
   const fetchSubmissions = async () => {
     if (!selectedProblemId) return;
@@ -354,6 +415,7 @@ export default function ClassroomView() {
       if (data.status === "Accepted") toast.success("Solução Aceite!");
       else toast.error("Erro/Incorreto");
       fetchSubmissions();
+      if (isOwner && selectedProblemId) fetchProblemStats(selectedProblemId);
     } catch (error: any) {
       if (error.response?.status === 403) {
         setVerdict("Bloqueado");
@@ -429,9 +491,18 @@ export default function ClassroomView() {
           >
             Alunos
           </button>
+          {isOwner && (
+            <button
+              onClick={() => setActiveTab("analytics")}
+              className={`tab-btn ${activeTab === "analytics" ? "active" : ""}`}
+            >
+              📊 Estatísticas
+            </button>
+          )}
         </nav>
       </header>
 
+      {/* MURAL */}
       {activeTab === "stream" && (
         <div className="stream-container">
           <div className="stream-banner">
@@ -501,6 +572,7 @@ export default function ClassroomView() {
         </div>
       )}
 
+      {/* ALUNOS */}
       {activeTab === "people" && (
         <div className="people-container">
           <div style={{ marginBottom: "40px" }}>
@@ -530,6 +602,7 @@ export default function ClassroomView() {
         </div>
       )}
 
+      {/* ATIVIDADES */}
       {activeTab === "classwork" && (
         <div className="ide-container" style={{ flex: 1, borderTop: "none" }}>
           <div className="ide-toolbar">
@@ -549,7 +622,6 @@ export default function ClassroomView() {
               ))}
             </select>
 
-            {/* BOTÕES DO PROFESSOR (Edição/Exclusão) */}
             {isOwner && (
               <div style={{ display: "flex", gap: "5px", marginLeft: "10px" }}>
                 {selectedProblemId && (
@@ -584,7 +656,6 @@ export default function ClassroomView() {
               </div>
             )}
 
-            {/* BOTÃO DE HISTÓRICO/SUBMISSÕES (Disponível para ALUNO E PROFESSOR) */}
             {selectedProblemId && (
               <button
                 onClick={() => setShowSubmissions(true)}
@@ -598,7 +669,6 @@ export default function ClassroomView() {
               </button>
             )}
 
-            {/* STATUS DE PRAZO E TENTATIVAS */}
             <div
               style={{
                 marginLeft: "auto",
@@ -620,8 +690,6 @@ export default function ClassroomView() {
                     }`,
                     color: isDeadlinePassed ? "#f44336" : "#ccc",
                     fontSize: "0.85rem",
-                    display: "flex",
-                    alignItems: "center",
                   }}
                 >
                   {isDeadlinePassed
@@ -705,10 +773,63 @@ export default function ClassroomView() {
                       {currentProblem.description}
                     </ReactMarkdown>
                   </div>
+
+                  {/* GRÁFICO DO EXERCÍCIO (SÓ PROFESSOR) - COLUNAS LADO A LADO */}
+                  {isOwner && problemStats.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: "30px",
+                        padding: "15px",
+                        background: "#252526",
+                        borderRadius: "8px",
+                        border: "1px solid #444",
+                      }}
+                    >
+                      <h4
+                        style={{
+                          margin: "0 0 15px 0",
+                          fontSize: "0.9rem",
+                          color: "#ccc",
+                        }}
+                      >
+                        📈 Estatísticas deste Exercício
+                      </h4>
+                      <div style={{ width: "100%", height: 250 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={problemStats}
+                            margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                          >
+                            <CartesianGrid
+                              strokeDasharray="3 3"
+                              stroke="#333"
+                              vertical={false}
+                            />
+                            <XAxis dataKey="name" stroke="#888" />
+                            <YAxis stroke="#888" allowDecimals={false} />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: "#1e1e1e",
+                                borderColor: "#444",
+                                color: "#fff",
+                              }}
+                              cursor={{ fill: "rgba(255,255,255,0.05)" }}
+                            />
+                            <Bar dataKey="value" barSize={40}>
+                              {problemStats.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="ide-description">Selecione um exercício.</p>
               )}
+
               {verdict && (
                 <div
                   className={`ide-feedback-box ${
@@ -729,7 +850,7 @@ export default function ClassroomView() {
             </div>
           </div>
 
-          {/* MODAL DE LISTA DE SUBMISSÕES */}
+          {/* MODAIS */}
           {showSubmissions && (
             <div className="modal-overlay">
               <div className="modal-content large">
@@ -753,7 +874,6 @@ export default function ClassroomView() {
                     </tr>
                   </thead>
                   <tbody>
-                    {/* FILTRAGEM DE PRIVACIDADE: ALUNO SÓ VÊ AS DELE */}
                     {submissions
                       .filter((sub) => isOwner || sub.user?.id === myUserId)
                       .map((sub) => (
@@ -802,7 +922,7 @@ export default function ClassroomView() {
                             color: "#666",
                           }}
                         >
-                          Nenhuma submissão encontrada.
+                          Nenhuma submissão.
                         </td>
                       </tr>
                     )}
@@ -812,14 +932,11 @@ export default function ClassroomView() {
             </div>
           )}
 
-          {/* MODAL DE INSPEÇÃO E AVALIAÇÃO */}
           {inspectingSubmission && (
             <div className="modal-overlay" style={{ zIndex: 1100 }}>
               <div className="modal-content x-large">
                 <div className="modal-header">
-                  <div style={{ display: "flex", flexDirection: "column" }}>
-                    <h3>Inspecionando: {inspectingSubmission.user?.email}</h3>
-                  </div>
+                  <h3>Inspecionando: {inspectingSubmission.user?.email}</h3>
                   <button
                     onClick={() => setInspectingSubmission(null)}
                     className="btn btn-secondary"
@@ -827,7 +944,6 @@ export default function ClassroomView() {
                     Voltar
                   </button>
                 </div>
-
                 <div className="inspection-grid">
                   <div className="inspection-code">
                     <Editor
@@ -838,7 +954,6 @@ export default function ClassroomView() {
                       options={{ readOnly: true, minimap: { enabled: false } }}
                     />
                   </div>
-
                   <div
                     className="inspection-output"
                     style={{ overflowY: "auto", maxHeight: "50vh" }}
@@ -858,35 +973,23 @@ export default function ClassroomView() {
                       >
                         <h4
                           className="label"
-                          style={{
-                            color: "#4caf50",
-                            marginTop: 0,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "5px",
-                          }}
+                          style={{ color: "#4caf50", marginTop: 0 }}
                         >
-                          📝 Feedback da Avaliação
+                          📝 Feedback
                         </h4>
                         {isOwner ? (
                           <div
                             style={{
                               display: "flex",
                               flexDirection: "column",
-                              gap: "15px",
-                              marginTop: "15px",
+                              gap: "10px",
                             }}
                           >
                             <div>
                               <label
-                                style={{
-                                  fontSize: "0.9rem",
-                                  color: "#ccc",
-                                  display: "block",
-                                  marginBottom: "5px",
-                                }}
+                                style={{ fontSize: "0.8rem", color: "#ccc" }}
                               >
-                                Nota (0-100)
+                                Nota
                               </label>
                               <input
                                 type="number"
@@ -895,101 +998,46 @@ export default function ClassroomView() {
                                 onChange={(e) =>
                                   setGradingGrade(e.target.value)
                                 }
-                                placeholder="Ex: 100"
-                                min="0"
-                                max="100"
-                                style={{ width: "100px" }}
                               />
                             </div>
                             <div>
                               <label
-                                style={{
-                                  fontSize: "0.9rem",
-                                  color: "#ccc",
-                                  display: "block",
-                                  marginBottom: "5px",
-                                }}
+                                style={{ fontSize: "0.8rem", color: "#ccc" }}
                               >
                                 Comentário
                               </label>
                               <textarea
                                 className="form-textarea"
-                                rows={4}
+                                rows={3}
                                 value={gradingComment}
                                 onChange={(e) =>
                                   setGradingComment(e.target.value)
                                 }
-                                placeholder="Feedback..."
-                                style={{ width: "100%" }}
                               />
                             </div>
                             <button
                               onClick={handleSaveGrade}
                               className="btn btn-primary"
-                              style={{ alignSelf: "flex-end" }}
                             >
-                              Salvar Avaliação
+                              Salvar
                             </button>
                           </div>
                         ) : (
-                          <div style={{ marginTop: "10px" }}>
-                            {inspectingSubmission.grade != null ? (
-                              <div
-                                style={{
-                                  fontSize: "1.2rem",
-                                  marginBottom: "10px",
-                                  color: "#fff",
-                                }}
-                              >
+                          <div>
+                            {inspectingSubmission.grade != null && (
+                              <div>
                                 Nota:{" "}
-                                <strong style={{ color: "#4caf50" }}>
-                                  {inspectingSubmission.grade} / 100
-                                </strong>
-                              </div>
-                            ) : (
-                              <div
-                                style={{
-                                  color: "#888",
-                                  fontStyle: "italic",
-                                  marginBottom: "10px",
-                                }}
-                              >
-                                Sem nota atribuída.
+                                <strong>{inspectingSubmission.grade}</strong>
                               </div>
                             )}
-                            {inspectingSubmission.teacherComment ? (
+                            {inspectingSubmission.teacherComment && (
                               <div
                                 style={{
-                                  background: "#1e1e1e",
-                                  padding: "10px",
-                                  borderRadius: "4px",
-                                  borderLeft: "3px solid #4caf50",
+                                  marginTop: "10px",
+                                  fontStyle: "italic",
                                 }}
                               >
-                                <div
-                                  style={{
-                                    fontSize: "0.85rem",
-                                    color: "#888",
-                                    marginBottom: "5px",
-                                  }}
-                                >
-                                  Comentário:
-                                </div>
-                                <div
-                                  style={{
-                                    whiteSpace: "pre-wrap",
-                                    color: "#ddd",
-                                    lineHeight: "1.5",
-                                  }}
-                                >
-                                  {inspectingSubmission.teacherComment}
-                                </div>
-                              </div>
-                            ) : (
-                              <div
-                                style={{ color: "#666", fontStyle: "italic" }}
-                              >
-                                Sem comentários.
+                                "{inspectingSubmission.teacherComment}"
                               </div>
                             )}
                           </div>
@@ -1013,6 +1061,71 @@ export default function ClassroomView() {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* --- DASHBOARD DA TURMA (LADO A LADO) --- */}
+      {activeTab === "analytics" && isOwner && (
+        <div className="container" style={{ padding: "40px" }}>
+          <h2 style={{ marginBottom: "30px", color: "#ccc" }}>
+            Desempenho da Turma: {classroom?.name}
+          </h2>
+          {stats.length > 0 ? (
+            <div
+              style={{
+                width: "100%",
+                height: 400,
+                background: "#1e1e1e",
+                padding: "20px",
+                borderRadius: "8px",
+                border: "1px solid #333",
+              }}
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={stats}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#333"
+                    vertical={false}
+                  />
+                  <XAxis dataKey="name" stroke="#888" />
+                  <YAxis stroke="#888" allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#252526",
+                      borderColor: "#444",
+                      color: "#fff",
+                    }}
+                    itemStyle={{ color: "#fff" }}
+                    cursor={{ fill: "rgba(255,255,255,0.05)" }}
+                  />
+                  <Legend />
+                  {/* REMOVIDO stackId="a" PARA FICAR LADO A LADO */}
+                  <Bar
+                    dataKey="Accepted"
+                    name="Acertos"
+                    fill="#4caf50"
+                    barSize={30}
+                  />
+                  <Bar
+                    dataKey="Error"
+                    name="Erros / Falhas"
+                    fill="#f44336"
+                    barSize={30}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div
+              style={{ textAlign: "center", color: "#666", marginTop: "50px" }}
+            >
+              <p>Nenhum dado de submissão encontrado para esta turma ainda.</p>
             </div>
           )}
         </div>

@@ -24,13 +24,18 @@ export class SubmissionsController {
     return this.submissionsService.create(createSubmissionDto, req.user.userId);
   }
 
-  // --- ROTA QUE ESTAVA FALTANDO (DASHBOARD) ---
   @UseGuards(JwtAuthGuard)
   @Get('stats')
   getStats(@Request() req) {
     return this.submissionsService.getTeacherStats(req.user.userId);
   }
-  // --------------------------------------------
+
+  // --- NOVA ROTA: ESTATÍSTICAS DO PROBLEMA ---
+  @UseGuards(JwtAuthGuard)
+  @Get('stats/problem/:id')
+  getProblemStats(@Param('id') id: string) {
+    return this.submissionsService.getProblemStats(id);
+  }
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id/grade')
@@ -51,5 +56,11 @@ export class SubmissionsController {
   @Get()
   findAll() {
     return this.submissionsService.findAll();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('stats/classroom/:id')
+  getClassroomStats(@Param('id') id: string, @Request() req) {
+    return this.submissionsService.getClassroomStats(+id, req.user.userId);
   }
 }

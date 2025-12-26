@@ -20,6 +20,29 @@ export class SubmissionsService {
     private problemsRepository: Repository<Problem>,
   ) {}
 
+  async getProblemStats(problemId: string) {
+    const submissions = await this.submissionsRepository.find({
+      where: { problem: { id: problemId } },
+      select: ['status'], // Otimização: traz apenas o status
+    });
+
+    let accepted = 0;
+    let error = 0;
+
+    submissions.forEach((sub) => {
+      if (sub.status === 'Accepted') {
+        accepted++;
+      } else {
+        error++;
+      }
+    });
+
+    return [
+      { name: 'Acertos', value: accepted, fill: '#4caf50' }, // Verde
+      { name: 'Erros', value: error, fill: '#f44336' }, // Vermelho
+    ];
+  }
+
   // --- NOVO MÉTODO GRADE ---
   async grade(id: string, gradeDto: GradeSubmissionDto, userId: number) {
     const submission = await this.submissionsRepository.findOne({
@@ -207,6 +230,53 @@ export class SubmissionsService {
           entry.Accepted += 1;
         } else {
           entry.Error += 1; // Qualquer status que não seja Accepted conta como erro no gráfico
+        }
+      }
+    });
+
+    return Array.from(statsMap.values());
+  }
+
+  async getClassroomStats(classroomId: number, userId: number) {
+    // Busca submissões apenas desta turma específica e valida se o usuário é o dono
+    const submissions = await this.submissionsRepository.find({
+      where: {
+        problem: {
+          classroom: {
+            id: classroomId,
+            owner: { id: userId }, // Garante que só o dono vê os dados
+          },
+        },
+      },
+      relations: ['problem'],
+      select: ['id', 'status', 'problem'],
+    });
+
+    // Se não retornar nada, pode ser que a turma não exista ou não tenha submissões.
+    // O gráfico apenas ficará vazio, o que é o comportamento esperado.
+
+    const statsMap = new Map<
+      string,
+      { name: string; Accepted: number; Error: number }
+    >();
+
+    submissions.forEach((sub) => {
+      const problemTitle = sub.problem.title;
+
+      if (!statsMap.has(problemTitle)) {
+        statsMap.set(problemTitle, {
+          name: problemTitle,
+          Accepted: 0,
+          Error: 0,
+        });
+      }
+
+      const entry = statsMap.get(problemTitle);
+      if (entry) {
+        if (sub.status === 'Accepted') {
+          entry.Accepted += 1;
+        } else {
+          entry.Error += 1;
         }
       }
     });
