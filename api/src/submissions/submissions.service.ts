@@ -7,9 +7,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import axios from 'axios';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
+import { GradeSubmissionDto } from './dto/grade-submission.dto'; // <--- Importe
 import { Submission } from './entities/submission.entity';
-import { Problem, ProblemType } from '../problems/entities/problem.entity'; // Importe o Enum
-import { GradeSubmissionDto } from './dto/grade-submission.dto'; // Importe o DTO
+import { Problem, ProblemType } from '../problems/entities/problem.entity';
 
 @Injectable()
 export class SubmissionsService {
@@ -19,6 +19,32 @@ export class SubmissionsService {
     @InjectRepository(Problem)
     private problemsRepository: Repository<Problem>,
   ) {}
+
+  // --- NOVO MÉTODO GRADE ---
+  async grade(id: string, gradeDto: GradeSubmissionDto, userId: number) {
+    const submission = await this.submissionsRepository.findOne({
+      where: { id },
+      relations: ['problem', 'problem.classroom', 'problem.classroom.owner'],
+    });
+
+    if (!submission) {
+      throw new NotFoundException('Submissão não encontrada');
+    }
+
+    // Verifica se quem está dando a nota é o professor da turma
+    if (submission.problem.classroom.owner.id !== userId) {
+      throw new ForbiddenException(
+        'Apenas o professor desta turma pode avaliar.',
+      );
+    }
+
+    if (gradeDto.grade !== undefined) submission.grade = gradeDto.grade;
+    if (gradeDto.teacherComment !== undefined)
+      submission.teacherComment = gradeDto.teacherComment;
+
+    return this.submissionsRepository.save(submission);
+  }
+  // ------------------------
 
   async create(createSubmissionDto: CreateSubmissionDto, userId: number) {
     const { code, language_id, problem_id } = createSubmissionDto;
@@ -39,8 +65,6 @@ export class SubmissionsService {
       });
 
       if (attempts >= problem.maxAttempts) {
-        // Retorna um erro amigável ou lança exceção.
-        // Lançar exceção impede a criação da linha no banco, o que é ideal.
         throw new ForbiddenException(
           `Limite de tentativas excedido (${problem.maxAttempts}/${problem.maxAttempts}). A questão foi encerrada.`,
         );
@@ -61,7 +85,6 @@ export class SubmissionsService {
     const rapidApiKey = process.env.RAPIDAPI_KEY;
 
     if (!rapidApiKey) {
-      // Log para debug do servidor apenas
       console.error('RAPIDAPI_KEY não configurada.');
       finalVerdict = 'Internal Error';
     } else if (problem.testCases && problem.testCases.length > 0) {
@@ -89,21 +112,16 @@ export class SubmissionsService {
             },
           );
 
-          // Captura dados da execução atual
           const result = response.data;
 
-          // Se houver erro ou resposta errada, capturamos o output e paramos
           if (result.status.id !== 3) {
             finalVerdict = result.status.description;
-            // Decodifica Base64 se existir
             executionStdout = result.stdout
               ? Buffer.from(result.stdout, 'base64').toString()
               : null;
             executionStderr = result.stderr
               ? Buffer.from(result.stderr, 'base64').toString()
               : null;
-
-            // Se for erro de compilação, o stderr costuma vir no campo 'compile_output'
             if (result.compile_output) {
               executionStderr = Buffer.from(
                 result.compile_output,
@@ -112,7 +130,7 @@ export class SubmissionsService {
             }
             break;
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error(
             'Judge0 API Error:',
             error.response?.data || error.message,
@@ -127,8 +145,8 @@ export class SubmissionsService {
       code,
       language_id,
       status: finalVerdict,
-      stdout: executionStdout, // Salva o output
-      stderr: executionStderr, // Salva o erro
+      stdout: executionStdout,
+      stderr: executionStderr,
       problem,
       user: { id: userId } as any,
     });
@@ -152,26 +170,47 @@ export class SubmissionsService {
     return { msg: 'ok' };
   }
 
-  async grade(id: string, gradeDto: GradeSubmissionDto, userId: number) {
-    const submission = await this.submissionsRepository.findOne({
-      where: { id },
-      relations: ['problem', 'problem.classroom', 'problem.classroom.owner'],
+  async getTeacherStats(userId: number) {
+    // Busca submissões onde o exercício pertence a uma turma cujo dono é o userId
+    const submissions = await this.submissionsRepository.find({
+      where: {
+        problem: {
+          classroom: {
+            owner: { id: userId },
+          },
+        },
+      },
+      relations: ['problem'],
+      select: ['id', 'status', 'problem'], // Otimização: traz apenas o necessário
     });
 
-    if (!submission) {
-      throw new NotFoundException('Submissão não encontrada');
-    }
+    // Processamento dos dados para o formato do gráfico
+    const statsMap = new Map<
+      string,
+      { name: string; Accepted: number; Error: number }
+    >();
 
-    if (submission.problem.classroom.owner.id !== userId) {
-      throw new ForbiddenException(
-        'Apenas o professor desta turma pode avaliar.',
-      );
-    }
+    submissions.forEach((sub) => {
+      const problemTitle = sub.problem.title;
 
-    if (gradeDto.grade !== undefined) submission.grade = gradeDto.grade;
-    if (gradeDto.teacherComment !== undefined)
-      submission.teacherComment = gradeDto.teacherComment;
+      if (!statsMap.has(problemTitle)) {
+        statsMap.set(problemTitle, {
+          name: problemTitle,
+          Accepted: 0,
+          Error: 0,
+        });
+      }
 
-    return this.submissionsRepository.save(submission);
+      const entry = statsMap.get(problemTitle);
+      if (entry) {
+        if (sub.status === 'Accepted') {
+          entry.Accepted += 1;
+        } else {
+          entry.Error += 1; // Qualquer status que não seja Accepted conta como erro no gráfico
+        }
+      }
+    });
+
+    return Array.from(statsMap.values());
   }
 }

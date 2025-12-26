@@ -9,7 +9,7 @@ import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
 
-// --- INTERFACES ---
+// Interfaces
 interface Announcement {
   id: string;
   content: string;
@@ -46,12 +46,10 @@ interface Submission {
   stderr?: string;
   createdAt: string;
   user: { id: number; email: string };
-  // Novos campos para o sistema de notas
   grade?: number;
   teacherComment?: string;
 }
 
-// --- TEMPLATES DE LINGUAGEM ---
 const LANGUAGES = [
   {
     id: 71,
@@ -99,7 +97,7 @@ export default function ClassroomView() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  // --- ESTADOS DE CONTEXTO ---
+  // Estados de Contexto
   const [activeTab, setActiveTab] = useState<"stream" | "classwork" | "people">(
     () => (localStorage.getItem(`activeTab_${id}`) as any) || "stream"
   );
@@ -120,13 +118,11 @@ export default function ClassroomView() {
   );
   const [code, setCode] = useState<string>("");
 
-  // Estados de Execução
   const [verdict, setVerdict] = useState<string | null>(null);
   const [executionOutput, setExecutionOutput] = useState<string | null>(null);
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
-  // Estados de Submissões e Notas
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [inspectingSubmission, setInspectingSubmission] =
@@ -156,7 +152,6 @@ export default function ClassroomView() {
     return `autosave_${myUserId}_${probId}_${langId}`;
   };
 
-  // --- EDITOR & AUTOSAVE ---
   useEffect(() => {
     const lang = LANGUAGES.find((l) => l.id === languageId);
     if (!lang) return;
@@ -197,10 +192,8 @@ export default function ClassroomView() {
     }
   };
 
-  // --- LÓGICA DE AVALIAÇÃO ---
   const handleInspect = (sub: Submission) => {
     setInspectingSubmission(sub);
-    // Preenche os campos com os valores existentes (se houver)
     setGradingGrade(
       sub.grade !== null && sub.grade !== undefined ? sub.grade : ""
     );
@@ -211,7 +204,6 @@ export default function ClassroomView() {
     if (!inspectingSubmission) return;
     try {
       const token = localStorage.getItem("token");
-      // Faz PATCH para atualizar a nota
       await axios.patch(
         `${API_URL}/submissions/${inspectingSubmission.id}/grade`,
         {
@@ -221,9 +213,7 @@ export default function ClassroomView() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      toast.success("Nota salva com sucesso!");
-
-      // Recarrega lista e atualiza modal visualmente
+      toast.success("Avaliação salva!");
       fetchSubmissions();
       setInspectingSubmission((prev) =>
         prev
@@ -239,7 +229,6 @@ export default function ClassroomView() {
     }
   };
 
-  // --- CARREGAMENTO DE DADOS ---
   const fetchClassroomData = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -443,7 +432,6 @@ export default function ClassroomView() {
         </nav>
       </header>
 
-      {/* MURAL */}
       {activeTab === "stream" && (
         <div className="stream-container">
           <div className="stream-banner">
@@ -513,7 +501,6 @@ export default function ClassroomView() {
         </div>
       )}
 
-      {/* ALUNOS */}
       {activeTab === "people" && (
         <div className="people-container">
           <div style={{ marginBottom: "40px" }}>
@@ -543,7 +530,6 @@ export default function ClassroomView() {
         </div>
       )}
 
-      {/* ATIVIDADES */}
       {activeTab === "classwork" && (
         <div className="ide-container" style={{ flex: 1, borderTop: "none" }}>
           <div className="ide-toolbar">
@@ -563,6 +549,7 @@ export default function ClassroomView() {
               ))}
             </select>
 
+            {/* BOTÕES DO PROFESSOR (Edição/Exclusão) */}
             {isOwner && (
               <div style={{ display: "flex", gap: "5px", marginLeft: "10px" }}>
                 {selectedProblemId && (
@@ -570,21 +557,16 @@ export default function ClassroomView() {
                     <button
                       onClick={handleEditProblem}
                       className="btn btn-secondary"
+                      title="Editar"
                     >
                       ✏️
                     </button>
                     <button
                       onClick={handleDeleteProblem}
                       className="btn btn-danger"
+                      title="Excluir"
                     >
                       🗑️
-                    </button>
-                    <button
-                      onClick={() => setShowSubmissions(true)}
-                      className="btn btn-primary"
-                      style={{ backgroundColor: "#555" }}
-                    >
-                      📊
                     </button>
                   </>
                 )}
@@ -602,6 +584,21 @@ export default function ClassroomView() {
               </div>
             )}
 
+            {/* BOTÃO DE HISTÓRICO/SUBMISSÕES (Disponível para ALUNO E PROFESSOR) */}
+            {selectedProblemId && (
+              <button
+                onClick={() => setShowSubmissions(true)}
+                className="btn btn-secondary"
+                style={{ marginLeft: "10px", backgroundColor: "#444" }}
+                title={
+                  isOwner ? "Ver submissões da turma" : "Ver meu histórico"
+                }
+              >
+                📊 {isOwner ? "Turma" : "Histórico"}
+              </button>
+            )}
+
+            {/* STATUS DE PRAZO E TENTATIVAS */}
             <div
               style={{
                 marginLeft: "auto",
@@ -623,6 +620,8 @@ export default function ClassroomView() {
                     }`,
                     color: isDeadlinePassed ? "#f44336" : "#ccc",
                     fontSize: "0.85rem",
+                    display: "flex",
+                    alignItems: "center",
                   }}
                 >
                   {isDeadlinePassed
@@ -735,7 +734,7 @@ export default function ClassroomView() {
             <div className="modal-overlay">
               <div className="modal-content large">
                 <div className="modal-header">
-                  <h2>Submissões</h2>
+                  <h2>{isOwner ? "Submissões da Turma" : "Meu Histórico"}</h2>
                   <button
                     onClick={() => setShowSubmissions(false)}
                     className="btn btn-secondary"
@@ -754,41 +753,59 @@ export default function ClassroomView() {
                     </tr>
                   </thead>
                   <tbody>
-                    {submissions.map((sub) => (
-                      <tr key={sub.id}>
-                        <td>{sub.user?.email}</td>
-                        <td>
-                          <span
-                            className={`status-badge ${
-                              sub.status === "Accepted" ? "success" : "error"
-                            }`}
-                          >
-                            {sub.status}
-                          </span>
-                        </td>
-                        {/* NOVA COLUNA: NOTA */}
-                        <td>
-                          {sub.grade !== null && sub.grade !== undefined ? (
+                    {/* FILTRAGEM DE PRIVACIDADE: ALUNO SÓ VÊ AS DELE */}
+                    {submissions
+                      .filter((sub) => isOwner || sub.user?.id === myUserId)
+                      .map((sub) => (
+                        <tr key={sub.id}>
+                          <td>{sub.user?.email}</td>
+                          <td>
                             <span
-                              style={{ fontWeight: "bold", color: "#4caf50" }}
+                              className={`status-badge ${
+                                sub.status === "Accepted" ? "success" : "error"
+                              }`}
                             >
-                              {sub.grade}
+                              {sub.status}
                             </span>
-                          ) : (
-                            <span style={{ color: "#666" }}>-</span>
-                          )}
-                        </td>
-                        <td>{new Date(sub.createdAt).toLocaleString()}</td>
-                        <td>
-                          <button
-                            className="btn btn-sm btn-primary"
-                            onClick={() => handleInspect(sub)}
-                          >
-                            Inspecionar
-                          </button>
+                          </td>
+                          <td>
+                            {sub.grade !== null && sub.grade !== undefined ? (
+                              <span
+                                style={{ fontWeight: "bold", color: "#4caf50" }}
+                              >
+                                {sub.grade}
+                              </span>
+                            ) : (
+                              <span style={{ color: "#666" }}>-</span>
+                            )}
+                          </td>
+                          <td>{new Date(sub.createdAt).toLocaleString()}</td>
+                          <td>
+                            <button
+                              className="btn btn-sm btn-primary"
+                              onClick={() => handleInspect(sub)}
+                            >
+                              Inspecionar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    {submissions.filter(
+                      (sub) => isOwner || sub.user?.id === myUserId
+                    ).length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={5}
+                          style={{
+                            textAlign: "center",
+                            padding: "20px",
+                            color: "#666",
+                          }}
+                        >
+                          Nenhuma submissão encontrada.
                         </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -826,7 +843,6 @@ export default function ClassroomView() {
                     className="inspection-output"
                     style={{ overflowY: "auto", maxHeight: "50vh" }}
                   >
-                    {/* PAINEL DE NOTAS E COMENTÁRIOS */}
                     {(isOwner ||
                       inspectingSubmission.grade != null ||
                       inspectingSubmission.teacherComment) && (
@@ -852,8 +868,6 @@ export default function ClassroomView() {
                         >
                           📝 Feedback da Avaliação
                         </h4>
-
-                        {/* SE FOR PROFESSOR: MOSTRA CAMPOS PARA EDITAR */}
                         {isOwner ? (
                           <div
                             style={{
@@ -896,7 +910,7 @@ export default function ClassroomView() {
                                   marginBottom: "5px",
                                 }}
                               >
-                                Comentário / Feedback
+                                Comentário
                               </label>
                               <textarea
                                 className="form-textarea"
@@ -905,7 +919,7 @@ export default function ClassroomView() {
                                 onChange={(e) =>
                                   setGradingComment(e.target.value)
                                 }
-                                placeholder="Escreva aqui o feedback para o aluno..."
+                                placeholder="Feedback..."
                                 style={{ width: "100%" }}
                               />
                             </div>
@@ -918,7 +932,6 @@ export default function ClassroomView() {
                             </button>
                           </div>
                         ) : (
-                          // SE FOR ALUNO: APENAS LEITURA
                           <div style={{ marginTop: "10px" }}>
                             {inspectingSubmission.grade != null ? (
                               <div
@@ -944,7 +957,6 @@ export default function ClassroomView() {
                                 Sem nota atribuída.
                               </div>
                             )}
-
                             {inspectingSubmission.teacherComment ? (
                               <div
                                 style={{
@@ -961,7 +973,7 @@ export default function ClassroomView() {
                                     marginBottom: "5px",
                                   }}
                                 >
-                                  Comentário do Professor:
+                                  Comentário:
                                 </div>
                                 <div
                                   style={{
@@ -984,9 +996,8 @@ export default function ClassroomView() {
                         )}
                       </div>
                     )}
-
                     <div className="output-block">
-                      <h4>Status da Execução</h4>
+                      <h4>Status</h4>
                       <div>{inspectingSubmission.status}</div>
                     </div>
                     {inspectingSubmission.stdout && (

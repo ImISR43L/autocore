@@ -1,398 +1,351 @@
-// web/src/pages/Dashboard.tsx
-import { useEffect, useState, useCallback } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 import "../App.css";
 
 interface Classroom {
   id: number;
   name: string;
   code: string;
+  isOwner: boolean;
 }
 
-interface DashboardData {
-  teaching: Classroom[];
-  enrolled: Classroom[];
+interface StatData {
+  name: string;
+  Accepted: number;
+  Error: number;
 }
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
-
-const DashboardSkeleton = () => (
-  <div className="dashboard-grid">
-    {[1, 2, 3].map((i) => (
-      <div key={i} className="class-card skeleton skeleton-card">
-        <div className="skeleton skeleton-text" style={{ width: "60%" }}></div>
-        <div
-          className="skeleton skeleton-text"
-          style={{ width: "30%", marginTop: "auto" }}
-        ></div>
-      </div>
-    ))}
-  </div>
-);
 
 export default function Dashboard() {
-  const [data, setData] = useState<DashboardData>({
-    teaching: [],
-    enrolled: [],
-  });
-  const [loading, setLoading] = useState(true);
-
-  // Estados dos Modais
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showJoinModal, setShowJoinModal] = useState(false);
-
-  // Estados dos Formulários
-  const [newClassName, setNewClassName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
-  const [actionLoading, setActionLoading] = useState(false);
-
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const navigate = useNavigate();
 
-  const fetchClasses = useCallback(async () => {
-    const token = localStorage.getItem("token");
-    try {
-      const res = await axios.get(`${API_URL}/classrooms/my`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setData(res.data);
-    } catch (error) {
-      console.error("Erro ao buscar turmas", error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [classrooms, setClassrooms] = useState<Classroom[]>([]);
+  const [stats, setStats] = useState<StatData[]>([]); // Estado para o gráfico
+  const [newClassName, setNewClassName] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
 
   useEffect(() => {
-    fetchClasses();
-  }, [fetchClasses]);
+    fetchData();
+  }, []);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const fetchData = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        navigate("/");
+        return;
+      }
+
+      // 1. Busca Turmas
+      const resClass = await axios.get(`${API_URL}/classrooms`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setClassrooms(resClass.data);
+
+      // 2. Busca Estatísticas (Novo)
+      const resStats = await axios.get(`${API_URL}/submissions/stats`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setStats(resStats.data);
+    } catch (error) {
+      toast.error("Sessão expirada ou erro ao carregar.");
+      navigate("/");
+    }
+  };
+
+  const handleCreateClassroom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClassName.trim()) return;
-
-    setActionLoading(true);
-    const token = localStorage.getItem("token");
+    setIsCreating(true);
     try {
+      const token = localStorage.getItem("token");
       await axios.post(
         `${API_URL}/classrooms`,
         { name: newClassName },
-        { headers: { Authorization: `Bearer ${token}` } }
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
       );
       toast.success("Turma criada!");
       setNewClassName("");
-      setShowCreateModal(false);
-      fetchClasses();
+      fetchData();
     } catch (error) {
       toast.error("Erro ao criar turma.");
     } finally {
-      setActionLoading(false);
+      setIsCreating(false);
     }
   };
 
-  const handleJoin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleJoinClassroom = async () => {
     if (!joinCode.trim()) return;
-
-    setActionLoading(true);
-    const token = localStorage.getItem("token");
     try {
+      const token = localStorage.getItem("token");
       await axios.post(
         `${API_URL}/classrooms/join`,
         { code: joinCode },
-        { headers: { Authorization: `Bearer ${token}` } }
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
       );
-      toast.success("Você entrou na turma!");
-      setJoinCode("");
+      toast.success("Entrou na turma!");
       setShowJoinModal(false);
-      fetchClasses();
-    } catch (e) {
-      toast.error("Código inválido ou já matriculado.");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success("Código copiado!");
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    navigate("/");
-  };
-
-  const handleLeave = async (
-    e: React.MouseEvent,
-    classroomId: number,
-    name: string
-  ) => {
-    e.stopPropagation(); // Impede que o clique abra a turma
-
-    if (!confirm(`Tem certeza que deseja sair da turma "${name}"?`)) return;
-
-    const token = localStorage.getItem("token");
-    const toastId = toast.loading("Saindo da turma...");
-
-    try {
-      await axios.delete(`${API_URL}/classrooms/${classroomId}/leave`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      toast.success("Você saiu da turma.", { id: toastId });
-      fetchClasses(); // Atualiza a lista
+      setJoinCode("");
+      fetchData();
     } catch (error) {
-      toast.error("Erro ao sair da turma.", { id: toastId });
+      toast.error("Código inválido ou já participa.");
     }
   };
 
-  const handleDelete = async (
-    e: React.MouseEvent,
-    classroomId: number,
-    name: string
-  ) => {
-    e.stopPropagation();
-
-    // Confirmação dupla para segurança
-    const confirm1 = confirm(
-      `Tem certeza que deseja EXCLUIR a turma "${name}"?`
-    );
-    if (!confirm1) return;
-
-    const confirm2 = confirm(
-      "Esta ação apagará todos os exercícios e removerá todos os alunos. Continuar?"
-    );
-    if (!confirm2) return;
-
-    const token = localStorage.getItem("token");
-    const toastId = toast.loading("Excluindo turma...");
-
-    try {
-      await axios.delete(`${API_URL}/classrooms/${classroomId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      toast.success("Turma excluída com sucesso.", { id: toastId });
-      fetchClasses(); // Atualiza a lista
-    } catch (error) {
-      toast.error("Erro ao excluir turma.", { id: toastId });
-    }
-  };
+  // Separa turmas
+  const myClassrooms = classrooms.filter((c) => c.isOwner);
+  const joinedClassrooms = classrooms.filter((c) => !c.isOwner);
 
   return (
-    <div className="container">
-      {/* MODAL: CRIAR TURMA */}
-      {showCreateModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: "400px" }}>
-            <h2 style={{ marginBottom: "1rem" }}>Nova Turma</h2>
-            <form onSubmit={handleCreate}>
-              <div className="form-group">
-                <label className="form-label">Nome da Disciplina</label>
-                <input
-                  className="form-input"
-                  autoFocus
-                  value={newClassName}
-                  onChange={(e) => setNewClassName(e.target.value)}
-                  placeholder="Ex: Algoritmos I"
-                />
-              </div>
-              <div style={{ display: "flex", gap: "10px", marginTop: "1rem" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="btn btn-secondary"
-                  style={{ flex: 1 }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="btn btn-primary"
-                  style={{ flex: 1 }}
-                >
-                  {actionLoading ? "..." : "Criar"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: ENTRAR EM TURMA */}
-      {showJoinModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: "400px" }}>
-            <h2 style={{ marginBottom: "1rem" }}>Entrar em Turma</h2>
-            <form onSubmit={handleJoin}>
-              <div className="form-group">
-                <label className="form-label">Código de Acesso</label>
-                <input
-                  className="form-input"
-                  autoFocus
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value)}
-                  placeholder="Cole o código aqui"
-                />
-              </div>
-              <div style={{ display: "flex", gap: "10px", marginTop: "1rem" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowJoinModal(false)}
-                  className="btn btn-secondary"
-                  style={{ flex: 1 }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="btn btn-primary"
-                  style={{ flex: 1 }}
-                >
-                  {actionLoading ? "..." : "Entrar"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      <div className="page-header">
-        <h1 className="page-title">Meu Painel</h1>
-        <button onClick={handleLogout} className="btn btn-secondary">
-          Sair
-        </button>
-      </div>
-
-      <div style={{ display: "flex", gap: "1rem", marginBottom: "2rem" }}>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="btn btn-primary"
-        >
-          + Nova Turma
-        </button>
-        <button
-          onClick={() => setShowJoinModal(true)}
-          className="btn btn-secondary"
-        >
-          Entrar com Código
-        </button>
-      </div>
-
-      {/* Seção Professor */}
-      <section style={{ marginBottom: "3rem" }}>
-        <h2
+    <div className="container" style={{ paddingBottom: "50px" }}>
+      <header
+        className="dashboard-header"
+        style={{
+          marginBottom: "30px",
+          borderBottom: "1px solid #333",
+          paddingBottom: "20px",
+        }}
+      >
+        <div
           style={{
-            color: "var(--text-muted)",
-            fontSize: "0.9rem",
-            textTransform: "uppercase",
-            letterSpacing: "1px",
-            marginBottom: "1rem",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
           }}
         >
-          Turmas que eu ensino
-        </h2>
+          <h1 style={{ margin: 0 }}>Dashboard</h1>
+          <button
+            onClick={() => {
+              localStorage.removeItem("token");
+              navigate("/");
+            }}
+            className="btn btn-ghost"
+            style={{ color: "#f44336" }}
+          >
+            Sair
+          </button>
+        </div>
+      </header>
 
-        {loading ? (
-          <DashboardSkeleton />
-        ) : (
-          <div className="dashboard-grid">
-            {data.teaching.length === 0 && (
-              <p style={{ color: "#555" }}>
+      {/* --- SEÇÃO DE GRÁFICOS (Apenas se houver dados e o usuário for professor de algo) --- */}
+      {stats.length > 0 && (
+        <div className="chart-section" style={{ marginBottom: "40px" }}>
+          <h2
+            style={{ fontSize: "1.5rem", marginBottom: "20px", color: "#ccc" }}
+          >
+            📊 Desempenho dos Alunos por Exercício
+          </h2>
+          <div
+            style={{
+              width: "100%",
+              height: 350,
+              background: "#1e1e1e",
+              padding: "20px",
+              borderRadius: "8px",
+              border: "1px solid #333",
+            }}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={stats}
+                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                <XAxis dataKey="name" stroke="#888" />
+                <YAxis stroke="#888" />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#252526",
+                    borderColor: "#444",
+                    color: "#fff",
+                  }}
+                  itemStyle={{ color: "#fff" }}
+                />
+                <Legend />
+                <Bar
+                  dataKey="Accepted"
+                  name="Acertos"
+                  stackId="a"
+                  fill="#4caf50"
+                />
+                <Bar
+                  dataKey="Error"
+                  name="Erros / Falhas"
+                  stackId="a"
+                  fill="#f44336"
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* --- LISTA DE TURMAS --- */}
+      <div className="dashboard-grid">
+        {/* Coluna da Esquerda: Minhas Turmas */}
+        <div className="section">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "15px",
+            }}
+          >
+            <h2>Minhas Turmas</h2>
+          </div>
+
+          <div
+            className="create-class-box"
+            style={{
+              marginBottom: "20px",
+              background: "#252526",
+              padding: "15px",
+              borderRadius: "8px",
+            }}
+          >
+            <form
+              onSubmit={handleCreateClassroom}
+              style={{ display: "flex", gap: "10px" }}
+            >
+              <input
+                type="text"
+                placeholder="Nome da nova turma..."
+                className="form-input"
+                value={newClassName}
+                onChange={(e) => setNewClassName(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <button
+                type="submit"
+                disabled={isCreating || !newClassName}
+                className="btn btn-primary"
+              >
+                {isCreating ? "+" : "Criar"}
+              </button>
+            </form>
+          </div>
+
+          <div className="class-list">
+            {myClassrooms.map((c) => (
+              <Link key={c.id} to={`/class/${c.id}`} className="class-card">
+                <div
+                  className="class-card-header"
+                  style={{ background: "#4caf50" }}
+                ></div>
+                <div className="class-card-body">
+                  <h3>{c.name}</h3>
+                  <p style={{ color: "#888", fontSize: "0.8rem" }}>
+                    Código: {c.code}
+                  </p>
+                  <span className="badge badge-owner">Professor</span>
+                </div>
+              </Link>
+            ))}
+            {myClassrooms.length === 0 && (
+              <p style={{ color: "#666" }}>
                 Você ainda não criou nenhuma turma.
               </p>
             )}
-            {data.teaching.map((c) => (
-              <div key={c.id} className="class-card">
-                <div
-                  onClick={() => navigate(`/class/${c.id}`)}
-                  style={{ cursor: "pointer", marginBottom: "10px" }}
-                >
-                  <h3 className="class-title">{c.name}</h3>
-                  <button
-                    onClick={(e) => handleDelete(e, c.id, c.name)}
-                    className="btn btn-ghost"
-                    style={{ padding: "0 5px", color: "#ff4444" }}
-                    title="Excluir Turma"
-                  >
-                    🗑️
-                  </button>
-                  <span className="class-role">Professor</span>
-                </div>
-
-                <div
-                  className="code-box"
-                  onClick={() => copyToClipboard(c.code)}
-                  title="Clique para copiar"
-                >
-                  <span>Cód: {c.code}</span>
-                  <span style={{ marginLeft: "auto", opacity: 0.5 }}>📋</span>
-                </div>
-              </div>
-            ))}
           </div>
-        )}
-      </section>
+        </div>
 
-      {/* Seção Aluno */}
-      <section>
-        <h2
-          style={{
-            color: "var(--text-muted)",
-            fontSize: "0.9rem",
-            textTransform: "uppercase",
-            letterSpacing: "1px",
-            marginBottom: "1rem",
-          }}
-        >
-          Minhas matrículas
-        </h2>
+        {/* Coluna da Direita: Turmas que participo */}
+        <div className="section">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "15px",
+            }}
+          >
+            <h2>Estou Participando</h2>
+            <button
+              onClick={() => setShowJoinModal(true)}
+              className="btn btn-secondary"
+            >
+              Entrar em Turma
+            </button>
+          </div>
 
-        {loading ? (
-          <DashboardSkeleton />
-        ) : (
-          <div className="dashboard-grid">
-            {data.enrolled.length === 0 && (
-              <p style={{ color: "#555" }}>Nenhuma matrícula ativa.</p>
+          <div className="class-list">
+            {joinedClassrooms.map((c) => (
+              <Link key={c.id} to={`/class/${c.id}`} className="class-card">
+                <div
+                  className="class-card-header"
+                  style={{ background: "#2196f3" }}
+                ></div>
+                <div className="class-card-body">
+                  <h3>{c.name}</h3>
+                  <span className="badge badge-student">Aluno</span>
+                </div>
+              </Link>
+            ))}
+            {joinedClassrooms.length === 0 && (
+              <p style={{ color: "#666" }}>
+                Você não está matriculado em nenhuma turma.
+              </p>
             )}
-            {data.enrolled.map((c) => (
-              <div
-                key={c.id}
-                className="class-card"
-                onClick={() => navigate(`/class/${c.id}`)}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                  }}
-                >
-                  <h3 className="class-title">{c.name}</h3>
-
-                  {/* Botão de Sair */}
-                  <button
-                    onClick={(e) => handleLeave(e, c.id, c.name)}
-                    className="btn btn-danger"
-                    style={{
-                      padding: "2px 8px",
-                      fontSize: "0.7rem",
-                      marginLeft: "10px",
-                      opacity: 0.7,
-                    }}
-                    title="Sair da turma"
-                  >
-                    Sair ✕
-                  </button>
-                </div>
-                <span className="class-role">Estudante</span>
-              </div>
-            ))}
           </div>
-        )}
-      </section>
+        </div>
+      </div>
+
+      {/* MODAL DE ENTRAR EM TURMA */}
+      {showJoinModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>Entrar em uma Turma</h3>
+            <input
+              type="text"
+              placeholder="Código da turma (ex: A1B2C3)"
+              className="form-input"
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value)}
+              style={{ width: "100%", marginTop: "15px", marginBottom: "20px" }}
+            />
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+              }}
+            >
+              <button
+                onClick={() => setShowJoinModal(false)}
+                className="btn btn-secondary"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleJoinClassroom}
+                disabled={!joinCode}
+                className="btn btn-primary"
+              >
+                Entrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

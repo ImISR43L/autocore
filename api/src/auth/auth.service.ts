@@ -1,9 +1,13 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User } from '../users/entities/user.entity';
 import * as bcrypt from 'bcrypt';
+import { User } from '../users/entities/user.entity';
 import { AuthDto } from './dto/login.dto';
 
 @Injectable()
@@ -14,32 +18,54 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async register(authDto: AuthDto) {
-    const hashedPassword = await bcrypt.hash(authDto.password, 10);
-    // Removemos 'role' da criação
-    const user = this.usersRepository.create({
-      email: authDto.email,
-      password: hashedPassword,
-    });
-    await this.usersRepository.save(user);
-    return { message: 'Usuário criado com sucesso' };
+  async validateUser(email: string, pass: string): Promise<any> {
+    const user = await this.usersRepository.findOne({ where: { email } });
+    if (user && (await bcrypt.compare(pass, user.password))) {
+      const { password, ...result } = user;
+      return result;
+    }
+    return null;
   }
 
-  async login(authDto: AuthDto) {
-    const user = await this.usersRepository.findOne({
-      where: { email: authDto.email },
-    });
-
-    if (!user || !(await bcrypt.compare(authDto.password, user.password))) {
+  async login(loginDto: AuthDto) {
+    const user = await this.validateUser(loginDto.email, loginDto.password);
+    if (!user) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
-
-    // Payload simples sem role
-    const payload = { email: user.email, sub: user.id };
-
+    const payload = { email: user.email, sub: user.id, userId: user.id };
     return {
       access_token: this.jwtService.sign(payload),
-      email: user.email,
+      user: { id: user.id, email: user.email },
     };
+  }
+
+  async register(loginDto: AuthDto) {
+    const hashedPassword = await bcrypt.hash(loginDto.password, 10);
+
+    try {
+      const user = this.usersRepository.create({
+        email: loginDto.email,
+        password: hashedPassword,
+      });
+
+      const savedUser = await this.usersRepository.save(user);
+
+      // Retorna o token imediatamente após registro para login automático
+      const payload = {
+        email: savedUser.email,
+        sub: savedUser.id,
+        userId: savedUser.id,
+      };
+      return {
+        access_token: this.jwtService.sign(payload),
+        user: { id: savedUser.id, email: savedUser.email },
+      };
+    } catch (error: any) {
+      // Código de erro do Postgres para violação de chave única
+      if (error.code === '23505') {
+        throw new ConflictException('Este e-mail já está em uso.');
+      }
+      throw error;
+    }
   }
 }

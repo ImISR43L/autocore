@@ -1,3 +1,4 @@
+// api/src/classrooms/classrooms.controller.ts
 import {
   Controller,
   Post,
@@ -10,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ClassroomsService } from './classrooms.service';
-import { CreateClassroomDto } from './dto/create-classroom.dto'; // <--- Importar DTO
+import { CreateClassroomDto } from './dto/create-classroom.dto';
 
 @UseGuards(AuthGuard('jwt'))
 @Controller('classrooms')
@@ -18,7 +19,6 @@ export class ClassroomsController {
   constructor(private readonly classroomsService: ClassroomsService) {}
 
   @Post()
-  // CORREÇÃO: Usar o DTO em vez de extrair apenas o 'name'
   create(@Body() createClassroomDto: CreateClassroomDto, @Request() req) {
     return this.classroomsService.create(createClassroomDto, req.user.userId);
   }
@@ -28,10 +28,13 @@ export class ClassroomsController {
     return this.classroomsService.join(code, req.user.userId);
   }
 
-  @Get('my')
-  findMy(@Request() req) {
+  // --- CORREÇÃO: Rota Raiz para o Dashboard ---
+  @Get()
+  findAll(@Request() req) {
+    // Retorna todas as turmas (próprias e as que participa)
     return this.classroomsService.findMyClassrooms(req.user.userId);
   }
+  // --------------------------------------------
 
   @Get(':id')
   findOne(@Param('id') id: string) {
@@ -45,7 +48,6 @@ export class ClassroomsController {
 
   @Delete(':id')
   remove(@Param('id') id: string, @Request() req) {
-    // Passamos o ID do usuário para validar a posse
     return this.classroomsService.remove(+id, req.user.userId);
   }
 }

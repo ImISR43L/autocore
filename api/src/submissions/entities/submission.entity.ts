@@ -28,13 +28,13 @@ export class Submission {
   @Column({ type: 'text', nullable: true })
   stderr: string | null;
 
-  // --- NOVOS CAMPOS PARA O SISTEMA DE NOTAS ---
+  // --- NOVOS CAMPOS (NOTAS) ---
   @Column({ type: 'float', nullable: true, default: null })
   grade: number | null;
 
   @Column({ type: 'text', nullable: true, default: null })
   teacherComment: string | null;
-  // -------------------------------------------
+  // ----------------------------
 
   @CreateDateColumn()
   createdAt: Date;
