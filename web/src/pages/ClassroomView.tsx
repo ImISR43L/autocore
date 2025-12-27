@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react"; // <--- Adicionado useRef
 import axios from "axios";
 import Editor from "@monaco-editor/react";
-import { useParams, useNavigate, useLocation } from "react-router-dom"; // <--- Adicionado useLocation
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -20,7 +20,7 @@ import {
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
 
-// --- INTERFACES (Mantidas) ---
+// --- INTERFACES ---
 interface Announcement {
   id: string;
   content: string;
@@ -114,7 +114,7 @@ export default function ClassroomView() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const { id } = useParams();
   const navigate = useNavigate();
-  const location = useLocation(); // <--- Hook para ler o estado da navegação
+  const location = useLocation();
 
   // Estados
   const [activeTab, setActiveTab] = useState<
@@ -165,16 +165,27 @@ export default function ClassroomView() {
     return `autosave_${myUserId}_${probId}_${langId}`;
   };
 
-  // --- EFEITOS DE NAVEGAÇÃO INTELIGENTE ---
+  // --- CORREÇÃO: REF PARA CONTROLAR O REDIRECIONAMENTO ---
+  // Impede que o useEffect rode repetidamente ao trocar de abas
+  const initialRedirectChecked = useRef(false);
+
   useEffect(() => {
-    // Se vier com estado de navegação (clicou no dashboard), aplica imediatamente
-    if (location.state && location.state.problemId) {
+    // 1. Se viemos do Dashboard (tem state.problemId) e AINDA NÃO checamos isso:
+    if (
+      location.state &&
+      location.state.problemId &&
+      !initialRedirectChecked.current
+    ) {
       setActiveTab("classwork");
-      // O selectedProblemId será setado após o fetch da turma para garantir que o problema existe
-    } else if (id) {
+      initialRedirectChecked.current = true; // Marca como resolvido para não travar a navegação
+    }
+    // 2. Comportamento padrão: Salvar aba no localStorage
+    // Só executa se não estivermos no meio do redirecionamento forçado
+    else if (id) {
       localStorage.setItem(`activeTab_${id}`, activeTab);
     }
   }, [location.state, id, activeTab]);
+  // --------------------------------------------------------
 
   useEffect(() => {
     localStorage.setItem(`languageId`, String(languageId));
@@ -212,7 +223,7 @@ export default function ClassroomView() {
 
   // Actions
   const fetchStats = async () => {
-    /* ... lógica mantida ... */ try {
+    try {
       const token = localStorage.getItem("token");
       const res = await axios.get(
         `${API_URL}/submissions/stats/classroom/${id}`,
@@ -224,7 +235,7 @@ export default function ClassroomView() {
     }
   };
   const fetchProblemStats = async (probId: string) => {
-    /* ... lógica mantida ... */ try {
+    try {
       const token = localStorage.getItem("token");
       const res = await axios.get(
         `${API_URL}/submissions/stats/problem/${probId}`,
@@ -290,7 +301,6 @@ export default function ClassroomView() {
     }
   };
 
-  // --- FETCH CLASSROOM COM LÓGICA DE REDIRECIONAMENTO ---
   const fetchClassroomData = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -299,7 +309,6 @@ export default function ClassroomView() {
       });
       setClassroom(res.data);
 
-      // Lógica de Seleção Automática do Exercício
       if (res.data.problems?.length > 0) {
         // 1. Prioridade: Veio do Dashboard (clicou no link da atividade)
         if (location.state && location.state.problemId) {
@@ -308,7 +317,7 @@ export default function ClassroomView() {
           );
           if (problemExists) {
             setSelectedProblemId(location.state.problemId);
-            return; // Encerra aqui, já selecionou o certo
+            return;
           }
         }
 
@@ -326,7 +335,6 @@ export default function ClassroomView() {
     }
   };
 
-  // ... (Restante das funções: fetchSubmissions, handlePostAnnouncement, etc. MANTIDAS IGUAIS) ...
   const fetchSubmissions = async () => {
     if (!selectedProblemId) return;
     try {
@@ -502,7 +510,6 @@ export default function ClassroomView() {
         </nav>
       </header>
 
-      {/* --- DASHBOARD DA TURMA (LADO A LADO) --- */}
       {activeTab === "stream" && (
         <div className="stream-container">
           <div className="stream-banner">

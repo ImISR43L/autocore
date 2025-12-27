@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -31,13 +31,33 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
-  const [newClassName, setNewClassName] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
+
+  // Estados de Modais e Menus
+  const [showMenu, setShowMenu] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
+
+  // Inputs
+  const [newClassName, setNewClassName] = useState("");
   const [joinCode, setJoinCode] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Ref para fechar o menu ao clicar fora
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  // Fecha o menu se clicar fora dele
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const fetchData = async () => {
@@ -57,10 +77,9 @@ export default function Dashboard() {
     }
   };
 
-  const handleCreateClassroom = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateClassroom = async () => {
     if (!newClassName.trim()) return;
-    setIsCreating(true);
+    setIsLoading(true);
     try {
       const token = localStorage.getItem("token");
       await axios.post(
@@ -70,16 +89,18 @@ export default function Dashboard() {
       );
       toast.success("Turma criada!");
       setNewClassName("");
+      setShowCreateModal(false); // Fecha o modal
       fetchData();
     } catch {
-      toast.error("Erro.");
+      toast.error("Erro ao criar turma.");
     } finally {
-      setIsCreating(false);
+      setIsLoading(false);
     }
   };
 
   const handleJoinClassroom = async () => {
     if (!joinCode.trim()) return;
+    setIsLoading(true);
     try {
       const token = localStorage.getItem("token");
       await axios.post(
@@ -87,46 +108,65 @@ export default function Dashboard() {
         { code: joinCode },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      toast.success("Entrou!");
+      toast.success("Entrou na turma!");
       setShowJoinModal(false);
       setJoinCode("");
       fetchData();
     } catch {
       toast.error("Código inválido.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // --- NAVEGAÇÃO VIA STATE (Para abrir direto na atividade) ---
+  const handleDeleteClassroom = async (
+    e: React.MouseEvent,
+    classId: number
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm("Tem certeza que deseja EXCLUIR esta turma permanentemente?"))
+      return;
+    try {
+      const token = localStorage.getItem("token");
+      await axios.delete(`${API_URL}/classrooms/${classId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success("Turma excluída.");
+      fetchData();
+    } catch {
+      toast.error("Erro ao excluir.");
+    }
+  };
+
   const navigateToAssignment = (
     e: React.MouseEvent,
     classId: number,
     problemId: string
   ) => {
-    e.preventDefault(); // Evita abrir o card genérico
+    e.preventDefault();
     e.stopPropagation();
     navigate(`/class/${classId}`, { state: { problemId: problemId } });
   };
 
-  // --- FILTRA ATIVIDADES PENDENTES DA TURMA ---
   const getPendingForClass = (cls: Classroom): PendingWork[] => {
     if (!cls.problems) return [];
     const now = new Date();
     const nextWeek = new Date();
-    nextWeek.setDate(now.getDate() + 7); // Próximos 7 dias
-
+    nextWeek.setDate(now.getDate() + 7);
     return cls.problems
-      .filter((p) => p.deadline) // Tem prazo
+      .filter((p) => p.deadline)
       .map((p) => ({ ...p, deadline: new Date(p.deadline!) }))
-      .filter((p) => p.deadline > now && p.deadline <= nextWeek) // Está no futuro próximo
+      .filter((p) => p.deadline > now && p.deadline <= nextWeek)
       .sort((a, b) => a.deadline.getTime() - b.deadline.getTime())
-      .slice(0, 3); // Mostra no máximo 3 para não estourar o card
+      .slice(0, 3);
   };
 
   const getBannerClass = (id: number) => `banner-color-${id % 5}`;
 
   return (
     <div className="dashboard-container">
-      {/* Header */}
+      {/* --- HEADER COM BOTÃO + E DROPDOWN --- */}
       <header
         style={{
           marginBottom: "20px",
@@ -137,14 +177,43 @@ export default function Dashboard() {
           paddingBottom: "15px",
         }}
       >
-        <h1 style={{ margin: 0 }}>Google Classroom Clone</h1>
-        <div style={{ display: "flex", gap: "10px" }}>
-          <button
-            onClick={() => setShowJoinModal(true)}
-            className="btn btn-secondary"
-          >
-            + Participar
-          </button>
+        <h1 style={{ margin: 0 }}>Autocore Classroom</h1>
+
+        <div className="header-actions">
+          {/* Wrapper relativo para o dropdown */}
+          <div style={{ position: "relative" }} ref={menuRef}>
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="plus-btn"
+              title="Criar ou Participar"
+            >
+              +
+            </button>
+
+            {showMenu && (
+              <div className="dropdown-menu">
+                <div
+                  className="dropdown-item"
+                  onClick={() => {
+                    setShowJoinModal(true);
+                    setShowMenu(false);
+                  }}
+                >
+                  Participar da turma
+                </div>
+                <div
+                  className="dropdown-item"
+                  onClick={() => {
+                    setShowCreateModal(true);
+                    setShowMenu(false);
+                  }}
+                >
+                  Criar turma
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={() => {
               localStorage.removeItem("token");
@@ -157,41 +226,6 @@ export default function Dashboard() {
           </button>
         </div>
       </header>
-
-      {/* Input Criar */}
-      <div
-        style={{
-          marginBottom: "20px",
-          background: "#252526",
-          padding: "15px",
-          borderRadius: "8px",
-          display: "flex",
-          gap: "10px",
-          alignItems: "center",
-        }}
-      >
-        <span style={{ color: "#ccc", fontWeight: "bold" }}>Criar Turma:</span>
-        <form
-          onSubmit={handleCreateClassroom}
-          style={{ display: "flex", gap: "10px", flex: 1 }}
-        >
-          <input
-            type="text"
-            placeholder="Nome da disciplina..."
-            className="form-input"
-            value={newClassName}
-            onChange={(e) => setNewClassName(e.target.value)}
-            style={{ flex: 1 }}
-          />
-          <button
-            type="submit"
-            disabled={isCreating || !newClassName}
-            className="btn btn-primary"
-          >
-            {isCreating ? "..." : "Criar"}
-          </button>
-        </form>
-      </div>
 
       {/* GRID DE TURMAS */}
       <div className="class-grid">
@@ -206,6 +240,16 @@ export default function Dashboard() {
                   <div className="card-teacher-name">
                     {c.owner.email.split("@")[0]}
                   </div>
+                )}
+
+                {c.isOwner && (
+                  <button
+                    className="delete-class-btn"
+                    onClick={(e) => handleDeleteClassroom(e, c.id)}
+                    title="Excluir Turma"
+                  >
+                    🗑️
+                  </button>
                 )}
               </div>
 
@@ -222,7 +266,6 @@ export default function Dashboard() {
                   {c.isOwner ? "Professor" : "Aluno"}
                 </span>
 
-                {/* --- LISTA DE ATIVIDADES DENTRO DO CARD --- */}
                 {pendingWork.length > 0 ? (
                   <div className="card-assignments">
                     <span className="assignment-header">
@@ -269,16 +312,19 @@ export default function Dashboard() {
               gridColumn: "1 / -1",
             }}
           >
-            Nenhuma turma encontrada.
+            Nenhuma turma encontrada. Clique no "+" para começar.
           </div>
         )}
       </div>
 
-      {/* Modal Entrar */}
+      {/* --- MODAL PARTICIPAR --- */}
       {showJoinModal && (
         <div className="modal-overlay">
           <div className="modal-content">
             <h3 style={{ marginTop: 0 }}>Participar da turma</h3>
+            <p style={{ color: "#888", fontSize: "0.9rem" }}>
+              Peça o código da turma ao seu professor.
+            </p>
             <input
               type="text"
               placeholder="Código (ex: X7Y8Z9)"
@@ -309,10 +355,56 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={handleJoinClassroom}
-                disabled={!joinCode}
+                disabled={!joinCode || isLoading}
                 className="btn btn-primary"
               >
-                Participar
+                {isLoading ? "..." : "Participar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL CRIAR --- */}
+      {showCreateModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3 style={{ marginTop: 0 }}>Criar turma</h3>
+            <p style={{ color: "#888", fontSize: "0.9rem" }}>
+              Defina o nome da disciplina.
+            </p>
+            <input
+              type="text"
+              placeholder="Nome da disciplina (ex: Algoritmos)"
+              className="form-input"
+              value={newClassName}
+              onChange={(e) => setNewClassName(e.target.value)}
+              style={{
+                width: "100%",
+                marginTop: "15px",
+                marginBottom: "20px",
+                padding: "10px",
+              }}
+            />
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+              }}
+            >
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="btn btn-secondary"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCreateClassroom}
+                disabled={!newClassName || isLoading}
+                className="btn btn-primary"
+              >
+                {isLoading ? "..." : "Criar"}
               </button>
             </div>
           </div>
