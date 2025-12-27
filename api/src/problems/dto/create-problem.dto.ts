@@ -1,13 +1,30 @@
 import {
   IsNotEmpty,
   IsString,
-  IsEnum,
+  IsArray,
+  ValidateNested,
   IsOptional,
-  IsNumber,
+  IsEnum,
+  IsInt,
   Min,
-  IsISO8601,
+  IsBoolean,
 } from 'class-validator';
-import { ProblemType } from '../entities/problem.entity';
+import { Type } from 'class-transformer';
+
+export class CreateTestCaseDto {
+  @IsString()
+  @IsNotEmpty()
+  input: string;
+
+  @IsString()
+  @IsNotEmpty()
+  expectedOutput: string;
+
+  // --- CAMPO NOVO ---
+  @IsBoolean()
+  @IsOptional()
+  isHidden?: boolean;
+}
 
 export class CreateProblemDto {
   @IsString()
@@ -22,24 +39,24 @@ export class CreateProblemDto {
   @IsNotEmpty()
   slug: string;
 
+  @IsInt()
   @IsNotEmpty()
   classroomId: number;
 
-  // --- NOVAS VALIDAÇÕES ---
-  @IsEnum(ProblemType)
-  @IsOptional()
-  type?: ProblemType;
+  @IsEnum(['EXERCISE', 'EXAM'])
+  type: 'EXERCISE' | 'EXAM';
 
-  @IsNumber()
-  @IsOptional()
+  @IsInt()
   @Min(1)
+  @IsOptional()
   maxAttempts?: number;
-  // -----------------------
 
   @IsOptional()
-  testCases?: any[];
-
-  @IsISO8601()
-  @IsOptional()
+  @IsString()
   deadline?: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateTestCaseDto)
+  testCases: CreateTestCaseDto[];
 }

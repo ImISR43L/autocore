@@ -2,29 +2,28 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
 import "../App.css";
+
+// Interfaces
+interface Problem {
+  id: string;
+  title: string;
+  deadline?: string;
+}
 
 interface Classroom {
   id: number;
   name: string;
   code: string;
   isOwner: boolean;
+  owner: { email: string };
+  problems?: Problem[];
 }
 
-interface StatData {
-  name: string;
-  Accepted: number;
-  Error: number;
+interface PendingWork {
+  id: string;
+  title: string;
+  deadline: Date;
 }
 
 export default function Dashboard() {
@@ -32,7 +31,6 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
-  const [stats, setStats] = useState<StatData[]>([]); // Estado para o gráfico
   const [newClassName, setNewClassName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -49,20 +47,12 @@ export default function Dashboard() {
         navigate("/");
         return;
       }
-
-      // 1. Busca Turmas
-      const resClass = await axios.get(`${API_URL}/classrooms`, {
+      const res = await axios.get(`${API_URL}/classrooms`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setClassrooms(resClass.data);
-
-      // 2. Busca Estatísticas (Novo)
-      const resStats = await axios.get(`${API_URL}/submissions/stats`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setStats(resStats.data);
+      setClassrooms(res.data);
     } catch (error) {
-      toast.error("Sessão expirada ou erro ao carregar.");
+      toast.error("Sessão expirada.");
       navigate("/");
     }
   };
@@ -76,15 +66,13 @@ export default function Dashboard() {
       await axios.post(
         `${API_URL}/classrooms`,
         { name: newClassName },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       toast.success("Turma criada!");
       setNewClassName("");
       fetchData();
-    } catch (error) {
-      toast.error("Erro ao criar turma.");
+    } catch {
+      toast.error("Erro.");
     } finally {
       setIsCreating(false);
     }
@@ -97,41 +85,66 @@ export default function Dashboard() {
       await axios.post(
         `${API_URL}/classrooms/join`,
         { code: joinCode },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-      toast.success("Entrou na turma!");
+      toast.success("Entrou!");
       setShowJoinModal(false);
       setJoinCode("");
       fetchData();
-    } catch (error) {
-      toast.error("Código inválido ou já participa.");
+    } catch {
+      toast.error("Código inválido.");
     }
   };
 
-  // Separa turmas
-  const myClassrooms = classrooms.filter((c) => c.isOwner);
-  const joinedClassrooms = classrooms.filter((c) => !c.isOwner);
+  // --- NAVEGAÇÃO VIA STATE (Para abrir direto na atividade) ---
+  const navigateToAssignment = (
+    e: React.MouseEvent,
+    classId: number,
+    problemId: string
+  ) => {
+    e.preventDefault(); // Evita abrir o card genérico
+    e.stopPropagation();
+    navigate(`/class/${classId}`, { state: { problemId: problemId } });
+  };
+
+  // --- FILTRA ATIVIDADES PENDENTES DA TURMA ---
+  const getPendingForClass = (cls: Classroom): PendingWork[] => {
+    if (!cls.problems) return [];
+    const now = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(now.getDate() + 7); // Próximos 7 dias
+
+    return cls.problems
+      .filter((p) => p.deadline) // Tem prazo
+      .map((p) => ({ ...p, deadline: new Date(p.deadline!) }))
+      .filter((p) => p.deadline > now && p.deadline <= nextWeek) // Está no futuro próximo
+      .sort((a, b) => a.deadline.getTime() - b.deadline.getTime())
+      .slice(0, 3); // Mostra no máximo 3 para não estourar o card
+  };
+
+  const getBannerClass = (id: number) => `banner-color-${id % 5}`;
 
   return (
-    <div className="container" style={{ paddingBottom: "50px" }}>
+    <div className="dashboard-container">
+      {/* Header */}
       <header
-        className="dashboard-header"
         style={{
-          marginBottom: "30px",
+          marginBottom: "20px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
           borderBottom: "1px solid #333",
-          paddingBottom: "20px",
+          paddingBottom: "15px",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <h1 style={{ margin: 0 }}>Dashboard</h1>
+        <h1 style={{ margin: 0 }}>Google Classroom Clone</h1>
+        <div style={{ display: "flex", gap: "10px" }}>
+          <button
+            onClick={() => setShowJoinModal(true)}
+            className="btn btn-secondary"
+          >
+            + Participar
+          </button>
           <button
             onClick={() => {
               localStorage.removeItem("token");
@@ -145,182 +158,141 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* --- SEÇÃO DE GRÁFICOS (Apenas se houver dados e o usuário for professor de algo) --- */}
-      {stats.length > 0 && (
-        <div className="chart-section" style={{ marginBottom: "40px" }}>
-          <h2
-            style={{ fontSize: "1.5rem", marginBottom: "20px", color: "#ccc" }}
+      {/* Input Criar */}
+      <div
+        style={{
+          marginBottom: "20px",
+          background: "#252526",
+          padding: "15px",
+          borderRadius: "8px",
+          display: "flex",
+          gap: "10px",
+          alignItems: "center",
+        }}
+      >
+        <span style={{ color: "#ccc", fontWeight: "bold" }}>Criar Turma:</span>
+        <form
+          onSubmit={handleCreateClassroom}
+          style={{ display: "flex", gap: "10px", flex: 1 }}
+        >
+          <input
+            type="text"
+            placeholder="Nome da disciplina..."
+            className="form-input"
+            value={newClassName}
+            onChange={(e) => setNewClassName(e.target.value)}
+            style={{ flex: 1 }}
+          />
+          <button
+            type="submit"
+            disabled={isCreating || !newClassName}
+            className="btn btn-primary"
           >
-            📊 Desempenho dos Alunos por Exercício
-          </h2>
-          <div
-            style={{
-              width: "100%",
-              height: 350,
-              background: "#1e1e1e",
-              padding: "20px",
-              borderRadius: "8px",
-              border: "1px solid #333",
-            }}
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={stats}
-                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="name" stroke="#888" />
-                <YAxis stroke="#888" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#252526",
-                    borderColor: "#444",
-                    color: "#fff",
-                  }}
-                  itemStyle={{ color: "#fff" }}
-                />
-                <Legend />
-                <Bar
-                  dataKey="Accepted"
-                  name="Acertos"
-                  stackId="a"
-                  fill="#4caf50"
-                />
-                <Bar
-                  dataKey="Error"
-                  name="Erros / Falhas"
-                  stackId="a"
-                  fill="#f44336"
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {/* --- LISTA DE TURMAS --- */}
-      <div className="dashboard-grid">
-        {/* Coluna da Esquerda: Minhas Turmas */}
-        <div className="section">
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "15px",
-            }}
-          >
-            <h2>Minhas Turmas</h2>
-          </div>
-
-          <div
-            className="create-class-box"
-            style={{
-              marginBottom: "20px",
-              background: "#252526",
-              padding: "15px",
-              borderRadius: "8px",
-            }}
-          >
-            <form
-              onSubmit={handleCreateClassroom}
-              style={{ display: "flex", gap: "10px" }}
-            >
-              <input
-                type="text"
-                placeholder="Nome da nova turma..."
-                className="form-input"
-                value={newClassName}
-                onChange={(e) => setNewClassName(e.target.value)}
-                style={{ flex: 1 }}
-              />
-              <button
-                type="submit"
-                disabled={isCreating || !newClassName}
-                className="btn btn-primary"
-              >
-                {isCreating ? "+" : "Criar"}
-              </button>
-            </form>
-          </div>
-
-          <div className="class-list">
-            {myClassrooms.map((c) => (
-              <Link key={c.id} to={`/class/${c.id}`} className="class-card">
-                <div
-                  className="class-card-header"
-                  style={{ background: "#4caf50" }}
-                ></div>
-                <div className="class-card-body">
-                  <h3>{c.name}</h3>
-                  <p style={{ color: "#888", fontSize: "0.8rem" }}>
-                    Código: {c.code}
-                  </p>
-                  <span className="badge badge-owner">Professor</span>
-                </div>
-              </Link>
-            ))}
-            {myClassrooms.length === 0 && (
-              <p style={{ color: "#666" }}>
-                Você ainda não criou nenhuma turma.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Coluna da Direita: Turmas que participo */}
-        <div className="section">
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "15px",
-            }}
-          >
-            <h2>Estou Participando</h2>
-            <button
-              onClick={() => setShowJoinModal(true)}
-              className="btn btn-secondary"
-            >
-              Entrar em Turma
-            </button>
-          </div>
-
-          <div className="class-list">
-            {joinedClassrooms.map((c) => (
-              <Link key={c.id} to={`/class/${c.id}`} className="class-card">
-                <div
-                  className="class-card-header"
-                  style={{ background: "#2196f3" }}
-                ></div>
-                <div className="class-card-body">
-                  <h3>{c.name}</h3>
-                  <span className="badge badge-student">Aluno</span>
-                </div>
-              </Link>
-            ))}
-            {joinedClassrooms.length === 0 && (
-              <p style={{ color: "#666" }}>
-                Você não está matriculado em nenhuma turma.
-              </p>
-            )}
-          </div>
-        </div>
+            {isCreating ? "..." : "Criar"}
+          </button>
+        </form>
       </div>
 
-      {/* MODAL DE ENTRAR EM TURMA */}
+      {/* GRID DE TURMAS */}
+      <div className="class-grid">
+        {classrooms.map((c) => {
+          const pendingWork = getPendingForClass(c);
+          return (
+            <Link key={c.id} to={`/class/${c.id}`} className="google-card">
+              <div className={`card-banner ${getBannerClass(c.id)}`}>
+                <h2 className="card-title">{c.name}</h2>
+                <div className="card-section">{c.code}</div>
+                {!c.isOwner && (
+                  <div className="card-teacher-name">
+                    {c.owner.email.split("@")[0]}
+                  </div>
+                )}
+              </div>
+
+              <div className="card-avatar">
+                {c.owner.email.charAt(0).toUpperCase()}
+              </div>
+
+              <div className="card-body">
+                <span
+                  className={`card-role-badge ${
+                    c.isOwner ? "role-prof" : "role-student"
+                  }`}
+                >
+                  {c.isOwner ? "Professor" : "Aluno"}
+                </span>
+
+                {/* --- LISTA DE ATIVIDADES DENTRO DO CARD --- */}
+                {pendingWork.length > 0 ? (
+                  <div className="card-assignments">
+                    <span className="assignment-header">
+                      Próximas entregas:
+                    </span>
+                    {pendingWork.map((work) => (
+                      <div
+                        key={work.id}
+                        className="assignment-link"
+                        onClick={(e) => navigateToAssignment(e, c.id, work.id)}
+                        title={`Entrega: ${work.deadline.toLocaleString()}`}
+                      >
+                        {work.title}{" "}
+                        <span className="assignment-time">
+                          ({work.deadline.getDate()}/
+                          {work.deadline.getMonth() + 1})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      marginTop: "auto",
+                      paddingTop: "10px",
+                      color: "#666",
+                      fontSize: "0.8rem",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    Nenhuma entrega pendente.
+                  </div>
+                )}
+              </div>
+            </Link>
+          );
+        })}
+        {classrooms.length === 0 && (
+          <div
+            style={{
+              color: "#666",
+              textAlign: "center",
+              padding: "40px",
+              gridColumn: "1 / -1",
+            }}
+          >
+            Nenhuma turma encontrada.
+          </div>
+        )}
+      </div>
+
+      {/* Modal Entrar */}
       {showJoinModal && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3>Entrar em uma Turma</h3>
+            <h3 style={{ marginTop: 0 }}>Participar da turma</h3>
             <input
               type="text"
-              placeholder="Código da turma (ex: A1B2C3)"
+              placeholder="Código (ex: X7Y8Z9)"
               className="form-input"
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value)}
-              style={{ width: "100%", marginTop: "15px", marginBottom: "20px" }}
+              style={{
+                width: "100%",
+                marginTop: "15px",
+                marginBottom: "20px",
+                padding: "10px",
+                fontSize: "1.1rem",
+                letterSpacing: "2px",
+              }}
             />
             <div
               style={{
@@ -340,7 +312,7 @@ export default function Dashboard() {
                 disabled={!joinCode}
                 className="btn btn-primary"
               >
-                Entrar
+                Participar
               </button>
             </div>
           </div>

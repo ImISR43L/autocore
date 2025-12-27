@@ -1,8 +1,7 @@
-// web/src/pages/ClassroomView.tsx
 import { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import Editor from "@monaco-editor/react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom"; // <--- Adicionado useLocation
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -21,14 +20,13 @@ import {
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
 
-// --- INTERFACES ---
+// --- INTERFACES (Mantidas) ---
 interface Announcement {
   id: string;
   content: string;
   createdAt: string;
   author: { email: string };
 }
-
 interface Problem {
   id: string;
   title: string;
@@ -39,7 +37,6 @@ interface Problem {
   maxAttempts?: number;
   deadline?: string;
 }
-
 interface Classroom {
   id: number;
   name: string;
@@ -49,7 +46,6 @@ interface Classroom {
   problems: Problem[];
   announcements: Announcement[];
 }
-
 interface Submission {
   id: string;
   status: string;
@@ -61,20 +57,17 @@ interface Submission {
   grade?: number;
   teacherComment?: string;
 }
-
 interface StatData {
   name: string;
   Accepted: number;
   Error: number;
 }
-
 interface ProblemStat {
   name: string;
   value: number;
   fill: string;
 }
 
-// --- TEMPLATES DE LINGUAGEM ---
 const LANGUAGES = [
   {
     id: 71,
@@ -121,6 +114,7 @@ export default function ClassroomView() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation(); // <--- Hook para ler o estado da navegação
 
   // Estados
   const [activeTab, setActiveTab] = useState<
@@ -148,8 +142,6 @@ export default function ClassroomView() {
   const [gradingComment, setGradingComment] = useState("");
   const [newAnnouncement, setNewAnnouncement] = useState("");
   const [posting, setPosting] = useState(false);
-
-  // Estados dos Gráficos
   const [stats, setStats] = useState<StatData[]>([]);
   const [problemStats, setProblemStats] = useState<ProblemStat[]>([]);
 
@@ -173,13 +165,21 @@ export default function ClassroomView() {
     return `autosave_${myUserId}_${probId}_${langId}`;
   };
 
-  // Efeitos
+  // --- EFEITOS DE NAVEGAÇÃO INTELIGENTE ---
   useEffect(() => {
-    if (id) localStorage.setItem(`activeTab_${id}`, activeTab);
-  }, [activeTab, id]);
+    // Se vier com estado de navegação (clicou no dashboard), aplica imediatamente
+    if (location.state && location.state.problemId) {
+      setActiveTab("classwork");
+      // O selectedProblemId será setado após o fetch da turma para garantir que o problema existe
+    } else if (id) {
+      localStorage.setItem(`activeTab_${id}`, activeTab);
+    }
+  }, [location.state, id, activeTab]);
+
   useEffect(() => {
     localStorage.setItem(`languageId`, String(languageId));
   }, [languageId]);
+
   useEffect(() => {
     fetchClassroomData();
   }, [id]);
@@ -193,10 +193,7 @@ export default function ClassroomView() {
     }
     const storageKey = getStorageKey(selectedProblemId, languageId);
     const savedCode = storageKey ? localStorage.getItem(storageKey) : null;
-    const isPolluted = LANGUAGES.some(
-      (l) => l.id !== languageId && l.defaultCode === savedCode
-    );
-    if (savedCode && !isPolluted) setCode(savedCode);
+    if (savedCode) setCode(savedCode);
     else setCode(lang.defaultCode);
   }, [languageId, selectedProblemId, myUserId]);
 
@@ -215,36 +212,29 @@ export default function ClassroomView() {
 
   // Actions
   const fetchStats = async () => {
-    try {
+    /* ... lógica mantida ... */ try {
       const token = localStorage.getItem("token");
       const res = await axios.get(
         `${API_URL}/submissions/stats/classroom/${id}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       setStats(res.data);
     } catch (error) {
       console.error("Erro stats");
     }
   };
-
   const fetchProblemStats = async (probId: string) => {
-    try {
+    /* ... lógica mantida ... */ try {
       const token = localStorage.getItem("token");
       const res = await axios.get(
         `${API_URL}/submissions/stats/problem/${probId}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-      // Usa os dados diretamente para ter colunas separadas (Acertos, Erros)
       setProblemStats(res.data);
     } catch (error) {
       console.error("Erro problem stats");
     }
   };
-
   const handleCodeChange = (value: string | undefined) => {
     const val = value || "";
     setCode(val);
@@ -253,7 +243,6 @@ export default function ClassroomView() {
       if (key) localStorage.setItem(key, val);
     }
   };
-
   const handleResetCode = () => {
     if (!confirm("Restaurar código original?")) return;
     const lang = LANGUAGES.find((l) => l.id === languageId);
@@ -266,7 +255,6 @@ export default function ClassroomView() {
       toast.success("Restaurado.");
     }
   };
-
   const handleInspect = (sub: Submission) => {
     setInspectingSubmission(sub);
     setGradingGrade(
@@ -274,7 +262,6 @@ export default function ClassroomView() {
     );
     setGradingComment(sub.teacherComment || "");
   };
-
   const handleSaveGrade = async () => {
     if (!inspectingSubmission) return;
     try {
@@ -298,11 +285,12 @@ export default function ClassroomView() {
             }
           : null
       );
-    } catch (error) {
+    } catch {
       toast.error("Erro ao salvar nota.");
     }
   };
 
+  // --- FETCH CLASSROOM COM LÓGICA DE REDIRECIONAMENTO ---
   const fetchClassroomData = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -310,7 +298,21 @@ export default function ClassroomView() {
         headers: { Authorization: `Bearer ${token}` },
       });
       setClassroom(res.data);
+
+      // Lógica de Seleção Automática do Exercício
       if (res.data.problems?.length > 0) {
+        // 1. Prioridade: Veio do Dashboard (clicou no link da atividade)
+        if (location.state && location.state.problemId) {
+          const problemExists = res.data.problems.find(
+            (p: Problem) => p.id === location.state.problemId
+          );
+          if (problemExists) {
+            setSelectedProblemId(location.state.problemId);
+            return; // Encerra aqui, já selecionou o certo
+          }
+        }
+
+        // 2. Prioridade: Último acessado (localStorage)
         const storedProbId = localStorage.getItem(`lastProblemId_${id}`);
         const problemExists = res.data.problems.find(
           (p: Problem) => p.id === storedProbId
@@ -324,6 +326,7 @@ export default function ClassroomView() {
     }
   };
 
+  // ... (Restante das funções: fetchSubmissions, handlePostAnnouncement, etc. MANTIDAS IGUAIS) ...
   const fetchSubmissions = async () => {
     if (!selectedProblemId) return;
     try {
@@ -337,7 +340,6 @@ export default function ClassroomView() {
       console.error(error);
     }
   };
-
   const handlePostAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAnnouncement.trim()) return;
@@ -394,7 +396,6 @@ export default function ClassroomView() {
         });
     }
   };
-
   const submitSolution = async () => {
     if (!selectedProblemId) return toast.warning("Selecione um exercício!");
     setLoading(true);
@@ -429,7 +430,6 @@ export default function ClassroomView() {
       setLoading(false);
     }
   };
-
   const myAttemptsCount = useMemo(() => {
     if (!myUserId) return 0;
     return (submissions || []).filter((s) => s.user?.id === myUserId).length;
@@ -502,7 +502,7 @@ export default function ClassroomView() {
         </nav>
       </header>
 
-      {/* MURAL */}
+      {/* --- DASHBOARD DA TURMA (LADO A LADO) --- */}
       {activeTab === "stream" && (
         <div className="stream-container">
           <div className="stream-banner">
@@ -571,8 +571,6 @@ export default function ClassroomView() {
           </div>
         </div>
       )}
-
-      {/* ALUNOS */}
       {activeTab === "people" && (
         <div className="people-container">
           <div style={{ marginBottom: "40px" }}>
@@ -601,8 +599,6 @@ export default function ClassroomView() {
           </div>
         </div>
       )}
-
-      {/* ATIVIDADES */}
       {activeTab === "classwork" && (
         <div className="ide-container" style={{ flex: 1, borderTop: "none" }}>
           <div className="ide-toolbar">
@@ -621,7 +617,6 @@ export default function ClassroomView() {
                 </option>
               ))}
             </select>
-
             {isOwner && (
               <div style={{ display: "flex", gap: "5px", marginLeft: "10px" }}>
                 {selectedProblemId && (
@@ -655,7 +650,6 @@ export default function ClassroomView() {
                 </button>
               </div>
             )}
-
             {selectedProblemId && (
               <button
                 onClick={() => setShowSubmissions(true)}
@@ -668,7 +662,6 @@ export default function ClassroomView() {
                 📊 {isOwner ? "Turma" : "Histórico"}
               </button>
             )}
-
             <div
               style={{
                 marginLeft: "auto",
@@ -720,7 +713,6 @@ export default function ClassroomView() {
                 </div>
               )}
             </div>
-
             <div style={{ display: "flex", gap: "10px" }}>
               <button
                 onClick={handleResetCode}
@@ -751,7 +743,6 @@ export default function ClassroomView() {
               </button>
             </div>
           </div>
-
           <div className="ide-main">
             <div className="ide-editor-panel">
               <Editor
@@ -773,8 +764,6 @@ export default function ClassroomView() {
                       {currentProblem.description}
                     </ReactMarkdown>
                   </div>
-
-                  {/* GRÁFICO DO EXERCÍCIO (SÓ PROFESSOR) - COLUNAS LADO A LADO */}
                   {isOwner && problemStats.length > 0 && (
                     <div
                       style={{
@@ -829,7 +818,6 @@ export default function ClassroomView() {
               ) : (
                 <p className="ide-description">Selecione um exercício.</p>
               )}
-
               {verdict && (
                 <div
                   className={`ide-feedback-box ${
@@ -849,8 +837,6 @@ export default function ClassroomView() {
               )}
             </div>
           </div>
-
-          {/* MODAIS */}
           {showSubmissions && (
             <div className="modal-overlay">
               <div className="modal-content large">
@@ -931,7 +917,6 @@ export default function ClassroomView() {
               </div>
             </div>
           )}
-
           {inspectingSubmission && (
             <div className="modal-overlay" style={{ zIndex: 1100 }}>
               <div className="modal-content x-large">
@@ -1065,8 +1050,6 @@ export default function ClassroomView() {
           )}
         </div>
       )}
-
-      {/* --- DASHBOARD DA TURMA (LADO A LADO) --- */}
       {activeTab === "analytics" && isOwner && (
         <div className="container" style={{ padding: "40px" }}>
           <h2 style={{ marginBottom: "30px", color: "#ccc" }}>
@@ -1105,7 +1088,6 @@ export default function ClassroomView() {
                     cursor={{ fill: "rgba(255,255,255,0.05)" }}
                   />
                   <Legend />
-                  {/* REMOVIDO stackId="a" PARA FICAR LADO A LADO */}
                   <Bar
                     dataKey="Accepted"
                     name="Acertos"

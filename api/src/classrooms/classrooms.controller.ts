@@ -37,8 +37,8 @@ export class ClassroomsController {
   // --------------------------------------------
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.classroomsService.findOne(+id);
+  findOne(@Param('id') id: string, @Request() req) {
+    return this.classroomsService.findOne(+id, req.user?.userId);
   }
 
   @Delete(':id/leave')

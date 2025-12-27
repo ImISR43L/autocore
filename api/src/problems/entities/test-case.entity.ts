@@ -6,12 +6,13 @@ export class TestCase {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column('text')
+  @Column({ type: 'text' })
   input: string;
 
-  @Column('text')
+  @Column({ type: 'text' })
   expectedOutput: string;
 
+  // O erro de compilação indica que este campo estava faltando na definição
   @Column({ default: false })
   isHidden: boolean;
 

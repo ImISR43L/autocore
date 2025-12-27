@@ -4,11 +4,13 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  CreateDateColumn,
 } from 'typeorm';
 import { Classroom } from '../../classrooms/entities/classroom.entity';
 import { TestCase } from './test-case.entity';
 import { Submission } from '../../submissions/entities/submission.entity';
 
+// Exportando o Enum para ser usado no Service e DTO
 export enum ProblemType {
   EXERCISE = 'EXERCISE',
   EXAM = 'EXAM',
@@ -22,13 +24,12 @@ export class Problem {
   @Column()
   title: string;
 
-  @Column()
+  @Column({ type: 'text' })
   description: string;
 
-  @Column()
+  @Column({ unique: true })
   slug: string;
 
-  // --- NOVOS CAMPOS ---
   @Column({
     type: 'enum',
     enum: ProblemType,
@@ -36,26 +37,23 @@ export class Problem {
   })
   type: ProblemType;
 
-  @Column({ type: 'int', nullable: true, default: null })
-  maxAttempts: number | null;
-  // --------------------
+  @Column({ nullable: true })
+  maxAttempts: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  deadline: Date; // Alterado para Date para facilitar o TypeORM
+
+  @CreateDateColumn()
+  createdAt: Date;
 
   @ManyToOne(() => Classroom, (classroom) => classroom.problems, {
     onDelete: 'CASCADE',
   })
   classroom: Classroom;
 
-  @OneToMany(() => TestCase, (testCase) => testCase.problem, {
-    cascade: true,
-    onDelete: 'CASCADE',
-  })
+  @OneToMany(() => TestCase, (testCase) => testCase.problem, { cascade: true })
   testCases: TestCase[];
 
-  @OneToMany(() => Submission, (submission) => submission.problem, {
-    onDelete: 'CASCADE',
-  })
+  @OneToMany(() => Submission, (submission) => submission.problem)
   submissions: Submission[];
-
-  @Column({ type: 'timestamp', nullable: true, default: null })
-  deadline: Date | null;
 }

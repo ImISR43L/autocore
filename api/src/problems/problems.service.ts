@@ -7,9 +7,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateProblemDto } from './dto/create-problem.dto';
 import { UpdateProblemDto } from './dto/update-problem.dto';
-import { Problem } from './entities/problem.entity';
+import { Problem, ProblemType } from './entities/problem.entity';
 import { TestCase } from './entities/test-case.entity';
-import { Classroom } from '../classrooms/entities/classroom.entity';
 
 @Injectable()
 export class ProblemsService {
@@ -18,119 +17,118 @@ export class ProblemsService {
     private problemsRepository: Repository<Problem>,
     @InjectRepository(TestCase)
     private testCasesRepository: Repository<TestCase>,
-    @InjectRepository(Classroom)
-    private classroomsRepository: Repository<Classroom>,
   ) {}
 
   async create(createProblemDto: CreateProblemDto, userId: number) {
-    const classroom = await this.classroomsRepository.findOne({
-      where: { id: createProblemDto.classroomId },
-      relations: ['owner'],
-    });
+    const { testCases, classroomId, type, deadline, ...problemData } =
+      createProblemDto;
 
-    if (!classroom) throw new NotFoundException('Turma não encontrada');
-
-    if (classroom.owner.id !== userId) {
-      throw new ForbiddenException(
-        'Apenas o professor (dono) desta turma pode criar exercícios nela.',
-      );
-    }
-
-    const testCases = (createProblemDto.testCases || []).map((tc) =>
-      this.testCasesRepository.create({
-        input: tc.input,
-        expectedOutput: tc.expectedOutput,
-      }),
-    );
+    // Converte a string do DTO para o Enum e Date corretos
+    const problemType = type as ProblemType;
+    const deadlineDate = deadline ? new Date(deadline) : null;
 
     const problem = this.problemsRepository.create({
-      title: createProblemDto.title,
-      description: createProblemDto.description,
-      slug: createProblemDto.slug,
-      type: createProblemDto.type,
-      maxAttempts: createProblemDto.maxAttempts,
-      deadline: createProblemDto.deadline, // <--- ADICIONE ISTO
-      classroom,
-      testCases,
+      ...problemData,
+      type: problemType,
+      deadline: deadlineDate as any, // Type cast para evitar conflito estrito
+      classroom: { id: classroomId } as any,
     });
 
-    await this.testCasesRepository.save(testCases);
+    const savedProblem = await this.problemsRepository.save(problem);
 
-    return this.problemsRepository.save(problem);
+    if (testCases && testCases.length > 0) {
+      const cases = testCases.map((tc) =>
+        this.testCasesRepository.create({
+          input: tc.input,
+          expectedOutput: tc.expectedOutput,
+          isHidden: tc.isHidden || false,
+          problem: savedProblem,
+        }),
+      );
+      await this.testCasesRepository.save(cases);
+    }
+
+    return savedProblem;
   }
 
-  findAll() {
-    return this.problemsRepository.find({ relations: ['classroom'] });
-  }
-
-  async findOne(id: string) {
+  async findOne(id: string, userId: number) {
     const problem = await this.problemsRepository.findOne({
       where: { id },
       relations: ['testCases', 'classroom', 'classroom.owner'],
     });
 
-    if (!problem) throw new NotFoundException('Exercício não encontrado');
+    if (!problem) {
+      throw new NotFoundException('Problema não encontrado');
+    }
+
+    const isOwner = problem.classroom.owner.id === userId;
+
+    if (!isOwner && problem.testCases) {
+      problem.testCases = problem.testCases.map((tc) => {
+        if (tc.isHidden) {
+          return {
+            ...tc,
+            input: '🔒 [Oculto]',
+            expectedOutput: '🔒 [Oculto]',
+          };
+        }
+        return tc;
+      });
+    }
+
     return problem;
   }
 
+  // --- IMPLEMENTAÇÃO DO MÉTODO UPDATE QUE FALTAVA ---
   async update(id: string, updateProblemDto: UpdateProblemDto, userId: number) {
-    // 1. Buscar o problema existente com seus relacionamentos
     const problem = await this.problemsRepository.findOne({
       where: { id },
-      relations: ['classroom', 'classroom.owner', 'testCases'],
+      relations: ['classroom', 'classroom.owner'],
     });
 
-    if (!problem) throw new NotFoundException('Exercício não encontrado');
+    if (!problem) throw new NotFoundException('Problema não encontrado');
 
-    // 2. Validar permissão
     if (problem.classroom.owner.id !== userId) {
       throw new ForbiddenException(
         'Apenas o dono da turma pode editar este exercício.',
       );
     }
 
-    // 3. Separar os dados: testCases vs dados do problema
-    const { testCases, classroomId, ...dataToUpdate } = updateProblemDto;
+    const { testCases, classroomId, deadline, type, ...dataToUpdate } =
+      updateProblemDto;
 
-    // 4. Atualizar dados básicos do problema
+    // Atualiza campos básicos
+    if (type) problem.type = type as ProblemType;
+    if (deadline) problem.deadline = new Date(deadline);
     Object.assign(problem, dataToUpdate);
-    await this.problemsRepository.save(problem);
 
-    // 5. Atualizar os Casos de Teste (Estratégia: Substituição Completa)
+    // Se houver novos casos de teste, substituímos os antigos (estratégia simples)
     if (testCases) {
-      // Remove os casos de teste antigos
-      // AVISO: Isso apaga todos os testes anteriores deste problema
+      // Remove antigos
       await this.testCasesRepository.delete({ problem: { id: problem.id } });
 
-      // Cria os novos casos de teste
-      const newTestCases = testCases.map((tc) =>
+      // Cria novos
+      const cases = testCases.map((tc) =>
         this.testCasesRepository.create({
           input: tc.input,
           expectedOutput: tc.expectedOutput,
+          isHidden: tc.isHidden || false,
           problem: problem,
         }),
       );
-
-      await this.testCasesRepository.save(newTestCases);
+      await this.testCasesRepository.save(cases);
     }
 
-    return this.findOne(id); // Retorna o problema atualizado
+    return this.problemsRepository.save(problem);
+  }
+  // ------------------------------------------------
+
+  async findAll() {
+    return this.problemsRepository.find();
   }
 
-  async remove(id: string, userId: number) {
-    const problem = await this.problemsRepository.findOne({
-      where: { id },
-      relations: ['classroom', 'classroom.owner'],
-    });
-
-    if (!problem) throw new NotFoundException('Exercício não encontrado');
-
-    if (problem.classroom.owner.id !== userId) {
-      throw new ForbiddenException(
-        'Apenas o dono da turma pode excluir este exercício.',
-      );
-    }
-
-    return this.problemsRepository.remove(problem);
+  async remove(id: string) {
+    await this.problemsRepository.delete(id);
+    return { deleted: true };
   }
 }

@@ -5,17 +5,11 @@ services:
     build: ./api
     ports:
       - "3000:3000"
-    environment:
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_USERNAME=autocore_user
-      - DB_PASSWORD=autocore_password
-      - DB_DATABASE=autocore_db
-      - JWT_SECRET=secretKey
-      - RAPIDAPI_KEY=${RAPIDAPI_KEY}
+    # O container da API carrega o arquivo .env da pasta ./api
+    env_file:
+      - ./api/.env
     depends_on:
       - db
-    # --- CONFIGURAÇÃO DO WATCH (BACKEND) ---
     develop:
       watch:
         - action: sync
@@ -23,38 +17,35 @@ services:
           target: /app/src
         - action: rebuild
           path: ./api/package.json
-    # Mantemos volumes para compatibilidade, mas o watch cuida da sincronia
     volumes:
       - ./api:/app
       - /app/node_modules
 
+  db:
+    image: postgres:13
+    # Mapeamos as variáveis do .env da API para as do Postgres
+    environment:
+      POSTGRES_USER: autocore_user # Hardcoded para garantir ou use ${DB_USER} se tiver um .env na raiz
+      POSTGRES_PASSWORD: autocore_password
+      POSTGRES_DB: autocore_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   web:
     build: ./web
     ports:
-      - "8080:80" # Nota: Se estiver em dev (Vite), certifique-se que o Dockerfile expõe a porta certa
-    environment:
-      - VITE_API_URL=http://localhost:3000
+      - "8080:80"
+    env_file:
+      - ./web/.env
     depends_on:
       - api
-    # --- CONFIGURAÇÃO DO WATCH (FRONTEND) ---
     develop:
       watch:
         - action: sync
           path: ./web/src
           target: /app/src
-        - action: rebuild
-          path: ./web/package.json
-
-  db:
-    image: postgres:13
-    environment:
-      - POSTGRES_USER=autocore_user
-      - POSTGRES_PASSWORD=autocore_password
-      - POSTGRES_DB=autocore_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - autocore_db_data:/var/lib/postgresql/data
 
 volumes:
-  autocore_db_data:
+  postgres_data:

@@ -802,3 +802,254 @@
   justify-content: center;
   font-size: 0.8rem;
 }
+
+/* --- DASHBOARD LAYOUT --- */
+/* --- DASHBOARD LAYOUT --- */
+.dashboard-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 20px;
+  width: 100%; /* Ocupa toda a largura */
+  box-sizing: border-box;
+}
+
+.dashboard-content {
+  display: grid;
+  grid-template-columns: 3fr 1fr;
+  gap: 24px;
+  width: 100%;
+}
+
+/* Coluna Lateral (Atividades) */
+.dashboard-sidebar {
+  background-color: #252526;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 16px;
+  height: fit-content;
+}
+
+.upcoming-box h3 {
+  font-size: 1rem;
+  color: #ccc;
+  margin-top: 0;
+  margin-bottom: 15px;
+  border-bottom: 1px solid #444;
+  padding-bottom: 10px;
+}
+
+/* Item da lista de atividades */
+.upcoming-item {
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  border-radius: 4px;
+  background-color: #2d2d30;
+  margin-bottom: 10px;
+  transition: background 0.2s;
+  text-decoration: none; /* Sem sublinhado */
+  color: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.upcoming-item:hover {
+  background-color: #3e3e42;
+  border-color: #444;
+  text-decoration: none; /* Garante que não apareça no hover */
+}
+
+.upcoming-title {
+  font-weight: 500;
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.upcoming-class {
+  font-size: 0.75rem;
+  color: #888;
+  margin-top: 2px;
+}
+
+.upcoming-date {
+  font-size: 0.75rem;
+  color: #f44336;
+  margin-top: 4px;
+  font-weight: bold;
+}
+
+/* Lista de Cards de Turma */
+.class-grid {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(300px, 1fr)
+  ); /* Cards um pouco maiores */
+  gap: 20px;
+}
+
+.google-card {
+  display: flex;
+  flex-direction: column;
+  background-color: #252526;
+  border: 1px solid #333;
+  border-radius: 8px;
+  overflow: hidden;
+  height: 260px;
+  text-decoration: none !important; /* Força remoção de sublinhado */
+  color: inherit;
+  transition: transform 0.2s, box-shadow 0.2s;
+  position: relative;
+}
+
+.google-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  text-decoration: none;
+}
+
+.card-banner {
+  height: 100px;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+  padding: 16px;
+  color: #fff;
+}
+
+.card-title {
+  font-size: 1.3rem;
+  font-weight: 500;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-section {
+  font-size: 0.85rem;
+  opacity: 0.9;
+  margin-top: 4px;
+}
+
+.card-teacher-name {
+  font-size: 0.8rem;
+  color: #fff;
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.card-avatar {
+  width: 70px;
+  height: 70px;
+  background-color: #1e1e1e;
+  border-radius: 50%;
+  position: absolute;
+  top: 65px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  color: #fff;
+  border: 4px solid #252526;
+}
+
+.card-body {
+  padding: 20px 16px;
+  padding-top: 45px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-role-badge {
+  align-self: flex-start;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.role-prof {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+}
+.role-student {
+  background: rgba(33, 150, 243, 0.2);
+  color: #2196f3;
+}
+
+/* Cores de Banner */
+.banner-color-0 {
+  background: linear-gradient(135deg, #1e3c72, #2a5298);
+}
+.banner-color-1 {
+  background: linear-gradient(135deg, #d31027, #ea384d);
+}
+.banner-color-2 {
+  background: linear-gradient(135deg, #11998e, #38ef7d);
+}
+.banner-color-3 {
+  background: linear-gradient(135deg, #f7971e, #ffd200);
+}
+.banner-color-4 {
+  background: linear-gradient(135deg, #8e2de2, #4a00e0);
+}
+
+.card-assignments {
+  margin-top: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.assignment-header {
+  font-size: 0.75rem;
+  color: #888;
+  text-transform: uppercase;
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+
+.assignment-link {
+  font-size: 0.85rem;
+  color: #e0e0e0;
+  padding: 4px 0;
+  cursor: pointer;
+  transition: color 0.2s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assignment-link:hover {
+  color: #4caf50; /* Verde destaque ao passar o mouse */
+  text-decoration: underline !important;
+}
+
+.assignment-time {
+  font-size: 0.75rem;
+  color: #f44336; /* Data em vermelho */
+  margin-left: 5px;
+}
+
+/* Remover coluna lateral antiga se ainda existir */
+.dashboard-content {
+  display: block; /* Remove o grid de colunas laterais, agora é tudo uma coluna larga */
+}
+
+.class-grid {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(320px, 1fr)
+  ); /* Cards um pouco mais largos */
+  gap: 20px;
+}

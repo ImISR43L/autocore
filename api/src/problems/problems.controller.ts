@@ -31,9 +31,10 @@ export class ProblemsController {
     return this.problemsService.findAll();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.problemsService.findOne(id);
+  findOne(@Param('id') id: string, @Request() req) {
+    return this.problemsService.findOne(id, req.user.userId);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -48,7 +49,7 @@ export class ProblemsController {
 
   @UseGuards(JwtAuthGuard)
   @Delete(':id')
-  remove(@Param('id') id: string, @Request() req) {
-    return this.problemsService.remove(id, req.user.userId);
+  remove(@Param('id') id: string) {
+    return this.problemsService.remove(id);
   }
 }

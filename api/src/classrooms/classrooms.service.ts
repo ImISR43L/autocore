@@ -68,13 +68,12 @@ export class ClassroomsService {
     // 1. Turmas que eu ensino
     const teaching = await this.classroomsRepository.find({
       where: { owner: { id: userId } },
-      relations: ['owner'], // Garante dados completos
+      relations: ['owner', 'problems'],
     });
 
-    // 2. Turmas que eu estudo
     const enrolled = await this.classroomsRepository.find({
       where: { students: { id: userId } },
-      relations: ['owner'], // Importante para mostrar o nome do professor no card
+      relations: ['owner', 'problems'],
     });
 
     // 3. RETORNAR UM ARRAY ÚNICO (FLAT LIST)
@@ -86,28 +85,37 @@ export class ClassroomsService {
   }
   // ---------------------
 
-  async findOne(id: number) {
+  async findOne(id: number, userId?: number) {
+    // Adicione userId
     const classroom = await this.classroomsRepository.findOne({
       where: { id },
       relations: [
         'owner',
         'students',
         'problems',
+        'problems.testCases', // Se estiver carregando os testes aqui
         'announcements',
         'announcements.author',
       ],
-      order: {
-        announcements: {
-          createdAt: 'DESC',
-        },
-      } as any,
+      order: { announcements: { createdAt: 'DESC' } } as any,
     });
+
     if (!classroom) throw new NotFoundException('Turma não encontrada');
 
-    if (classroom.announcements) {
-      classroom.announcements.sort(
-        (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-      );
+    // LÓGICA DE PROTEÇÃO DE DADOS
+    if (userId && classroom.owner.id !== userId) {
+      if (classroom.problems) {
+        classroom.problems.forEach((p) => {
+          if (p.testCases) {
+            p.testCases = p.testCases.map((tc) => {
+              if (tc.isHidden) {
+                return { ...tc, input: '🔒', expectedOutput: '🔒' } as any;
+              }
+              return tc;
+            });
+          }
+        });
+      }
     }
 
     return classroom;
