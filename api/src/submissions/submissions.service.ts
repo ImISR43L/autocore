@@ -10,6 +10,7 @@ import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
 import { Submission } from './entities/submission.entity';
 import { Problem, ProblemType } from '../problems/entities/problem.entity';
+import { WrapperGenerator } from './wrapper-generator';
 
 @Injectable()
 export class SubmissionsService {
@@ -146,7 +147,6 @@ export class SubmissionsService {
 
     if (!problem) throw new NotFoundException('Exercício não encontrado');
 
-    // Bloqueia professor de submeter
     if (problem.classroom.owner.id === userId) {
       throw new ForbiddenException(
         'Professores não devem enviar soluções para análise, apenas alunos.',
@@ -166,10 +166,25 @@ export class SubmissionsService {
     }
 
     let finalVerdict = 'Accepted';
-    // --- CORREÇÃO AQUI: Tipagem explícita ---
     let executionStdout: string | null = null;
     let executionStderr: string | null = null;
-    // ----------------------------------------
+
+    const params =
+      problem.parameters?.length > 0
+        ? problem.parameters
+        : ([
+            { name: 'a', type: 'int' },
+            { name: 'b', type: 'int' },
+          ] as any);
+
+    const returnType = problem.returnType || 'string';
+
+    const codeToRun = WrapperGenerator.generate(
+      language_id,
+      params,
+      returnType,
+      code,
+    );
 
     const judgeUrl = 'https://judge0-ce.p.rapidapi.com/submissions';
     const rapidApiKey = process.env.RAPIDAPI_KEY;
@@ -181,7 +196,7 @@ export class SubmissionsService {
       for (const testCase of problem.testCases) {
         try {
           const payload = {
-            source_code: Buffer.from(code).toString('base64'),
+            source_code: Buffer.from(codeToRun).toString('base64'), // Envia o código COMBINADO
             language_id: language_id,
             stdin: Buffer.from(testCase.input).toString('base64'),
             expected_output: Buffer.from(testCase.expectedOutput).toString(
@@ -222,8 +237,9 @@ export class SubmissionsService {
       }
     }
 
+    // Salva no banco APENAS o código do aluno (sem o wrapper), para ele ver o que escreveu
     const sub = this.submissionsRepository.create({
-      code,
+      code, // Salva o original
       language_id,
       status: finalVerdict,
       stdout: executionStdout,

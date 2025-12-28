@@ -10,10 +10,15 @@ import { Classroom } from '../../classrooms/entities/classroom.entity';
 import { TestCase } from './test-case.entity';
 import { Submission } from '../../submissions/entities/submission.entity';
 
-// Exportando o Enum para ser usado no Service e DTO
 export enum ProblemType {
   EXERCISE = 'EXERCISE',
   EXAM = 'EXAM',
+}
+
+// Interface para definir a assinatura (ex: nome: "nums", tipo: "int[]")
+export interface ParameterDefinition {
+  name: string;
+  type: 'int' | 'float' | 'string' | 'boolean' | 'int[]' | 'string[]';
 }
 
 @Entity()
@@ -37,11 +42,20 @@ export class Problem {
   })
   type: ProblemType;
 
+  // --- NOVO CAMPO: DEFINIÇÃO DOS PARÂMETROS ---
+  @Column({ type: 'jsonb', default: [] }) // Use 'simple-json' se não estiver usando Postgres
+  parameters: ParameterDefinition[];
+
+  // Define o tipo de retorno (ex: 'int', 'boolean')
+  @Column({ default: 'string' })
+  returnType: string;
+  // ---------------------------------------------
+
   @Column({ nullable: true })
   maxAttempts: number;
 
   @Column({ type: 'timestamp', nullable: true })
-  deadline: Date; // Alterado para Date para facilitar o TypeORM
+  deadline: Date;
 
   @CreateDateColumn()
   createdAt: Date;

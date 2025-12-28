@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react"; // <--- Adicionado useRef
+import { useState, useEffect, useMemo, useRef } from "react";
 import axios from "axios";
 import Editor from "@monaco-editor/react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
@@ -36,6 +36,8 @@ interface Problem {
   type: "EXERCISE" | "EXAM";
   maxAttempts?: number;
   deadline?: string;
+  parameters?: any[];
+  returnType?: string;
 }
 interface Classroom {
   id: number;
@@ -72,32 +74,32 @@ const LANGUAGES = [
   {
     id: 71,
     name: "Python (3.8.1)",
-    defaultCode: `import sys\n\n# Lê a entrada padrão\ninput_data = sys.stdin.read().split()\n\nif len(input_data) >= 2:\n    a = int(input_data[0])\n    b = int(input_data[1])\n    print(a + b)`,
+    defaultCode: `def solve(a, b):\n    # Escreva sua lógica aqui\n    return a + b`,
   },
   {
     id: 63,
     name: "JavaScript (Node.js)",
-    defaultCode: `const fs = require('fs');\nconst input = fs.readFileSync('/dev/stdin').toString().trim().split(/\\s+/);\n\nconst a = parseInt(input[0]);\nconst b = parseInt(input[1]);\nconsole.log(a + b);`,
+    defaultCode: `function solve(a, b) {\n    // Escreva sua lógica aqui\n    return a + b;\n}`,
   },
   {
     id: 62,
     name: "Java (OpenJDK 13.0.1)",
-    defaultCode: `import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner scanner = new Scanner(System.in);\n        if (scanner.hasNextInt()) {\n            int a = scanner.nextInt();\n            int b = scanner.nextInt();\n            System.out.println(a + b);\n        }\n        scanner.close();\n    }\n}`,
+    defaultCode: `class Solution {\n    public int solve(int a, int b) {\n        // Escreva sua lógica aqui\n        return a + b;\n    }\n}`,
   },
   {
     id: 50,
     name: "C (GCC 9.2.0)",
-    defaultCode: `#include <stdio.h>\n\nint main() {\n    int a, b;\n    if (scanf("%d %d", &a, &b) == 2) {\n        printf("%d", a + b);\n    }\n    return 0;\n}`,
+    defaultCode: `int solve(int a, int b) {\n    // Escreva sua lógica aqui\n    return a + b;\n}`,
   },
   {
     id: 54,
     name: "C++ (GCC 9.2.0)",
-    defaultCode: `#include <iostream>\n\nint main() {\n    int a, b;\n    if (std::cin >> a >> b) {\n        std::cout << (a + b);\n    }\n    return 0;\n}`,
+    defaultCode: `int solve(int a, int b) {\n    // Escreva sua lógica aqui\n    return a + b;\n}`,
   },
   {
     id: 60,
     name: "Go (1.13.5)",
-    defaultCode: `package main\nimport "fmt"\n\nfunc main() {\n    var a, b int\n    if _, err := fmt.Scan(&a, &b); err == nil {\n        fmt.Println(a + b)\n    }\n}`,
+    defaultCode: `func solve(a, b int) int {\n    // Escreva sua lógica aqui\n    return a + b\n}`,
   },
 ];
 
@@ -165,27 +167,82 @@ export default function ClassroomView() {
     return `autosave_${myUserId}_${probId}_${langId}`;
   };
 
-  // --- CORREÇÃO: REF PARA CONTROLAR O REDIRECIONAMENTO ---
-  // Impede que o useEffect rode repetidamente ao trocar de abas
+  // Gerador de assinatura dinâmica
+  const generateFunctionSignature = (langId: number, problem: any) => {
+    if (!problem || !problem.parameters) return "";
+
+    const params = problem.parameters;
+    const retType = problem.returnType || "void";
+
+    switch (langId) {
+      case 71: // Python
+        const pyArgs = params.map((p: any) => p.name).join(", ");
+        return `def solve(${pyArgs}):\n    # Escreva sua lógica aqui\n    pass`;
+
+      case 63: // JS
+        const jsArgs = params.map((p: any) => p.name).join(", ");
+        return `function solve(${jsArgs}) {\n    // Escreva sua lógica aqui\n}`;
+
+      case 62: // Java
+        const javaTypeMap: any = {
+          int: "int",
+          string: "String",
+          "int[]": "int[]",
+          boolean: "boolean",
+          float: "float",
+          "string[]": "String[]",
+        };
+        const javaArgs = params
+          .map((p: any) => `${javaTypeMap[p.type] || "Object"} ${p.name}`)
+          .join(", ");
+        const javaRet = javaTypeMap[retType] || "void";
+        return `class Solution {\n    public ${javaRet} solve(${javaArgs}) {\n        // Escreva sua lógica aqui\n        return ${
+          retType === "boolean"
+            ? "false"
+            : retType.includes("[]")
+            ? "new " + javaRet + "{}"
+            : "0"
+        };\n    }\n}`;
+
+      case 54: // C++
+        const cppTypeMap: any = {
+          int: "int",
+          string: "std::string",
+          "int[]": "std::vector<int>",
+          boolean: "bool",
+          float: "float",
+          "string[]": "std::vector<std::string>",
+        };
+        const cppArgs = params
+          .map((p: any) => `${cppTypeMap[p.type] || "auto"} ${p.name}`)
+          .join(", ");
+        const cppRet = cppTypeMap[retType] || "void";
+        const includes =
+          retType.includes("[]") ||
+          params.some((p: any) => p.type.includes("[]"))
+            ? "#include <vector>\n"
+            : "";
+        return `${includes}#include <string>\n\n${cppRet} solve(${cppArgs}) {\n    // Escreva sua lógica aqui\n}`;
+
+      default:
+        return "";
+    }
+  };
+
   const initialRedirectChecked = useRef(false);
 
   useEffect(() => {
-    // 1. Se viemos do Dashboard (tem state.problemId) e AINDA NÃO checamos isso:
     if (
       location.state &&
       location.state.problemId &&
       !initialRedirectChecked.current
     ) {
       setActiveTab("classwork");
-      initialRedirectChecked.current = true; // Marca como resolvido para não travar a navegação
-    }
-    // 2. Comportamento padrão: Salvar aba no localStorage
-    // Só executa se não estivermos no meio do redirecionamento forçado
-    else if (id) {
+      initialRedirectChecked.current = true;
+    } else if (id) {
       localStorage.setItem(`activeTab_${id}`, activeTab);
     }
   }, [location.state, id, activeTab]);
-  // --------------------------------------------------------
 
   useEffect(() => {
     localStorage.setItem(`languageId`, String(languageId));
@@ -195,18 +252,37 @@ export default function ClassroomView() {
     fetchClassroomData();
   }, [id]);
 
+  // Carrega código salvo ou gera assinatura padrão
   useEffect(() => {
     const lang = LANGUAGES.find((l) => l.id === languageId);
     if (!lang) return;
+
+    // Problema atual
+    const currentProb = classroom?.problems.find(
+      (p) => p.id === selectedProblemId
+    );
+
     if (!selectedProblemId) {
       setCode(lang.defaultCode);
       return;
     }
+
     const storageKey = getStorageKey(selectedProblemId, languageId);
     const savedCode = storageKey ? localStorage.getItem(storageKey) : null;
-    if (savedCode) setCode(savedCode);
-    else setCode(lang.defaultCode);
-  }, [languageId, selectedProblemId, myUserId]);
+
+    // Verifica se o código salvo é apenas o padrão antigo (para evitar mostrar código sujo)
+    const isPolluted = LANGUAGES.some(
+      (l) => l.id !== languageId && l.defaultCode === savedCode
+    );
+
+    if (savedCode && !isPolluted) {
+      setCode(savedCode);
+    } else {
+      // Gera assinatura dinâmica se possível, senão usa padrão
+      const dynamicSig = generateFunctionSignature(languageId, currentProb);
+      setCode(dynamicSig || lang.defaultCode);
+    }
+  }, [languageId, selectedProblemId, myUserId, classroom]); // Dependência do classroom para pegar params
 
   useEffect(() => {
     if (selectedProblemId && activeTab === "classwork") {
@@ -254,18 +330,26 @@ export default function ClassroomView() {
       if (key) localStorage.setItem(key, val);
     }
   };
+
   const handleResetCode = () => {
     if (!confirm("Restaurar código original?")) return;
-    const lang = LANGUAGES.find((l) => l.id === languageId);
-    if (lang) {
-      setCode(lang.defaultCode);
-      if (selectedProblemId) {
-        const key = getStorageKey(selectedProblemId, languageId);
-        if (key) localStorage.removeItem(key);
-      }
-      toast.success("Restaurado.");
+    const currentProb = classroom?.problems.find(
+      (p) => p.id === selectedProblemId
+    );
+    const dynamicSig = generateFunctionSignature(languageId, currentProb);
+    const defaultCode =
+      dynamicSig ||
+      LANGUAGES.find((l) => l.id === languageId)?.defaultCode ||
+      "";
+
+    setCode(defaultCode);
+    if (selectedProblemId) {
+      const key = getStorageKey(selectedProblemId, languageId);
+      if (key) localStorage.removeItem(key);
     }
+    toast.success("Restaurado.");
   };
+
   const handleInspect = (sub: Submission) => {
     setInspectingSubmission(sub);
     setGradingGrade(
@@ -310,7 +394,6 @@ export default function ClassroomView() {
       setClassroom(res.data);
 
       if (res.data.problems?.length > 0) {
-        // 1. Prioridade: Veio do Dashboard (clicou no link da atividade)
         if (location.state && location.state.problemId) {
           const problemExists = res.data.problems.find(
             (p: Problem) => p.id === location.state.problemId
@@ -320,8 +403,6 @@ export default function ClassroomView() {
             return;
           }
         }
-
-        // 2. Prioridade: Último acessado (localStorage)
         const storedProbId = localStorage.getItem(`lastProblemId_${id}`);
         const problemExists = res.data.problems.find(
           (p: Problem) => p.id === storedProbId
@@ -771,6 +852,90 @@ export default function ClassroomView() {
                       {currentProblem.description}
                     </ReactMarkdown>
                   </div>
+
+                  {/* --- EXIBIÇÃO DE CASOS DE TESTE --- */}
+                  {currentProblem.testCases &&
+                    currentProblem.testCases.length > 0 && (
+                      <div style={{ marginTop: "20px" }}>
+                        <h4
+                          style={{
+                            color: "#ccc",
+                            fontSize: "0.9rem",
+                            marginBottom: "10px",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Exemplos de Teste
+                        </h4>
+                        {currentProblem.testCases.map(
+                          (tc: any, index: number) => (
+                            <div
+                              key={index}
+                              style={{
+                                background: "#252526",
+                                padding: "10px",
+                                borderRadius: "6px",
+                                marginBottom: "10px",
+                                borderLeft: "3px solid #4caf50",
+                              }}
+                            >
+                              <div style={{ marginBottom: "5px" }}>
+                                <span
+                                  style={{
+                                    color: "#888",
+                                    fontSize: "0.8rem",
+                                    fontWeight: "bold",
+                                  }}
+                                >
+                                  Entrada:
+                                </span>
+                                <pre
+                                  style={{
+                                    margin: "5px 0",
+                                    fontFamily: "monospace",
+                                    background: "#1e1e1e",
+                                    padding: "8px",
+                                    borderRadius: "4px",
+                                    overflowX: "auto",
+                                    fontSize: "0.9rem",
+                                    color: "#e0e0e0",
+                                  }}
+                                >
+                                  {tc.input}
+                                </pre>
+                              </div>
+                              <div>
+                                <span
+                                  style={{
+                                    color: "#888",
+                                    fontSize: "0.8rem",
+                                    fontWeight: "bold",
+                                  }}
+                                >
+                                  Saída Esperada:
+                                </span>
+                                <pre
+                                  style={{
+                                    margin: "5px 0",
+                                    fontFamily: "monospace",
+                                    background: "#1e1e1e",
+                                    padding: "8px",
+                                    borderRadius: "4px",
+                                    overflowX: "auto",
+                                    fontSize: "0.9rem",
+                                    color: "#e0e0e0",
+                                  }}
+                                >
+                                  {tc.expectedOutput}
+                                </pre>
+                              </div>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+                  {/* ---------------------------------- */}
+
                   {isOwner && problemStats.length > 0 && (
                     <div
                       style={{
@@ -825,6 +990,7 @@ export default function ClassroomView() {
               ) : (
                 <p className="ide-description">Selecione um exercício.</p>
               )}
+
               {verdict && (
                 <div
                   className={`ide-feedback-box ${
@@ -1087,7 +1253,7 @@ export default function ClassroomView() {
                   <YAxis stroke="#888" allowDecimals={false} />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#252526",
+                      backgroundColor: "#1e1e1e",
                       borderColor: "#444",
                       color: "#fff",
                     }}

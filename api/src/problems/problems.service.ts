@@ -1,7 +1,7 @@
 import {
+  ForbiddenException,
   Injectable,
   NotFoundException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -20,17 +20,25 @@ export class ProblemsService {
   ) {}
 
   async create(createProblemDto: CreateProblemDto, userId: number) {
-    const { testCases, classroomId, type, deadline, ...problemData } =
-      createProblemDto;
+    const {
+      testCases,
+      classroomId,
+      type,
+      deadline,
+      parameters, // Extraímos os parameters
+      ...problemData
+    } = createProblemDto;
 
-    // Converte a string do DTO para o Enum e Date corretos
     const problemType = type as ProblemType;
     const deadlineDate = deadline ? new Date(deadline) : null;
 
     const problem = this.problemsRepository.create({
       ...problemData,
       type: problemType,
-      deadline: deadlineDate as any, // Type cast para evitar conflito estrito
+      deadline: deadlineDate as any,
+      // --- CORREÇÃO AQUI: Forçamos o tipo para 'any' para o TS aceitar o JSON do DTO ---
+      parameters: parameters as any,
+      // ---------------------------------------------------------------------------------
       classroom: { id: classroomId } as any,
     });
 
@@ -79,7 +87,6 @@ export class ProblemsService {
     return problem;
   }
 
-  // --- IMPLEMENTAÇÃO DO MÉTODO UPDATE QUE FALTAVA ---
   async update(id: string, updateProblemDto: UpdateProblemDto, userId: number) {
     const problem = await this.problemsRepository.findOne({
       where: { id },
@@ -94,20 +101,27 @@ export class ProblemsService {
       );
     }
 
-    const { testCases, classroomId, deadline, type, ...dataToUpdate } =
-      updateProblemDto;
+    const {
+      testCases,
+      classroomId,
+      deadline,
+      type,
+      parameters,
+      ...dataToUpdate
+    } = updateProblemDto;
 
-    // Atualiza campos básicos
     if (type) problem.type = type as ProblemType;
     if (deadline) problem.deadline = new Date(deadline);
+
+    // --- CORREÇÃO TAMBÉM NO UPDATE ---
+    if (parameters) problem.parameters = parameters as any;
+    // ---------------------------------
+
     Object.assign(problem, dataToUpdate);
 
-    // Se houver novos casos de teste, substituímos os antigos (estratégia simples)
     if (testCases) {
-      // Remove antigos
       await this.testCasesRepository.delete({ problem: { id: problem.id } });
 
-      // Cria novos
       const cases = testCases.map((tc) =>
         this.testCasesRepository.create({
           input: tc.input,
@@ -121,7 +135,6 @@ export class ProblemsService {
 
     return this.problemsRepository.save(problem);
   }
-  // ------------------------------------------------
 
   async findAll() {
     return this.problemsRepository.find();

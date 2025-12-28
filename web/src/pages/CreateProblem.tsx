@@ -2,373 +2,536 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
+import Editor from "@monaco-editor/react";
 import "../App.css";
 
 interface TestCase {
-  id?: string; // Opcional, pois pode não existir na criação
   input: string;
   expectedOutput: string;
+  isHidden: boolean;
 }
 
+interface Parameter {
+  name: string;
+  type: string;
+}
+
+const DATA_TYPES = [
+  { value: "int", label: "Inteiro (int)" },
+  { value: "float", label: "Decimal (float)" },
+  { value: "string", label: "Texto (string)" },
+  { value: "boolean", label: "Booleano (bool)" },
+  { value: "int[]", label: "Array de Inteiros (int[])" },
+  { value: "string[]", label: "Array de Texto (string[])" },
+];
+
 export default function CreateProblem() {
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const navigate = useNavigate();
   const location = useLocation();
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-  const { classroomId, problemToEdit } = location.state || {};
-  const isEditing = !!problemToEdit;
-
+  // Dados Básicos
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [slug, setSlug] = useState("");
-  const [testCases, setTestCases] = useState<TestCase[]>([
-    { input: "", expectedOutput: "" },
-  ]);
-  const [loading, setLoading] = useState(false);
+  const [classroomId, setClassroomId] = useState<number | null>(null);
 
-  const [type, setType] = useState("EXERCISE"); // "EXERCISE" ou "EXAM"
-  const [maxAttempts, setMaxAttempts] = useState<number | string>(""); // Vazio se for exercício
-
+  // Configurações
+  const [type, setType] = useState<"EXERCISE" | "EXAM">("EXERCISE");
+  const [maxAttempts, setMaxAttempts] = useState<number | undefined>();
   const [deadline, setDeadline] = useState("");
 
+  // --- NOVA SEÇÃO: ASSINATURA DA FUNÇÃO ---
+  const [parameters, setParameters] = useState<Parameter[]>([
+    { name: "arg1", type: "int" },
+  ]);
+  const [returnType, setReturnType] = useState("int");
+
+  // Casos de Teste
+  const [testCases, setTestCases] = useState<TestCase[]>([]);
+
+  // Inputs Temporários para o Novo Caso de Teste (Um valor por parâmetro)
+  const [currentInputs, setCurrentInputs] = useState<string[]>([""]);
+  const [currentOutput, setCurrentOutput] = useState("");
+  const [currentIsHidden, setCurrentIsHidden] = useState(false);
+
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
-    if (!classroomId && !isEditing) {
-      toast.error("Turma não identificada.");
-      navigate("/dashboard");
-      return;
+    if (location.state?.classroomId) {
+      setClassroomId(location.state.classroomId);
     }
+    // Lógica para edição viria aqui
+  }, [location.state]);
 
-    const loadProblemData = async () => {
-      if (isEditing && problemToEdit?.id) {
-        try {
-          const token = localStorage.getItem("token");
-          const res = await axios.get(
-            `${API_URL}/problems/${problemToEdit.id}`,
-            {
-              headers: { Authorization: `Bearer ${token}` },
-            }
-          );
+  // Atualiza os inputs temporários quando os parâmetros mudam
+  useEffect(() => {
+    setCurrentInputs(new Array(parameters.length).fill(""));
+  }, [parameters.length]);
 
-          const fullProblem = res.data;
-          setTitle(fullProblem.title);
-          setDescription(fullProblem.description);
-          setSlug(fullProblem.slug || "");
-
-          if (fullProblem.testCases && fullProblem.testCases.length > 0) {
-            setTestCases(fullProblem.testCases);
-          }
-
-          if (problemToEdit.deadline) {
-            const date = new Date(problemToEdit.deadline);
-            // Ajuste simples para fuso horário local no input
-            const localIso = new Date(
-              date.getTime() - date.getTimezoneOffset() * 60000
-            )
-              .toISOString()
-              .slice(0, 16);
-            setDeadline(localIso);
-          }
-        } catch (error) {
-          console.error(error);
-          toast.error("Erro ao carregar detalhes do exercício.");
-        }
-      }
-    };
-
-    loadProblemData();
-  }, [classroomId, isEditing, problemToEdit, navigate]);
-
-  const addTestCase = () => {
-    setTestCases([...testCases, { input: "", expectedOutput: "" }]);
+  // --- GERENCIAMENTO DE PARÂMETROS ---
+  const addParameter = () => {
+    setParameters([
+      ...parameters,
+      { name: `arg${parameters.length + 1}`, type: "int" },
+    ]);
   };
 
-  const removeTestCase = (index: number) => {
+  const removeParameter = (index: number) => {
+    if (parameters.length === 1) return;
+    const newParams = [...parameters];
+    newParams.splice(index, 1);
+    setParameters(newParams);
+  };
+
+  const updateParameter = (
+    index: number,
+    field: keyof Parameter,
+    value: string
+  ) => {
+    const newParams = [...parameters];
+    newParams[index] = { ...newParams[index], [field]: value };
+    setParameters(newParams);
+  };
+
+  // --- GERENCIAMENTO DE CASOS DE TESTE ---
+  const handleAddTestCase = () => {
+    if (!currentOutput) return toast.warning("Defina a saída esperada.");
+
+    // Validação e Formatação para JSON (Uma linha por argumento)
+    const formattedInputs: string[] = [];
+
+    for (let i = 0; i < currentInputs.length; i++) {
+      const rawVal = currentInputs[i];
+      const paramType = parameters[i].type;
+
+      try {
+        // Tenta validar se é compatível com JSON
+        // Ex: se o tipo é int, o usuário digitou 5 -> JSON.parse(5) ok
+        // Ex: se o tipo é string, usuário digitou "ola" -> JSON.parse("ola") ok
+        // Ex: se o usuário digitou ola (sem aspas) para string -> Erro, vamos avisar
+
+        // Tratamento especial para strings simples sem aspas (opcional, mas ajuda UX)
+        let valToParse = rawVal;
+        if (paramType === "string" && !rawVal.startsWith('"')) {
+          valToParse = `"${rawVal}"`;
+        }
+
+        JSON.parse(valToParse); // Apenas para testar se é válido
+        formattedInputs.push(valToParse);
+      } catch (e) {
+        return toast.error(
+          `Erro no parâmetro ${parameters[i].name}: Valor inválido para JSON. Se for texto, use aspas.`
+        );
+      }
+    }
+
+    // Une os inputs com quebra de linha (Formato esperado pelo WrapperGenerator)
+    const finalInputString = formattedInputs.join("\n");
+
+    setTestCases([
+      ...testCases,
+      {
+        input: finalInputString,
+        expectedOutput: currentOutput,
+        isHidden: currentIsHidden,
+      },
+    ]);
+
+    // Limpa
+    setCurrentInputs(new Array(parameters.length).fill(""));
+    setCurrentOutput("");
+    setCurrentIsHidden(false);
+  };
+
+  const handleRemoveTestCase = (index: number) => {
     setTestCases(testCases.filter((_, i) => i !== index));
   };
 
-  const handleTestCaseChange = (
-    index: number,
-    field: keyof TestCase,
-    value: string
-  ) => {
-    const newTestCases = [...testCases];
-    newTestCases[index][field] = value;
-    setTestCases(newTestCases);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreate = async () => {
+    if (!title || !description || !slug || !classroomId)
+      return toast.warning("Preencha os campos obrigatórios.");
     setLoading(true);
-    const toastId = toast.loading(isEditing ? "Atualizando..." : "Criando...");
 
     try {
       const token = localStorage.getItem("token");
-      const headers = { Authorization: `Bearer ${token}` };
-
-      // CORREÇÃO PRINCIPAL:
-      // Removemos o 'id' dos testCases para não dar erro de validação no backend
-      const cleanTestCases = testCases.map(({ input, expectedOutput }) => ({
-        input,
-        expectedOutput,
-      }));
 
       const payload = {
         title,
         description,
         slug,
         classroomId,
-        testCases: cleanTestCases,
         type,
-        ...(type === "EXAM" && maxAttempts
-          ? { maxAttempts: Number(maxAttempts) }
-          : {}),
-        deadline: deadline ? new Date(deadline).toISOString() : null,
+        maxAttempts: maxAttempts ? Number(maxAttempts) : undefined,
+        deadline: deadline ? new Date(deadline).toISOString() : undefined,
+        // Novos campos
+        parameters,
+        returnType,
+        testCases,
       };
 
-      if (isEditing) {
-        await axios.patch(`${API_URL}/problems/${problemToEdit.id}`, payload, {
-          headers,
-        });
-        toast.success("Exercício atualizado!", { id: toastId });
-      } else {
-        await axios.post(`${API_URL}/problems`, payload, { headers });
-        toast.success("Exercício criado!", { id: toastId });
-      }
+      await axios.post(`${API_URL}/problems`, payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
+      toast.success("Exercício criado com sucesso!");
       navigate(`/class/${classroomId}`);
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-      const msg = error.response?.data?.message || "Erro ao salvar.";
-      // Exibe mensagem de erro formatada
-      toast.error(Array.isArray(msg) ? msg.join(", ") : msg, { id: toastId });
+      toast.error("Erro ao criar exercício. Verifique o Slug.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="container">
-      <div className="page-header">
-        <h1 className="page-title">
-          {isEditing ? "Editar Exercício" : "Novo Exercício"}
-        </h1>
-        <button onClick={() => navigate(-1)} className="btn btn-secondary">
-          Cancelar
-        </button>
-      </div>
-
-      <form
-        onSubmit={handleSubmit}
-        style={{ maxWidth: "800px", margin: "0 auto" }}
+    <div
+      className="container"
+      style={{ maxWidth: "900px", paddingBottom: "100px" }}
+    >
+      <button
+        onClick={() => navigate(-1)}
+        className="btn btn-ghost"
+        style={{ marginBottom: "20px" }}
       >
-        <div className="form-group">
+        ← Voltar
+      </button>
+
+      <h1 style={{ borderBottom: "1px solid #333", paddingBottom: "15px" }}>
+        Criar Novo Exercício
+      </h1>
+
+      <div
+        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}
+      >
+        <div>
           <label className="form-label">Título</label>
           <input
             className="form-input"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            required
-            placeholder="Ex: Soma Simples"
+            placeholder="Ex: Soma de Dois Números"
           />
         </div>
-
-        <div className="form-group">
-          <label className="form-label">Slug (URL Amigável)</label>
+        <div>
+          <label className="form-label">Slug (URL única)</label>
           <input
             className="form-input"
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
-            required
-            placeholder="ex: soma-simples"
+            placeholder="Ex: two-sum"
           />
         </div>
+      </div>
 
-        <div className="form-group">
-          <label className="form-label">Enunciado</label>
-          <textarea
-            className="form-textarea"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={8}
-            required
-          />
-        </div>
-
+      <div style={{ marginTop: "20px" }}>
+        <label className="form-label">Descrição (Markdown)</label>
         <div
-          className="card"
           style={{
-            marginBottom: "20px",
-            padding: "15px",
-            border: "1px solid #444",
+            height: "300px",
+            border: "1px solid #333",
+            borderRadius: "4px",
+            overflow: "hidden",
           }}
         >
-          <h3 style={{ marginTop: 0, fontSize: "1rem", color: "#ccc" }}>
-            Configurações de Avaliação
-          </h3>
-
-          <div className="form-group">
-            <label className="form-label">Tipo de Atividade</label>
-            <div style={{ display: "flex", gap: "20px", marginTop: "5px" }}>
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  cursor: "pointer",
-                }}
-              >
-                <input
-                  type="radio"
-                  name="problemType"
-                  value="EXERCISE"
-                  checked={type === "EXERCISE"}
-                  onChange={(e) => setType(e.target.value)}
-                />
-                Exercício (Tentativas Livres)
-              </label>
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  cursor: "pointer",
-                }}
-              >
-                <input
-                  type="radio"
-                  name="problemType"
-                  value="EXAM"
-                  checked={type === "EXAM"}
-                  onChange={(e) => setType(e.target.value)}
-                />
-                Prova (Tentativas Limitadas)
-              </label>
-            </div>
-          </div>
-
-          {type === "EXAM" && (
-            <div className="form-group" style={{ marginTop: "15px" }}>
-              <label className="form-label">Número Máximo de Tentativas</label>
-              <input
-                type="number"
-                className="form-input"
-                value={maxAttempts}
-                onChange={(e) => setMaxAttempts(e.target.value)}
-                placeholder="Ex: 3"
-                min="1"
-                required={type === "EXAM"} // Obrigatório se for prova
-                style={{ maxWidth: "150px" }}
-              />
-              <small
-                style={{ color: "#888", display: "block", marginTop: "5px" }}
-              >
-                O aluno receberá bloqueio após errar este número de vezes.
-              </small>
-            </div>
-          )}
-
-          <div className="form-group" style={{ marginTop: "15px" }}>
-            <label className="form-label">
-              Data Limite de Entrega (Opcional)
-            </label>
-            <input
-              type="datetime-local"
-              className="form-input"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-              style={{ maxWidth: "250px" }}
-            />
-            <small
-              style={{ color: "#888", display: "block", marginTop: "5px" }}
-            >
-              Deixe em branco para sem prazo.
-            </small>
-          </div>
+          <Editor
+            height="100%"
+            defaultLanguage="markdown"
+            theme="vs-dark"
+            value={description}
+            onChange={(val) => setDescription(val || "")}
+          />
         </div>
+      </div>
 
-        <hr style={{ borderColor: "var(--border)", margin: "2rem 0" }} />
-
-        <h3
-          className="page-title"
-          style={{ fontSize: "1.2rem", marginBottom: "1rem" }}
-        >
-          Casos de Teste (IO)
+      {/* --- CONFIGURAÇÃO DA ASSINATURA DA FUNÇÃO --- */}
+      <div
+        className="card-box"
+        style={{
+          marginTop: "30px",
+          background: "#1e1e1e",
+          padding: "20px",
+          borderRadius: "8px",
+          border: "1px solid #333",
+        }}
+      >
+        <h3 style={{ marginTop: 0, color: "#4caf50" }}>
+          ⚙️ Assinatura da Função
         </h3>
+        <p style={{ fontSize: "0.85rem", color: "#888", marginBottom: "15px" }}>
+          Defina os parâmetros que a função do aluno receberá. Isso gerará o
+          código base automaticamente.
+        </p>
 
-        {testCases.map((tc, idx) => (
-          <div key={idx} className="test-case-card">
-            <div className="test-case-header">
-              <span>Caso de Teste #{idx + 1}</span>
-              {testCases.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeTestCase(idx)}
-                  className="btn btn-danger"
-                  style={{ padding: "0.2rem 0.5rem", fontSize: "0.8rem" }}
-                >
-                  Remover
-                </button>
-              )}
-            </div>
-            <div className="test-case-grid">
-              <div>
-                <label className="form-label">Entrada</label>
-                <textarea
-                  className="form-textarea"
-                  value={tc.input}
-                  onChange={(e) =>
-                    handleTestCaseChange(idx, "input", e.target.value)
-                  }
-                  rows={2}
-                  style={{ fontFamily: "monospace" }}
-                />
-              </div>
-              <div>
-                <label className="form-label">Saída Esperada</label>
-                <textarea
-                  className="form-textarea"
-                  value={tc.expectedOutput}
-                  onChange={(e) =>
-                    handleTestCaseChange(idx, "expectedOutput", e.target.value)
-                  }
-                  rows={2}
-                  style={{ fontFamily: "monospace" }}
-                />
-              </div>
-            </div>
+        {parameters.map((param, idx) => (
+          <div
+            key={idx}
+            style={{
+              display: "flex",
+              gap: "10px",
+              marginBottom: "10px",
+              alignItems: "center",
+            }}
+          >
+            <span style={{ color: "#666", fontSize: "0.9rem" }}>
+              Parâmetro {idx + 1}:
+            </span>
+            <input
+              className="form-input"
+              placeholder="Nome (ex: nums)"
+              value={param.name}
+              onChange={(e) => updateParameter(idx, "name", e.target.value)}
+              style={{ width: "200px" }}
+            />
+            <select
+              className="form-select"
+              value={param.type}
+              onChange={(e) => updateParameter(idx, "type", e.target.value)}
+              style={{ width: "200px" }}
+            >
+              {DATA_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            {parameters.length > 1 && (
+              <button
+                onClick={() => removeParameter(idx)}
+                className="btn btn-danger"
+                style={{ padding: "5px 10px" }}
+              >
+                X
+              </button>
+            )}
           </div>
         ))}
 
+        <button
+          onClick={addParameter}
+          className="btn btn-secondary"
+          style={{ marginTop: "10px", fontSize: "0.8rem" }}
+        >
+          + Adicionar Parâmetro
+        </button>
+
         <div
           style={{
-            display: "flex",
-            gap: "1rem",
-            marginTop: "1rem",
-            marginBottom: "3rem",
+            marginTop: "20px",
+            paddingTop: "15px",
+            borderTop: "1px solid #333",
           }}
         >
-          <button
-            type="button"
-            onClick={addTestCase}
-            className="btn btn-secondary"
-            style={{ flex: 1 }}
+          <label className="form-label">Tipo de Retorno da Função:</label>
+          <select
+            className="form-select"
+            value={returnType}
+            onChange={(e) => setReturnType(e.target.value)}
+            style={{ width: "250px" }}
           >
-            + Adicionar Caso
-          </button>
+            {DATA_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* --- CONFIGURAÇÃO DE CASOS DE TESTE --- */}
+      <div
+        className="card-box"
+        style={{
+          marginTop: "30px",
+          background: "#1e1e1e",
+          padding: "20px",
+          borderRadius: "8px",
+          border: "1px solid #333",
+        }}
+      >
+        <h3 style={{ marginTop: 0, color: "#2196f3" }}>🧪 Casos de Teste</h3>
+        <p style={{ fontSize: "0.85rem", color: "#888", marginBottom: "15px" }}>
+          Adicione exemplos para validar o código. Use formato JSON (aspas em
+          strings, colchetes em arrays).
+        </p>
+
+        <div
+          style={{
+            background: "#252526",
+            padding: "15px",
+            borderRadius: "6px",
+            marginBottom: "20px",
+          }}
+        >
+          <h4 style={{ margin: "0 0 10px 0", fontSize: "0.9rem" }}>
+            Novo Caso de Teste
+          </h4>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${parameters.length}, 1fr)`,
+              gap: "10px",
+              marginBottom: "10px",
+            }}
+          >
+            {parameters.map((p, idx) => (
+              <div key={idx}>
+                <label className="form-label" style={{ fontSize: "0.8rem" }}>
+                  {p.name} ({p.type})
+                </label>
+                <input
+                  className="form-input"
+                  value={currentInputs[idx] || ""}
+                  onChange={(e) => {
+                    const newInputs = [...currentInputs];
+                    newInputs[idx] = e.target.value;
+                    setCurrentInputs(newInputs);
+                  }}
+                  placeholder={
+                    p.type.includes("[]")
+                      ? "[1, 2]"
+                      : p.type === "string"
+                      ? '"texto"'
+                      : "10"
+                  }
+                />
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginBottom: "10px" }}>
+            <label className="form-label" style={{ fontSize: "0.8rem" }}>
+              Saída Esperada (JSON)
+            </label>
+            <input
+              className="form-input"
+              value={currentOutput}
+              onChange={(e) => setCurrentOutput(e.target.value)}
+              placeholder="Ex: 9 ou [0, 1] ou true"
+            />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              marginBottom: "15px",
+            }}
+          >
+            <input
+              type="checkbox"
+              id="hiddenCase"
+              checked={currentIsHidden}
+              onChange={(e) => setCurrentIsHidden(e.target.checked)}
+            />
+            <label
+              htmlFor="hiddenCase"
+              style={{ fontSize: "0.9rem", cursor: "pointer", color: "#ccc" }}
+            >
+              🔒 Caso de teste oculto (não mostrar ao aluno)
+            </label>
+          </div>
+
           <button
-            type="submit"
-            disabled={loading}
+            onClick={handleAddTestCase}
             className="btn btn-primary"
-            style={{ flex: 2 }}
+            style={{ width: "100%" }}
           >
-            {loading
-              ? "Salvando..."
-              : isEditing
-              ? "Atualizar Exercício"
-              : "Criar Exercício"}
+            Adicionar Caso
           </button>
         </div>
-      </form>
+
+        {/* Lista de Casos Adicionados */}
+        {testCases.length > 0 && (
+          <table className="custom-table">
+            <thead>
+              <tr>
+                <th>Entrada</th>
+                <th>Saída</th>
+                <th>Tipo</th>
+                <th>Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {testCases.map((tc, i) => (
+                <tr key={i}>
+                  <td
+                    style={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}
+                  >
+                    {tc.input.replace(/\n/g, ", ")}
+                  </td>
+                  <td style={{ fontFamily: "monospace" }}>
+                    {tc.expectedOutput}
+                  </td>
+                  <td>{tc.isHidden ? "🔒 Oculto" : "👁️ Visível"}</td>
+                  <td>
+                    <button
+                      onClick={() => handleRemoveTestCase(i)}
+                      className="btn btn-danger btn-sm"
+                    >
+                      Remover
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div
+        style={{
+          marginTop: "30px",
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr 1fr",
+          gap: "20px",
+        }}
+      >
+        <div>
+          <label className="form-label">Tipo de Atividade</label>
+          <select
+            className="form-select"
+            value={type}
+            onChange={(e) => setType(e.target.value as any)}
+          >
+            <option value="EXERCISE">Exercício (Livre)</option>
+            <option value="EXAM">Prova (Restrito)</option>
+          </select>
+        </div>
+        <div>
+          <label className="form-label">Tentativas (Prova)</label>
+          <input
+            type="number"
+            className="form-input"
+            placeholder="Ilimitado"
+            value={maxAttempts || ""}
+            onChange={(e) => setMaxAttempts(Number(e.target.value))}
+            disabled={type === "EXERCISE"}
+          />
+        </div>
+        <div>
+          <label className="form-label">Prazo de Entrega</label>
+          <input
+            type="datetime-local"
+            className="form-input"
+            value={deadline}
+            onChange={(e) => setDeadline(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div style={{ marginTop: "40px", display: "flex", gap: "10px" }}>
+        <button
+          className="btn btn-primary"
+          style={{ flex: 1, padding: "15px", fontSize: "1.1rem" }}
+          onClick={handleCreate}
+          disabled={loading}
+        >
+          {loading ? "Criando..." : "🚀 Criar Exercício"}
+        </button>
+      </div>
     </div>
   );
 }
