@@ -161,6 +161,36 @@ export class SubmissionsService {
         throw new ForbiddenException(`Limite de tentativas excedido.`);
     }
 
+    if (problem.type === ProblemType.EXAM) {
+      // 1. Verifica Tentativas
+      if (problem.maxAttempts) {
+        const attempts = await this.submissionsRepository.count({
+          where: { problem: { id: problem.id }, user: { id: userId } },
+        });
+        if (attempts >= problem.maxAttempts)
+          throw new ForbiddenException(`Limite de tentativas excedido.`);
+      }
+
+      // 2. Verifica Temporizador em Tempo Real
+      if (problem.timeLimit) {
+        if (!problem.startedAt) {
+          throw new ForbiddenException(
+            'A prova ainda não foi iniciada pelo professor.',
+          );
+        }
+
+        const now = new Date().getTime();
+        const startTime = new Date(problem.startedAt).getTime();
+        const limitMs = problem.timeLimit * 60 * 1000;
+        const endTime = startTime + limitMs;
+
+        // Margem de tolerância de 30 segundos para latência de rede
+        if (now > endTime + 30000) {
+          throw new ForbiddenException('O tempo da prova acabou.');
+        }
+      }
+    }
+
     if (problem.deadline && new Date() > new Date(problem.deadline)) {
       throw new ForbiddenException(`Prazo encerrado.`);
     }

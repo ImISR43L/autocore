@@ -37,6 +37,11 @@ export class ProblemsController {
     return this.problemsService.findOne(id, req.user.userId);
   }
 
+  @Patch(':id/start')
+  startExam(@Param('id') id: string, @Request() req) {
+    return this.problemsService.startExam(id, req.user.userId);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
   update(

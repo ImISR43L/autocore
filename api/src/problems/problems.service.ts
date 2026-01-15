@@ -25,20 +25,19 @@ export class ProblemsService {
       classroomId,
       type,
       deadline,
-      parameters, // Extraímos os parameters
+      parameters,
+      timeLimit,
       ...problemData
     } = createProblemDto;
 
-    const problemType = type as ProblemType;
-    const deadlineDate = deadline ? new Date(deadline) : null;
-
     const problem = this.problemsRepository.create({
       ...problemData,
-      type: problemType,
-      deadline: deadlineDate as any,
-      // --- CORREÇÃO AQUI: Forçamos o tipo para 'any' para o TS aceitar o JSON do DTO ---
+      type: type as ProblemType,
+      // --- CORREÇÃO AQUI: Casting para 'any' para aceitar null ou Date ---
+      deadline: (deadline ? new Date(deadline) : null) as any,
+      // ------------------------------------------------------------------
+      timeLimit: timeLimit,
       parameters: parameters as any,
-      // ---------------------------------------------------------------------------------
       classroom: { id: classroomId } as any,
     });
 
@@ -113,9 +112,7 @@ export class ProblemsService {
     if (type) problem.type = type as ProblemType;
     if (deadline) problem.deadline = new Date(deadline);
 
-    // --- CORREÇÃO TAMBÉM NO UPDATE ---
     if (parameters) problem.parameters = parameters as any;
-    // ---------------------------------
 
     Object.assign(problem, dataToUpdate);
 
@@ -133,6 +130,22 @@ export class ProblemsService {
       await this.testCasesRepository.save(cases);
     }
 
+    return this.problemsRepository.save(problem);
+  }
+
+  async startExam(id: string, userId: number) {
+    const problem = await this.problemsRepository.findOne({
+      where: { id },
+      relations: ['classroom', 'classroom.owner'],
+    });
+
+    if (!problem) throw new NotFoundException('Prova não encontrada');
+    if (problem.classroom.owner.id !== userId)
+      throw new ForbiddenException('Apenas o professor pode iniciar.');
+    if (problem.type !== ProblemType.EXAM)
+      throw new ForbiddenException('Apenas provas podem ser iniciadas.');
+
+    problem.startedAt = new Date();
     return this.problemsRepository.save(problem);
   }
 

@@ -15,7 +15,6 @@ export enum ProblemType {
   EXAM = 'EXAM',
 }
 
-// Interface para definir a assinatura (ex: nome: "nums", tipo: "int[]")
 export interface ParameterDefinition {
   name: string;
   type: 'int' | 'float' | 'string' | 'boolean' | 'int[]' | 'string[]';
@@ -42,20 +41,25 @@ export class Problem {
   })
   type: ProblemType;
 
-  // --- NOVO CAMPO: DEFINIÇÃO DOS PARÂMETROS ---
-  @Column({ type: 'jsonb', default: [] }) // Use 'simple-json' se não estiver usando Postgres
+  @Column({ type: 'jsonb', default: [] })
   parameters: ParameterDefinition[];
 
-  // Define o tipo de retorno (ex: 'int', 'boolean')
   @Column({ default: 'string' })
   returnType: string;
-  // ---------------------------------------------
 
   @Column({ nullable: true })
   maxAttempts: number;
 
   @Column({ type: 'timestamp', nullable: true })
   deadline: Date;
+
+  // --- NOVOS CAMPOS ---
+  @Column({ type: 'int', nullable: true })
+  timeLimit: number; // Duração em minutos
+
+  @Column({ type: 'timestamp', nullable: true })
+  startedAt: Date; // Quando o professor iniciou
+  // --------------------
 
   @CreateDateColumn()
   createdAt: Date;

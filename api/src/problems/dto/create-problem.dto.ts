@@ -91,4 +91,9 @@ export class CreateProblemDto {
   @ValidateNested({ each: true })
   @Type(() => CreateTestCaseDto)
   testCases: CreateTestCaseDto[];
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  timeLimit?: number;
 }

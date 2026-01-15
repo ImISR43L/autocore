@@ -57,6 +57,8 @@ export default function CreateProblem() {
 
   const [loading, setLoading] = useState(false);
 
+  const [timeLimit, setTimeLimit] = useState<number | "">("");
+
   useEffect(() => {
     if (location.state?.classroomId) {
       setClassroomId(location.state.classroomId);
@@ -164,7 +166,9 @@ export default function CreateProblem() {
         type,
         maxAttempts: maxAttempts ? Number(maxAttempts) : undefined,
         deadline: deadline ? new Date(deadline).toISOString() : undefined,
-        // Novos campos
+        // --- ADICIONE O TIMELIMIT AQUI ---
+        timeLimit: type === "EXAM" && timeLimit ? Number(timeLimit) : undefined,
+        // ---------------------------------
         parameters,
         returnType,
         testCases,
@@ -508,6 +512,17 @@ export default function CreateProblem() {
             placeholder="Ilimitado"
             value={maxAttempts || ""}
             onChange={(e) => setMaxAttempts(Number(e.target.value))}
+            disabled={type === "EXERCISE"}
+          />
+        </div>
+        <div>
+          <label className="form-label">Duração (Minutos)</label>
+          <input
+            type="number"
+            className="form-input"
+            placeholder="Ex: 90"
+            value={timeLimit}
+            onChange={(e) => setTimeLimit(Number(e.target.value))}
             disabled={type === "EXERCISE"}
           />
         </div>

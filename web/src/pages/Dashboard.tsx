@@ -10,7 +10,6 @@ interface Problem {
   title: string;
   deadline?: string;
 }
-
 interface Classroom {
   id: number;
   name: string;
@@ -19,7 +18,6 @@ interface Classroom {
   owner: { email: string };
   problems?: Problem[];
 }
-
 interface PendingWork {
   id: string;
   title: string;
@@ -31,30 +29,24 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
-
-  // Estados de Modais e Menus
   const [showMenu, setShowMenu] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
 
-  // Inputs
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   const [newClassName, setNewClassName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-
-  // Ref para fechar o menu ao clicar fora
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchData();
   }, []);
-
-  // Fecha o menu se clicar fora dele
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node))
         setShowMenu(false);
-      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -71,7 +63,7 @@ export default function Dashboard() {
         headers: { Authorization: `Bearer ${token}` },
       });
       setClassrooms(res.data);
-    } catch (error) {
+    } catch {
       toast.error("Sessão expirada.");
       navigate("/");
     }
@@ -89,15 +81,14 @@ export default function Dashboard() {
       );
       toast.success("Turma criada!");
       setNewClassName("");
-      setShowCreateModal(false); // Fecha o modal
+      setShowCreateModal(false);
       fetchData();
     } catch {
-      toast.error("Erro ao criar turma.");
+      toast.error("Erro.");
     } finally {
       setIsLoading(false);
     }
   };
-
   const handleJoinClassroom = async () => {
     if (!joinCode.trim()) return;
     setIsLoading(true);
@@ -108,7 +99,7 @@ export default function Dashboard() {
         { code: joinCode },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      toast.success("Entrou na turma!");
+      toast.success("Entrou!");
       setShowJoinModal(false);
       setJoinCode("");
       fetchData();
@@ -118,27 +109,24 @@ export default function Dashboard() {
       setIsLoading(false);
     }
   };
-
   const handleDeleteClassroom = async (
     e: React.MouseEvent,
     classId: number
   ) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm("Tem certeza que deseja EXCLUIR esta turma permanentemente?"))
-      return;
+    if (!confirm("Excluir turma?")) return;
     try {
       const token = localStorage.getItem("token");
       await axios.delete(`${API_URL}/classrooms/${classId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      toast.success("Turma excluída.");
+      toast.success("Excluída.");
       fetchData();
     } catch {
-      toast.error("Erro ao excluir.");
+      toast.error("Erro.");
     }
   };
-
   const navigateToAssignment = (
     e: React.MouseEvent,
     classId: number,
@@ -162,25 +150,32 @@ export default function Dashboard() {
       .slice(0, 3);
   };
 
+  // Função auxiliar para formatar Hora e Data (HH:mm · DD/MM)
+  const formatDeadline = (date: Date) => {
+    const hours = date.getHours().toString().padStart(2, "0");
+    const minutes = date.getMinutes().toString().padStart(2, "0");
+    const day = date.getDate().toString().padStart(2, "0");
+    const month = (date.getMonth() + 1).toString().padStart(2, "0");
+    return `${hours}:${minutes} · ${day}/${month}`;
+  };
+
   const getBannerClass = (id: number) => `banner-color-${id % 5}`;
+
+  const teachingClasses = classrooms.filter((c) => c.isOwner);
+  const enrolledClasses = classrooms.filter((c) => !c.isOwner);
 
   return (
     <div className="dashboard-container">
-      {/* --- HEADER COM BOTÃO + E DROPDOWN --- */}
-      <header
-        style={{
-          marginBottom: "20px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          borderBottom: "1px solid #333",
-          paddingBottom: "15px",
-        }}
-      >
-        <h1 style={{ margin: 0 }}>Autocore Classroom</h1>
-
+      <header className="dashboard-header">
+        <button
+          className="sidebar-toggle"
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          title="Menu"
+        >
+          ☰
+        </button>
+        <h1 style={{ margin: 0, flex: 1 }}>Autocore Classroom</h1>
         <div className="header-actions">
-          {/* Wrapper relativo para o dropdown */}
           <div style={{ position: "relative" }} ref={menuRef}>
             <button
               onClick={() => setShowMenu(!showMenu)}
@@ -189,7 +184,6 @@ export default function Dashboard() {
             >
               +
             </button>
-
             {showMenu && (
               <div className="dropdown-menu">
                 <div
@@ -213,7 +207,6 @@ export default function Dashboard() {
               </div>
             )}
           </div>
-
           <button
             onClick={() => {
               localStorage.removeItem("token");
@@ -227,118 +220,179 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* GRID DE TURMAS */}
-      <div className="class-grid">
-        {classrooms.map((c) => {
-          const pendingWork = getPendingForClass(c);
-          return (
-            <Link key={c.id} to={`/class/${c.id}`} className="google-card">
-              <div className={`card-banner ${getBannerClass(c.id)}`}>
-                <h2 className="card-title">{c.name}</h2>
-                <div className="card-section">{c.code}</div>
-                {!c.isOwner && (
-                  <div className="card-teacher-name">
-                    {c.owner.email.split("@")[0]}
-                  </div>
-                )}
-
-                {c.isOwner && (
-                  <button
-                    className="delete-class-btn"
-                    onClick={(e) => handleDeleteClassroom(e, c.id)}
-                    title="Excluir Turma"
-                  >
-                    🗑️
-                  </button>
-                )}
-              </div>
-
-              <div className="card-avatar">
-                {c.owner.email.charAt(0).toUpperCase()}
-              </div>
-
-              <div className="card-body">
-                <span
-                  className={`card-role-badge ${
-                    c.isOwner ? "role-prof" : "role-student"
-                  }`}
+      <aside className={`app-sidebar ${isSidebarOpen ? "open" : ""}`}>
+        <div className="sidebar-content">
+          <Link
+            to="/dashboard"
+            className="sidebar-item"
+            onClick={() => setIsSidebarOpen(false)}
+          >
+            <span className="sidebar-class-avatar">🏠</span> Início
+          </Link>
+          {teachingClasses.length > 0 && (
+            <>
+              <div className="sidebar-section-title">Turmas que leciono</div>
+              {teachingClasses.map((c) => (
+                <Link
+                  key={c.id}
+                  to={`/class/${c.id}`}
+                  className="sidebar-item"
+                  onClick={() => setIsSidebarOpen(false)}
                 >
-                  {c.isOwner ? "Professor" : "Aluno"}
-                </span>
-
-                {pendingWork.length > 0 ? (
-                  <div className="card-assignments">
-                    <span className="assignment-header">
-                      Próximas entregas:
-                    </span>
-                    {pendingWork.map((work) => (
-                      <div
-                        key={work.id}
-                        className="assignment-link"
-                        onClick={(e) => navigateToAssignment(e, c.id, work.id)}
-                        title={`Entrega: ${work.deadline.toLocaleString()}`}
-                      >
-                        {work.title}{" "}
-                        <span className="assignment-time">
-                          ({work.deadline.getDate()}/
-                          {work.deadline.getMonth() + 1})
-                        </span>
-                      </div>
-                    ))}
+                  <div
+                    className="sidebar-class-avatar"
+                    style={{ background: "#3e3e42" }}
+                  >
+                    {c.name.charAt(0).toUpperCase()}
                   </div>
-                ) : (
                   <div
                     style={{
-                      marginTop: "auto",
-                      paddingTop: "10px",
-                      color: "#666",
-                      fontSize: "0.8rem",
-                      fontStyle: "italic",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
                     }}
                   >
-                    Nenhuma entrega pendente.
+                    {c.name}
                   </div>
-                )}
-              </div>
-            </Link>
-          );
-        })}
-        {classrooms.length === 0 && (
-          <div
-            style={{
-              color: "#666",
-              textAlign: "center",
-              padding: "40px",
-              gridColumn: "1 / -1",
-            }}
-          >
-            Nenhuma turma encontrada. Clique no "+" para começar.
-          </div>
-        )}
+                </Link>
+              ))}
+            </>
+          )}
+          {enrolledClasses.length > 0 && (
+            <>
+              <div className="sidebar-section-title">Inscrito</div>
+              {enrolledClasses.map((c) => (
+                <Link
+                  key={c.id}
+                  to={`/class/${c.id}`}
+                  className="sidebar-item"
+                  onClick={() => setIsSidebarOpen(false)}
+                >
+                  <div
+                    className="sidebar-class-avatar"
+                    style={{ background: "#3e3e42" }}
+                  >
+                    {c.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div
+                    style={{
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {c.name}
+                  </div>
+                </Link>
+              ))}
+            </>
+          )}
+        </div>
+      </aside>
+
+      <div
+        className={`dashboard-main-content ${isSidebarOpen ? "shifted" : ""}`}
+      >
+        <div className="class-grid">
+          {classrooms.map((c) => {
+            const pendingWork = getPendingForClass(c);
+            return (
+              <Link key={c.id} to={`/class/${c.id}`} className="google-card">
+                <div className={`card-banner ${getBannerClass(c.id)}`}>
+                  <h2 className="card-title">{c.name}</h2>
+                  <div className="card-section">{c.code}</div>
+                  {!c.isOwner && (
+                    <div className="card-teacher-name">
+                      {c.owner.email.split("@")[0]}
+                    </div>
+                  )}
+                  {c.isOwner && (
+                    <button
+                      className="delete-class-btn"
+                      onClick={(e) => handleDeleteClassroom(e, c.id)}
+                      title="Excluir Turma"
+                    >
+                      🗑️
+                    </button>
+                  )}
+                </div>
+                <div className="card-avatar">
+                  {c.owner.email.charAt(0).toUpperCase()}
+                </div>
+                <div className="card-body">
+                  <span
+                    className={`card-role-badge ${
+                      c.isOwner ? "role-prof" : "role-student"
+                    }`}
+                  >
+                    {c.isOwner ? "Professor" : "Aluno"}
+                  </span>
+                  {pendingWork.length > 0 ? (
+                    <div className="card-assignments">
+                      <span className="assignment-header">
+                        Próximas entregas:
+                      </span>
+                      {pendingWork.map((work) => (
+                        <div
+                          key={work.id}
+                          className="assignment-link"
+                          onClick={(e) =>
+                            navigateToAssignment(e, c.id, work.id)
+                          }
+                          title={`Entrega: ${work.deadline.toLocaleString()}`}
+                        >
+                          {/* --- MUDANÇA AQUI: Exibindo Hora e Data --- */}
+                          {work.title}{" "}
+                          <span className="assignment-time">
+                            ({formatDeadline(work.deadline)})
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        marginTop: "auto",
+                        paddingTop: "10px",
+                        color: "#666",
+                        fontSize: "0.8rem",
+                        fontStyle: "italic",
+                      }}
+                    >
+                      Nenhuma entrega pendente.
+                    </div>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
+          {classrooms.length === 0 && (
+            <div
+              style={{
+                color: "#666",
+                textAlign: "center",
+                padding: "40px",
+                gridColumn: "1 / -1",
+              }}
+            >
+              Nenhuma turma encontrada.
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* --- MODAL PARTICIPAR --- */}
+      {/* MODAIS (MANTIDOS) */}
       {showJoinModal && (
         <div className="modal-overlay">
           <div className="modal-content">
             <h3 style={{ marginTop: 0 }}>Participar da turma</h3>
-            <p style={{ color: "#888", fontSize: "0.9rem" }}>
-              Peça o código da turma ao seu professor.
-            </p>
             <input
               type="text"
-              placeholder="Código (ex: X7Y8Z9)"
+              placeholder="Código"
               className="form-input"
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value)}
-              style={{
-                width: "100%",
-                marginTop: "15px",
-                marginBottom: "20px",
-                padding: "10px",
-                fontSize: "1.1rem",
-                letterSpacing: "2px",
-              }}
+              style={{ width: "100%", margin: "15px 0" }}
             />
             <div
               style={{
@@ -358,33 +412,23 @@ export default function Dashboard() {
                 disabled={!joinCode || isLoading}
                 className="btn btn-primary"
               >
-                {isLoading ? "..." : "Participar"}
+                Participar
               </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* --- MODAL CRIAR --- */}
       {showCreateModal && (
         <div className="modal-overlay">
           <div className="modal-content">
             <h3 style={{ marginTop: 0 }}>Criar turma</h3>
-            <p style={{ color: "#888", fontSize: "0.9rem" }}>
-              Defina o nome da disciplina.
-            </p>
             <input
               type="text"
-              placeholder="Nome da disciplina (ex: Algoritmos)"
+              placeholder="Nome da disciplina"
               className="form-input"
               value={newClassName}
               onChange={(e) => setNewClassName(e.target.value)}
-              style={{
-                width: "100%",
-                marginTop: "15px",
-                marginBottom: "20px",
-                padding: "10px",
-              }}
+              style={{ width: "100%", margin: "15px 0" }}
             />
             <div
               style={{
@@ -404,7 +448,7 @@ export default function Dashboard() {
                 disabled={!newClassName || isLoading}
                 className="btn btn-primary"
               >
-                {isLoading ? "..." : "Criar"}
+                Criar
               </button>
             </div>
           </div>

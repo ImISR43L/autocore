@@ -38,6 +38,8 @@ interface Problem {
   deadline?: string;
   parameters?: any[];
   returnType?: string;
+  timeLimit?: number;
+  startedAt?: string;
 }
 interface Classroom {
   id: number;
@@ -118,7 +120,8 @@ export default function ClassroomView() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Estados
+  // --- 1. TODOS OS HOOKS DEVEM FICAR AQUI (ANTES DE QUALQUER RETURN) ---
+
   const [activeTab, setActiveTab] = useState<
     "stream" | "classwork" | "people" | "analytics"
   >("stream");
@@ -147,6 +150,12 @@ export default function ClassroomView() {
   const [stats, setStats] = useState<StatData[]>([]);
   const [problemStats, setProblemStats] = useState<ProblemStat[]>([]);
 
+  // Timer States
+  const [timeLeft, setTimeLeft] = useState<string | null>(null);
+  const [examStatus, setExamStatus] = useState<
+    "WAITING" | "RUNNING" | "FINISHED"
+  >("WAITING");
+
   // Helpers
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
@@ -162,28 +171,27 @@ export default function ClassroomView() {
   const myUserId = getMyUserId();
   const isOwner = classroom?.owner?.id === myUserId;
 
+  // Calculamos currentProblem com segurança (?. e || null) para usar nos hooks abaixo
+  const currentProblem =
+    classroom?.problems?.find((p) => p.id === selectedProblemId) || null;
+
   const getStorageKey = (probId: string, langId: number) => {
     if (!myUserId) return null;
     return `autosave_${myUserId}_${probId}_${langId}`;
   };
 
-  // Gerador de assinatura dinâmica
   const generateFunctionSignature = (langId: number, problem: any) => {
     if (!problem || !problem.parameters) return "";
-
     const params = problem.parameters;
     const retType = problem.returnType || "void";
-
     switch (langId) {
-      case 71: // Python
+      case 71:
         const pyArgs = params.map((p: any) => p.name).join(", ");
         return `def solve(${pyArgs}):\n    # Escreva sua lógica aqui\n    pass`;
-
-      case 63: // JS
+      case 63:
         const jsArgs = params.map((p: any) => p.name).join(", ");
         return `function solve(${jsArgs}) {\n    // Escreva sua lógica aqui\n}`;
-
-      case 62: // Java
+      case 62:
         const javaTypeMap: any = {
           int: "int",
           string: "String",
@@ -203,8 +211,7 @@ export default function ClassroomView() {
             ? "new " + javaRet + "{}"
             : "0"
         };\n    }\n}`;
-
-      case 54: // C++
+      case 54:
         const cppTypeMap: any = {
           int: "int",
           string: "std::string",
@@ -223,7 +230,6 @@ export default function ClassroomView() {
             ? "#include <vector>\n"
             : "";
         return `${includes}#include <string>\n\n${cppRet} solve(${cppArgs}) {\n    // Escreva sua lógica aqui\n}`;
-
       default:
         return "";
     }
@@ -247,42 +253,29 @@ export default function ClassroomView() {
   useEffect(() => {
     localStorage.setItem(`languageId`, String(languageId));
   }, [languageId]);
-
   useEffect(() => {
     fetchClassroomData();
   }, [id]);
 
-  // Carrega código salvo ou gera assinatura padrão
   useEffect(() => {
     const lang = LANGUAGES.find((l) => l.id === languageId);
     if (!lang) return;
-
-    // Problema atual
-    const currentProb = classroom?.problems.find(
-      (p) => p.id === selectedProblemId
-    );
-
     if (!selectedProblemId) {
       setCode(lang.defaultCode);
       return;
     }
-
     const storageKey = getStorageKey(selectedProblemId, languageId);
     const savedCode = storageKey ? localStorage.getItem(storageKey) : null;
-
-    // Verifica se o código salvo é apenas o padrão antigo (para evitar mostrar código sujo)
     const isPolluted = LANGUAGES.some(
       (l) => l.id !== languageId && l.defaultCode === savedCode
     );
-
     if (savedCode && !isPolluted) {
       setCode(savedCode);
     } else {
-      // Gera assinatura dinâmica se possível, senão usa padrão
-      const dynamicSig = generateFunctionSignature(languageId, currentProb);
+      const dynamicSig = generateFunctionSignature(languageId, currentProblem);
       setCode(dynamicSig || lang.defaultCode);
     }
-  }, [languageId, selectedProblemId, myUserId, classroom]); // Dependência do classroom para pegar params
+  }, [languageId, selectedProblemId, myUserId, classroom]); // currentProblem já é safe aqui
 
   useEffect(() => {
     if (selectedProblemId && activeTab === "classwork") {
@@ -290,12 +283,57 @@ export default function ClassroomView() {
       if (isOwner) fetchProblemStats(selectedProblemId);
     }
   }, [selectedProblemId, activeTab, isOwner]);
-
   useEffect(() => {
     if (activeTab === "analytics" && isOwner && id) {
       fetchStats();
     }
   }, [activeTab, isOwner, id]);
+
+  // --- EFFECT DO TIMER (Correção do Bug #310: Agora está antes do return) ---
+  useEffect(() => {
+    if (
+      !currentProblem ||
+      currentProblem.type !== "EXAM" ||
+      !currentProblem.timeLimit
+    ) {
+      setTimeLeft(null);
+      setExamStatus("RUNNING");
+      return;
+    }
+
+    if (!currentProblem.startedAt) {
+      setExamStatus("WAITING");
+      setTimeLeft("Aguardando Início");
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      const start = new Date(currentProblem.startedAt!).getTime();
+      const duration = currentProblem.timeLimit! * 60 * 1000;
+      const end = start + duration;
+      const diff = end - now;
+
+      if (diff <= 0) {
+        setExamStatus("FINISHED");
+        setTimeLeft("00:00:00");
+        clearInterval(interval);
+      } else {
+        setExamStatus("RUNNING");
+        const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const s = Math.floor((diff % (1000 * 60)) / 1000);
+        setTimeLeft(
+          `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s
+            .toString()
+            .padStart(2, "0")}`
+        );
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [currentProblem]); // Dependência segura
+  // -------------------------------------------------------------------------
 
   // Actions
   const fetchStats = async () => {
@@ -306,7 +344,7 @@ export default function ClassroomView() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setStats(res.data);
-    } catch (error) {
+    } catch {
       console.error("Erro stats");
     }
   };
@@ -318,7 +356,7 @@ export default function ClassroomView() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setProblemStats(res.data);
-    } catch (error) {
+    } catch {
       console.error("Erro problem stats");
     }
   };
@@ -330,18 +368,13 @@ export default function ClassroomView() {
       if (key) localStorage.setItem(key, val);
     }
   };
-
   const handleResetCode = () => {
     if (!confirm("Restaurar código original?")) return;
-    const currentProb = classroom?.problems.find(
-      (p) => p.id === selectedProblemId
-    );
-    const dynamicSig = generateFunctionSignature(languageId, currentProb);
+    const dynamicSig = generateFunctionSignature(languageId, currentProblem);
     const defaultCode =
       dynamicSig ||
       LANGUAGES.find((l) => l.id === languageId)?.defaultCode ||
       "";
-
     setCode(defaultCode);
     if (selectedProblemId) {
       const key = getStorageKey(selectedProblemId, languageId);
@@ -349,7 +382,6 @@ export default function ClassroomView() {
     }
     toast.success("Restaurado.");
   };
-
   const handleInspect = (sub: Submission) => {
     setInspectingSubmission(sub);
     setGradingGrade(
@@ -392,7 +424,6 @@ export default function ClassroomView() {
         headers: { Authorization: `Bearer ${token}` },
       });
       setClassroom(res.data);
-
       if (res.data.problems?.length > 0) {
         if (location.state && location.state.problemId) {
           const problemExists = res.data.problems.find(
@@ -519,16 +550,51 @@ export default function ClassroomView() {
       setLoading(false);
     }
   };
+
+  const handleStartExam = async () => {
+    if (
+      !confirm("Iniciar a prova agora? O tempo começará a contar para todos.")
+    )
+      return;
+    try {
+      const token = localStorage.getItem("token");
+      await axios.patch(
+        `${API_URL}/problems/${selectedProblemId}/start`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast.success("Prova iniciada!");
+      fetchClassroomData();
+    } catch {
+      toast.error("Erro ao iniciar.");
+    }
+  };
+
+  const handleGoToProblem = (probId: string) => {
+    setSelectedProblemId(probId);
+    setActiveTab("classwork");
+  };
+
   const myAttemptsCount = useMemo(() => {
     if (!myUserId) return 0;
     return (submissions || []).filter((s) => s.user?.id === myUserId).length;
   }, [submissions, myUserId]);
 
+  const upcomingWork = useMemo(() => {
+    if (!classroom?.problems) return [];
+    const now = new Date();
+    return classroom.problems
+      .filter((p) => p.deadline && new Date(p.deadline) > now)
+      .sort(
+        (a, b) =>
+          new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime()
+      )
+      .slice(0, 3);
+  }, [classroom]);
+
+  // --- 2. AGORA SIM O RETORNO CONDICIONAL ---
   if (!classroom) return <div className="container">Carregando...</div>;
 
-  const currentProblem = classroom.problems.find(
-    (p) => p.id === selectedProblemId
-  );
   const isExam = currentProblem?.type === "EXAM";
   const maxAttempts = currentProblem?.maxAttempts || 0;
   const isDeadlinePassed = currentProblem?.deadline
@@ -539,7 +605,9 @@ export default function ClassroomView() {
     : Infinity;
   const isBlocked =
     (isExam && !isOwner && attemptsLeft === 0) ||
-    (!isOwner && isDeadlinePassed);
+    (!isOwner && isDeadlinePassed) ||
+    (isExam && examStatus === "WAITING" && !isOwner) ||
+    (isExam && examStatus === "FINISHED" && !isOwner);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -593,72 +661,120 @@ export default function ClassroomView() {
 
       {activeTab === "stream" && (
         <div className="stream-container">
-          <div className="stream-banner">
-            <h1 className="stream-title">{classroom.name}</h1>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <strong>Código:</strong>
-              <span className="stream-code-box">{classroom.code}</span>
-            </div>
-          </div>
-          {isOwner && (
-            <div className="stream-input-card">
-              <form onSubmit={handlePostAnnouncement}>
-                <textarea
-                  className="stream-textarea"
-                  placeholder="Anuncie algo..."
-                  value={newAnnouncement}
-                  onChange={(e) => setNewAnnouncement(e.target.value)}
-                />
-                <div className="stream-actions">
-                  <button
-                    type="submit"
-                    disabled={posting || !newAnnouncement.trim()}
-                    className="btn btn-primary"
-                  >
-                    {posting ? "..." : "Postar"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-          <div className="announcements-list">
-            {(!classroom.announcements ||
-              classroom.announcements.length === 0) && (
-              <div
-                style={{ textAlign: "center", color: "#666", padding: "40px" }}
-              >
-                Nenhum aviso.
-              </div>
-            )}
-            {classroom.announcements?.map((a) => (
-              <div key={a.id} className="announcement-card">
-                <div className="announcement-header">
-                  <div className="announcement-avatar">
-                    {a.author?.email.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="announcement-meta">
-                    <span className="announcement-author">
-                      {a.author?.email}
-                    </span>
-                    <span className="announcement-date">
-                      {new Date(a.createdAt).toLocaleDateString()}
-                    </span>
-                  </div>
-                  {isOwner && (
-                    <button
-                      onClick={() => handleDeleteAnnouncement(a.id)}
-                      className="options-btn"
+          <div className="stream-wrapper">
+            <aside className="stream-sidebar">
+              <div className="upcoming-card">
+                <div className="upcoming-title">Próximas atividades</div>
+                {upcomingWork.length > 0 ? (
+                  <>
+                    {upcomingWork.map((work) => (
+                      <div
+                        key={work.id}
+                        className="upcoming-link"
+                        onClick={() => handleGoToProblem(work.id)}
+                        title={work.title}
+                      >
+                        {work.title}
+                      </div>
+                    ))}
+                    <div
+                      className="view-all-link"
+                      onClick={() => setActiveTab("classwork")}
                     >
-                      ⋮
-                    </button>
-                  )}
-                </div>
-                <div className="announcement-body">{a.content}</div>
+                      Ver tudo
+                    </div>
+                  </>
+                ) : (
+                  <div className="upcoming-empty">
+                    Nenhuma atividade para a próxima semana!
+                  </div>
+                )}
+                {upcomingWork.length === 0 && (
+                  <div
+                    className="view-all-link"
+                    onClick={() => setActiveTab("classwork")}
+                  >
+                    Ver tudo
+                  </div>
+                )}
               </div>
-            ))}
+            </aside>
+            <main className="stream-main">
+              <div className="stream-banner">
+                <h1 className="stream-title">{classroom.name}</h1>
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                >
+                  <strong>Código:</strong>
+                  <span className="stream-code-box">{classroom.code}</span>
+                </div>
+              </div>
+              {isOwner && (
+                <div className="stream-input-card">
+                  <form onSubmit={handlePostAnnouncement}>
+                    <textarea
+                      className="stream-textarea"
+                      placeholder="Anuncie algo para a turma..."
+                      value={newAnnouncement}
+                      onChange={(e) => setNewAnnouncement(e.target.value)}
+                    />
+                    <div className="stream-actions">
+                      <button
+                        type="submit"
+                        disabled={posting || !newAnnouncement.trim()}
+                        className="btn btn-primary"
+                      >
+                        {posting ? "..." : "Postar"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+              <div className="announcements-list">
+                {(!classroom.announcements ||
+                  classroom.announcements.length === 0) && (
+                  <div
+                    style={{
+                      textAlign: "center",
+                      color: "#666",
+                      padding: "40px",
+                    }}
+                  >
+                    Nenhum aviso no mural.
+                  </div>
+                )}
+                {classroom.announcements?.map((a) => (
+                  <div key={a.id} className="announcement-card">
+                    <div className="announcement-header">
+                      <div className="announcement-avatar">
+                        {a.author?.email.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="announcement-meta">
+                        <span className="announcement-author">
+                          {a.author?.email}
+                        </span>
+                        <span className="announcement-date">
+                          {new Date(a.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      {isOwner && (
+                        <button
+                          onClick={() => handleDeleteAnnouncement(a.id)}
+                          className="options-btn"
+                        >
+                          ⋮
+                        </button>
+                      )}
+                    </div>
+                    <div className="announcement-body">{a.content}</div>
+                  </div>
+                ))}
+              </div>
+            </main>
           </div>
         </div>
       )}
+
       {activeTab === "people" && (
         <div className="people-container">
           <div style={{ marginBottom: "40px" }}>
@@ -705,6 +821,57 @@ export default function ClassroomView() {
                 </option>
               ))}
             </select>
+
+            {/* TIMER AREA */}
+            {currentProblem?.type === "EXAM" && currentProblem.timeLimit && (
+              <div
+                style={{
+                  margin: "0 15px",
+                  padding: "5px 15px",
+                  borderRadius: "4px",
+                  background:
+                    examStatus === "RUNNING"
+                      ? "#2e7d32"
+                      : examStatus === "FINISHED"
+                      ? "#c62828"
+                      : "#f57f17",
+                  color: "#fff",
+                  fontWeight: "bold",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                <span>
+                  {examStatus === "WAITING"
+                    ? "⏳ Aguardando"
+                    : examStatus === "FINISHED"
+                    ? "🛑 Encerrado"
+                    : "⏱️ Tempo Restante:"}
+                </span>
+                {examStatus !== "WAITING" && (
+                  <span style={{ fontFamily: "monospace", fontSize: "1.1rem" }}>
+                    {timeLeft}
+                  </span>
+                )}
+                {isOwner && examStatus === "WAITING" && (
+                  <button
+                    onClick={handleStartExam}
+                    className="btn btn-sm"
+                    style={{
+                      background: "#fff",
+                      color: "#000",
+                      border: "none",
+                      marginLeft: "10px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    ▶ Iniciar Agora
+                  </button>
+                )}
+              </div>
+            )}
+
             {isOwner && (
               <div style={{ display: "flex", gap: "5px", marginLeft: "10px" }}>
                 {selectedProblemId && (
@@ -852,8 +1019,6 @@ export default function ClassroomView() {
                       {currentProblem.description}
                     </ReactMarkdown>
                   </div>
-
-                  {/* --- EXIBIÇÃO DE CASOS DE TESTE --- */}
                   {currentProblem.testCases &&
                     currentProblem.testCases.length > 0 && (
                       <div style={{ marginTop: "20px" }}>
@@ -934,8 +1099,6 @@ export default function ClassroomView() {
                         )}
                       </div>
                     )}
-                  {/* ---------------------------------- */}
-
                   {isOwner && problemStats.length > 0 && (
                     <div
                       style={{
@@ -990,7 +1153,6 @@ export default function ClassroomView() {
               ) : (
                 <p className="ide-description">Selecione um exercício.</p>
               )}
-
               {verdict && (
                 <div
                   className={`ide-feedback-box ${

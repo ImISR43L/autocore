@@ -5,19 +5,23 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // 1. Segurança: Ativar CORS para o Frontend acessar
-  app.enableCors();
+  // --- HABILITAR CORS ---
+  app.enableCors({
+    origin: true, // Permite qualquer origem (em produção, coloque 'http://localhost:8080')
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+  });
+  // ----------------------
 
-  // 2. Segurança: Ativar Validação Global (ValidationPipe)
-  // Isso faz com que os DTOs (@IsString, @IsEmail) funcionem de verdade.
+  // Configuração de validação (já deve existir)
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true, // Remove campos extras que não estão no DTO
-      forbidNonWhitelisted: true, // Retorna erro se enviar campos desconhecidos
-      transform: true, // Converte tipos automaticamente (ex: "1" -> 1)
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
     }),
   );
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(3000);
 }
 bootstrap();

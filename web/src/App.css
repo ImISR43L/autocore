@@ -1,11 +1,31 @@
 /* web/src/App.css */
 
+:root {
+  --header-height: 70px;
+  --sidebar-width: 260px;
+}
+
 /* --- Utilitários de Layout --- */
 .container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 2rem;
   width: 100%;
+}
+
+.dashboard-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: var(--header-height);
+  background-color: #1e1e1e; /* Mesma cor do fundo ou levemente diferente */
+  border-bottom: 1px solid #333;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  z-index: 3000; /* Acima de tudo */
+  box-sizing: border-box;
 }
 
 .page-header {
@@ -691,6 +711,91 @@
   padding-top: 15px;
 }
 
+.stream-wrapper {
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  gap: 20px;
+  align-items: flex-start; /* Alinha no topo */
+}
+
+.stream-sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  position: sticky; /* Opcional: mantém fixo ao rolar */
+  top: 20px;
+}
+
+.stream-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0; /* Impede overflow em flex items */
+}
+
+/* Card de Próximas Atividades */
+.upcoming-card {
+  background-color: #252526;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 15px;
+  text-align: left;
+}
+
+.upcoming-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 15px;
+  color: #e0e0e0;
+}
+
+.upcoming-empty {
+  font-size: 0.8rem;
+  color: #888;
+  margin-bottom: 20px;
+  line-height: 1.4;
+}
+
+.upcoming-link {
+  display: block;
+  font-size: 0.85rem;
+  color: #4caf50; /* Cor de destaque */
+  text-decoration: none;
+  cursor: pointer;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.upcoming-link:hover {
+  text-decoration: underline;
+}
+
+.view-all-link {
+  display: block;
+  text-align: right;
+  font-size: 0.85rem;
+  color: #4caf50;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+/* Ajuste Responsivo */
+@media (max-width: 768px) {
+  .stream-wrapper {
+    flex-direction: column;
+  }
+  .stream-sidebar {
+    width: 100%;
+    position: static;
+    display: none; /* Oculta em mobile se preferir, ou deixa visível */
+  }
+}
+
 /* Cards de Avisos (Postagens) */
 .announcement-card {
   background-color: #1e1e1e;
@@ -1132,4 +1237,109 @@
 .dropdown-item:hover {
   background-color: #3e3e42;
   color: #fff;
+}
+
+/* --- SIDEBAR MENU --- */
+.app-sidebar {
+  position: fixed;
+  top: var(--header-height); /* Começa onde o header termina */
+  left: 0;
+  width: var(--sidebar-width);
+  height: calc(100vh - var(--header-height)); /* Ocupa o resto da altura */
+  background-color: #1e1e1e;
+  border-right: 1px solid #333;
+  z-index: 2000;
+  transform: translateX(-100%); /* Escondido */
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.app-sidebar.open {
+  transform: translateX(0); /* Visível */
+}
+
+/* Conteúdo Principal (Empurrado) */
+.dashboard-main-content {
+  margin-top: var(--header-height); /* Espaço para não ficar atrás do header */
+  margin-left: 0;
+  width: 100%;
+  padding: 20px;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-sizing: border-box;
+}
+
+.dashboard-main-content.shifted {
+  margin-left: var(--sidebar-width); /* Empurra */
+  width: calc(
+    100% - var(--sidebar-width)
+  ); /* Reduz largura para não estourar scroll horizontal */
+}
+
+/* --- ESTILOS INTERNOS DA SIDEBAR --- */
+.sidebar-content {
+  padding: 10px;
+  flex: 1;
+}
+
+.sidebar-section-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: #888;
+  margin: 15px 10px 5px 10px;
+  font-weight: bold;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  color: #e0e0e0;
+  text-decoration: none;
+  border-radius: 0 20px 20px 0;
+  transition: background 0.2s, color 0.2s;
+  margin-bottom: 2px;
+  font-size: 0.9rem;
+}
+
+.sidebar-item:hover {
+  background-color: #3e3e42;
+  color: #fff;
+}
+
+.sidebar-class-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #333;
+  color: #fff;
+  font-size: 0.8rem;
+  margin-right: 12px;
+  font-weight: bold;
+}
+
+/* Botão Hamburguer e Ações */
+.sidebar-toggle {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 45px;
+  height: 45px;
+  margin-right: 15px;
+}
+
+.sidebar-toggle:hover {
+  background-color: #3e3e42;
 }
