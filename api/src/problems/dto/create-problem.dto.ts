@@ -114,4 +114,8 @@ export class CreateProblemDto {
   @IsOptional()
   questions?: CreateQuestionDto[];
   // ------------------------------------
+
+  @IsOptional()
+  @IsString()
+  startDate?: string;
 }

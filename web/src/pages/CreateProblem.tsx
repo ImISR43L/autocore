@@ -227,8 +227,15 @@ export default function CreateProblem() {
         classroomId,
         type,
         maxAttempts: maxAttempts ? Number(maxAttempts) : undefined,
-        deadline: deadline ? new Date(deadline).toISOString() : undefined,
         timeLimit: type === "EXAM" && timeLimit ? Number(timeLimit) : undefined,
+        startDate:
+          type === "EXAM" && deadline
+            ? new Date(deadline).toISOString()
+            : undefined,
+        deadline:
+          type === "EXERCISE" && deadline
+            ? new Date(deadline).toISOString()
+            : undefined,
       };
 
       if (type === "EXAM") {

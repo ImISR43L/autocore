@@ -83,4 +83,7 @@ export class Problem {
   @OneToMany(() => Problem, (problem) => problem.parent, { cascade: true })
   children: Problem[];
   // ---------------------------------------------
+
+  @Column({ type: 'timestamp', nullable: true })
+  startDate: Date;
 }

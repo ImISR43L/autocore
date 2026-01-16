@@ -28,6 +28,7 @@ export class ProblemsService {
       parameters,
       timeLimit,
       questions,
+      startDate,
       ...problemData
     } = createProblemDto;
 
@@ -35,6 +36,7 @@ export class ProblemsService {
       ...problemData,
       type: type as ProblemType,
       deadline: (deadline ? new Date(deadline) : null) as any,
+      startDate: (startDate ? new Date(startDate) : null) as any, // <--- Salvar
       timeLimit: timeLimit,
       parameters: parameters as any,
       classroom: { id: classroomId } as any,
@@ -131,6 +133,7 @@ export class ProblemsService {
       classroomId,
       deadline,
       type,
+      startDate,
       parameters,
       questions,
       ...dataToUpdate
@@ -140,6 +143,7 @@ export class ProblemsService {
     if (type) problem.type = type as ProblemType;
     if (deadline) problem.deadline = new Date(deadline);
     if (parameters) problem.parameters = parameters as any;
+    if (startDate) problem.startDate = new Date(startDate);
     Object.assign(problem, dataToUpdate);
 
     // 1. Atualização de Exercício Simples (Test Cases no Pai)
@@ -180,6 +184,9 @@ export class ProblemsService {
         }),
       );
     }
+
+    if (parameters) problem.parameters = parameters as any;
+    Object.assign(problem, dataToUpdate);
 
     return this.problemsRepository.save(problem);
   }

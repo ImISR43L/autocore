@@ -85,38 +85,46 @@ export class ClassroomsService {
   }
   // ---------------------
 
-  async findOne(id: number, userId?: number) {
-    // Adicione userId
+  async findOne(id: number, userId: number) {
     const classroom = await this.classroomsRepository.findOne({
       where: { id },
       relations: [
         'owner',
         'students',
         'problems',
-        'problems.testCases', // Se estiver carregando os testes aqui
+        'problems.parent', // Garante que temos o parent para filtrar filhos do dropdown
         'announcements',
         'announcements.author',
       ],
-      order: { announcements: { createdAt: 'DESC' } } as any,
+      order: {
+        createdAt: 'DESC',
+        problems: { createdAt: 'DESC' },
+        announcements: { createdAt: 'DESC' },
+      },
     });
 
     if (!classroom) throw new NotFoundException('Turma não encontrada');
 
-    // LÓGICA DE PROTEÇÃO DE DADOS
-    if (userId && classroom.owner.id !== userId) {
-      if (classroom.problems) {
-        classroom.problems.forEach((p) => {
-          if (p.testCases) {
-            p.testCases = p.testCases.map((tc) => {
-              if (tc.isHidden) {
-                return { ...tc, input: '🔒', expectedOutput: '🔒' } as any;
-              }
-              return tc;
-            });
-          }
-        });
-      }
+    // Verifica se usuário tem acesso (opcional, mas recomendado)
+    const isStudent = classroom.students.some((s) => s.id === userId);
+    const isOwner = classroom.owner.id === userId;
+    if (!isStudent && !isOwner) throw new ForbiddenException('Acesso negado');
+
+    // --- LÓGICA DE FILTRAGEM ---
+    if (!isOwner) {
+      const now = new Date();
+      classroom.problems = classroom.problems.filter((p) => {
+        // 1. Remove filhos (já feito no front, mas bom garantir no back também se desejar)
+        // Mas aqui filtraremos principalmente por DATA.
+
+        // Se tiver startDate definido e for no futuro, esconde.
+        if (p.startDate && new Date(p.startDate) > now) {
+          return false;
+        }
+        return true;
+      });
     }
+    // ---------------------------
 
     return classroom;
   }

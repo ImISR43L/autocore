@@ -40,8 +40,9 @@ interface Problem {
   returnType?: string;
   timeLimit?: number;
   startedAt?: string;
+  // Novos campos para hierarquia
   children?: Problem[];
-  parent?: Problem;
+  parent?: { id: string };
 }
 interface Classroom {
   id: number;
@@ -122,8 +123,6 @@ export default function ClassroomView() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // --- 1. TODOS OS HOOKS DEVEM FICAR AQUI (ANTES DE QUALQUER RETURN) ---
-
   const [activeTab, setActiveTab] = useState<
     "stream" | "classwork" | "people" | "analytics"
   >("stream");
@@ -134,6 +133,10 @@ export default function ClassroomView() {
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(
     null
   );
+
+  // O 'currentProblem' agora armazena os detalhes completos (incluindo children) buscados da API
+  const [currentProblem, setCurrentProblem] = useState<Problem | null>(null);
+
   const [code, setCode] = useState<string>("");
 
   // UI & Execução
@@ -152,15 +155,13 @@ export default function ClassroomView() {
   const [stats, setStats] = useState<StatData[]>([]);
   const [problemStats, setProblemStats] = useState<ProblemStat[]>([]);
 
-  // Timer States
+  // Timer & Navegação de Questões
   const [timeLeft, setTimeLeft] = useState<string | null>(null);
   const [examStatus, setExamStatus] = useState<
     "WAITING" | "RUNNING" | "FINISHED"
   >("WAITING");
-
   const [activeChildIndex, setActiveChildIndex] = useState(0);
 
-  // Helpers
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
     if (!token) return null;
@@ -175,9 +176,11 @@ export default function ClassroomView() {
   const myUserId = getMyUserId();
   const isOwner = classroom?.owner?.id === myUserId;
 
-  // Calculamos currentProblem com segurança (?. e || null) para usar nos hooks abaixo
-  const currentProblem =
-    classroom?.problems?.find((p) => p.id === selectedProblemId) || null;
+  // Determina qual problema exibir no editor (o pai ou um dos filhos)
+  const displayProblem =
+    currentProblem?.children && currentProblem.children.length > 0
+      ? currentProblem.children[activeChildIndex]
+      : currentProblem;
 
   const getStorageKey = (probId: string, langId: number) => {
     if (!myUserId) return null;
@@ -261,39 +264,61 @@ export default function ClassroomView() {
     fetchClassroomData();
   }, [id]);
 
+  // --- BUSCA DETALHES DO PROBLEMA SELECIONADO (incluindo children) ---
+  useEffect(() => {
+    if (!selectedProblemId) return;
+
+    const fetchProblemDetails = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        // Esta chamada traz o problema COMPLETO (com children populado)
+        const res = await axios.get(
+          `${API_URL}/problems/${selectedProblemId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setCurrentProblem(res.data);
+        setActiveChildIndex(0); // Reseta para a primeira questão
+      } catch (e) {
+        console.error("Erro ao carregar detalhes do problema", e);
+      }
+    };
+
+    fetchProblemDetails();
+  }, [selectedProblemId]);
+
+  // Atualiza código quando muda o problema exibido (pai ou filho) ou linguagem
   useEffect(() => {
     const lang = LANGUAGES.find((l) => l.id === languageId);
-    if (!lang) return;
-    if (!selectedProblemId) {
-      setCode(lang.defaultCode);
-      return;
-    }
-    const storageKey = getStorageKey(selectedProblemId, languageId);
+    if (!lang || !displayProblem) return; // displayProblem pode ser null no inicio
+
+    const storageKey = getStorageKey(displayProblem.id, languageId);
     const savedCode = storageKey ? localStorage.getItem(storageKey) : null;
     const isPolluted = LANGUAGES.some(
       (l) => l.id !== languageId && l.defaultCode === savedCode
     );
+
     if (savedCode && !isPolluted) {
       setCode(savedCode);
     } else {
-      const dynamicSig = generateFunctionSignature(languageId, currentProblem);
+      const dynamicSig = generateFunctionSignature(languageId, displayProblem);
       setCode(dynamicSig || lang.defaultCode);
     }
-  }, [languageId, selectedProblemId, myUserId, classroom]); // currentProblem já é safe aqui
+  }, [languageId, displayProblem, myUserId]);
 
   useEffect(() => {
-    if (selectedProblemId && activeTab === "classwork") {
-      fetchSubmissions();
-      if (isOwner) fetchProblemStats(selectedProblemId);
+    // Busca submissões do problema ATIVO (seja pai ou filho)
+    if (displayProblem && activeTab === "classwork") {
+      fetchSubmissions(displayProblem.id);
+      if (isOwner) fetchProblemStats(displayProblem.id);
     }
-  }, [selectedProblemId, activeTab, isOwner]);
+  }, [displayProblem, activeTab, isOwner]);
+
   useEffect(() => {
     if (activeTab === "analytics" && isOwner && id) {
       fetchStats();
     }
   }, [activeTab, isOwner, id]);
 
-  // --- EFFECT DO TIMER (Correção do Bug #310: Agora está antes do return) ---
   useEffect(() => {
     if (
       !currentProblem ||
@@ -304,20 +329,17 @@ export default function ClassroomView() {
       setExamStatus("RUNNING");
       return;
     }
-
     if (!currentProblem.startedAt) {
       setExamStatus("WAITING");
       setTimeLeft("Aguardando Início");
       return;
     }
-
     const interval = setInterval(() => {
       const now = new Date().getTime();
       const start = new Date(currentProblem.startedAt!).getTime();
       const duration = currentProblem.timeLimit! * 60 * 1000;
       const end = start + duration;
       const diff = end - now;
-
       if (diff <= 0) {
         setExamStatus("FINISHED");
         setTimeLeft("00:00:00");
@@ -334,16 +356,9 @@ export default function ClassroomView() {
         );
       }
     }, 1000);
-
     return () => clearInterval(interval);
-  }, [currentProblem]); // Dependência segura
+  }, [currentProblem]);
 
-  useEffect(() => {
-    setActiveChildIndex(0);
-  }, [selectedProblemId]);
-  // -------------------------------------------------------------------------
-
-  // Actions
   const fetchStats = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -371,21 +386,21 @@ export default function ClassroomView() {
   const handleCodeChange = (value: string | undefined) => {
     const val = value || "";
     setCode(val);
-    if (selectedProblemId) {
-      const key = getStorageKey(selectedProblemId, languageId);
+    if (displayProblem) {
+      const key = getStorageKey(displayProblem.id, languageId);
       if (key) localStorage.setItem(key, val);
     }
   };
   const handleResetCode = () => {
     if (!confirm("Restaurar código original?")) return;
-    const dynamicSig = generateFunctionSignature(languageId, currentProblem);
+    const dynamicSig = generateFunctionSignature(languageId, displayProblem);
     const defaultCode =
       dynamicSig ||
       LANGUAGES.find((l) => l.id === languageId)?.defaultCode ||
       "";
     setCode(defaultCode);
-    if (selectedProblemId) {
-      const key = getStorageKey(selectedProblemId, languageId);
+    if (displayProblem) {
+      const key = getStorageKey(displayProblem.id, languageId);
       if (key) localStorage.removeItem(key);
     }
     toast.success("Restaurado.");
@@ -410,7 +425,7 @@ export default function ClassroomView() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       toast.success("Nota salva!");
-      fetchSubmissions();
+      fetchSubmissions(displayProblem?.id || "");
       setInspectingSubmission((prev) =>
         prev
           ? {
@@ -432,9 +447,17 @@ export default function ClassroomView() {
         headers: { Authorization: `Bearer ${token}` },
       });
       setClassroom(res.data);
+      // Lógica de seleção inicial
       if (res.data.problems?.length > 0) {
+        // Filtra para pegar apenas os PAIS (se o backend já estiver mandando parent)
+        const rootProblems = res.data.problems.filter(
+          (p: Problem) => !p.parent
+        );
+        const targetList =
+          rootProblems.length > 0 ? rootProblems : res.data.problems;
+
         if (location.state && location.state.problemId) {
-          const problemExists = res.data.problems.find(
+          const problemExists = targetList.find(
             (p: Problem) => p.id === location.state.problemId
           );
           if (problemExists) {
@@ -443,11 +466,11 @@ export default function ClassroomView() {
           }
         }
         const storedProbId = localStorage.getItem(`lastProblemId_${id}`);
-        const problemExists = res.data.problems.find(
+        const problemExists = targetList.find(
           (p: Problem) => p.id === storedProbId
         );
         if (storedProbId && problemExists) setSelectedProblemId(storedProbId);
-        else setSelectedProblemId(res.data.problems[0].id);
+        else if (targetList.length > 0) setSelectedProblemId(targetList[0].id);
       }
     } catch {
       toast.error("Erro ao carregar turma.");
@@ -455,14 +478,13 @@ export default function ClassroomView() {
     }
   };
 
-  const fetchSubmissions = async () => {
-    if (!selectedProblemId) return;
+  const fetchSubmissions = async (probId: string) => {
+    if (!probId) return;
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.get(
-        `${API_URL}/submissions/problem/${selectedProblemId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await axios.get(`${API_URL}/submissions/problem/${probId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setSubmissions(res.data);
     } catch (error) {
       console.error(error);
@@ -525,7 +547,7 @@ export default function ClassroomView() {
     }
   };
   const submitSolution = async () => {
-    if (!selectedProblemId) return toast.warning("Selecione um exercício!");
+    if (!displayProblem) return toast.warning("Selecione um exercício!");
     setLoading(true);
     setVerdict(null);
     setExecutionOutput(null);
@@ -534,7 +556,7 @@ export default function ClassroomView() {
       const token = localStorage.getItem("token");
       const res = await axios.post(
         `${API_URL}/submissions`,
-        { code, language_id: languageId, problem_id: selectedProblemId },
+        { code, language_id: languageId, problem_id: displayProblem.id },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const data = res.data;
@@ -543,8 +565,8 @@ export default function ClassroomView() {
       setExecutionError(data.stderr);
       if (data.status === "Accepted") toast.success("Solução Aceite!");
       else toast.error("Erro/Incorreto");
-      fetchSubmissions();
-      if (isOwner && selectedProblemId) fetchProblemStats(selectedProblemId);
+      fetchSubmissions(displayProblem.id);
+      if (isOwner) fetchProblemStats(displayProblem.id);
     } catch (error: any) {
       if (error.response?.status === 403) {
         setVerdict("Bloqueado");
@@ -560,10 +582,7 @@ export default function ClassroomView() {
   };
 
   const handleStartExam = async () => {
-    if (
-      !confirm("Iniciar a prova agora? O tempo começará a contar para todos.")
-    )
-      return;
+    if (!confirm("Iniciar a prova agora?")) return;
     try {
       const token = localStorage.getItem("token");
       await axios.patch(
@@ -572,7 +591,11 @@ export default function ClassroomView() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       toast.success("Prova iniciada!");
-      fetchClassroomData();
+      // Recarrega detalhes
+      const res = await axios.get(`${API_URL}/problems/${selectedProblemId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setCurrentProblem(res.data);
     } catch {
       toast.error("Erro ao iniciar.");
     }
@@ -590,8 +613,10 @@ export default function ClassroomView() {
 
   const upcomingWork = useMemo(() => {
     if (!classroom?.problems) return [];
+    // Filtra apenas PAIS para o mural
+    const rootProblems = classroom.problems.filter((p) => !p.parent);
     const now = new Date();
-    return classroom.problems
+    return rootProblems
       .filter((p) => p.deadline && new Date(p.deadline) > now)
       .sort(
         (a, b) =>
@@ -600,14 +625,9 @@ export default function ClassroomView() {
       .slice(0, 3);
   }, [classroom]);
 
-  const displayProblem =
-    currentProblem?.children && currentProblem.children.length > 0
-      ? currentProblem.children[activeChildIndex]
-      : currentProblem;
-
-  // --- 2. AGORA SIM O RETORNO CONDICIONAL ---
   if (!classroom) return <div className="container">Carregando...</div>;
 
+  // Lógica de bloqueio baseada no PAI (currentProblem)
   const isExam = currentProblem?.type === "EXAM";
   const maxAttempts = currentProblem?.maxAttempts || 0;
   const isDeadlinePassed = currentProblem?.deadline
@@ -621,6 +641,9 @@ export default function ClassroomView() {
     (!isOwner && isDeadlinePassed) ||
     (isExam && examStatus === "WAITING" && !isOwner) ||
     (isExam && examStatus === "FINISHED" && !isOwner);
+
+  // Lista para o Dropdown (Filtrada)
+  const dropdownOptions = classroom.problems.filter((p) => !p.parent);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -672,6 +695,7 @@ export default function ClassroomView() {
         </nav>
       </header>
 
+      {/* ... (Stream e People mantidos iguais, omitindo para brevidade, mantenha o código anterior) ... */}
       {activeTab === "stream" && (
         <div className="stream-container">
           <div className="stream-wrapper">
@@ -787,7 +811,6 @@ export default function ClassroomView() {
           </div>
         </div>
       )}
-
       {activeTab === "people" && (
         <div className="people-container">
           <div style={{ marginBottom: "40px" }}>
@@ -816,19 +839,21 @@ export default function ClassroomView() {
           </div>
         </div>
       )}
+
       {activeTab === "classwork" && (
         <div className="ide-container" style={{ flex: 1, borderTop: "none" }}>
           <div className="ide-toolbar">
+            {/* DROPDOWN FILTRADO (Apenas Pais) */}
             <select
               className="form-select"
               style={{ width: "auto", minWidth: "250px" }}
               value={selectedProblemId || ""}
               onChange={(e) => setSelectedProblemId(e.target.value)}
             >
-              {classroom.problems.length === 0 && (
+              {dropdownOptions.length === 0 && (
                 <option value="">Sem exercícios</option>
               )}
-              {classroom.problems.map((p) => (
+              {dropdownOptions.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.title}
                 </option>
@@ -1011,10 +1036,11 @@ export default function ClassroomView() {
               </button>
             </div>
           </div>
+
           <div className="ide-main">
             <div className="ide-editor-panel">
               <Editor
-                key={`${languageId}-${selectedProblemId || "empty"}`}
+                key={`${languageId}-${displayProblem?.id || "empty"}`}
                 height="100%"
                 language={LANGUAGE_MAP[languageId] || "plaintext"}
                 theme="vs-dark"
@@ -1023,7 +1049,9 @@ export default function ClassroomView() {
                 options={{ minimap: { enabled: false }, automaticLayout: true }}
               />
             </div>
+
             <div className="ide-info-panel">
+              {/* --- NAVEGAÇÃO DE QUESTÕES (CHEVRONS) --- */}
               {currentProblem?.children &&
                 currentProblem.children.length > 0 && (
                   <div
@@ -1077,6 +1105,7 @@ export default function ClassroomView() {
                     </button>
                   </div>
                 )}
+
               {displayProblem ? (
                 <>
                   <h3 className="ide-info-title">{displayProblem.title}</h3>
@@ -1165,6 +1194,8 @@ export default function ClassroomView() {
                         )}
                       </div>
                     )}
+
+                  {/* --- GRÁFICO DE ESTATÍSTICAS (Reintroduzido para corrigir o erro TS6133) --- */}
                   {isOwner && problemStats.length > 0 && (
                     <div
                       style={{
@@ -1219,6 +1250,7 @@ export default function ClassroomView() {
               ) : (
                 <p className="ide-description">Selecione um exercício.</p>
               )}
+
               {verdict && (
                 <div
                   className={`ide-feedback-box ${

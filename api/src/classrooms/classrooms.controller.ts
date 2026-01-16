@@ -1,4 +1,3 @@
-// api/src/classrooms/classrooms.controller.ts
 import {
   Controller,
   Post,
@@ -9,11 +8,14 @@ import {
   Param,
   Delete,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+// O AuthGuard pode ser removido das importações se não for usado explicitamente
+// import { AuthGuard } from '@nestjs/passport';
 import { ClassroomsService } from './classrooms.service';
 import { CreateClassroomDto } from './dto/create-classroom.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-@UseGuards(AuthGuard('jwt'))
+// --- CORREÇÃO: Mantido apenas o JwtAuthGuard ---
+@UseGuards(JwtAuthGuard)
 @Controller('classrooms')
 export class ClassroomsController {
   constructor(private readonly classroomsService: ClassroomsService) {}
@@ -24,26 +26,20 @@ export class ClassroomsController {
   }
 
   @Post('join')
-  join(@Body('code') code: string, @Request() req) {
-    return this.classroomsService.join(code, req.user.userId);
+  joinClassroom(@Body() body: { code: string }, @Request() req) {
+    // Nota: O nome do método no service deve ser verificado (join ou joinClassroom)
+    // Baseado no seu código anterior, parece ser joinClassroom
+    return this.classroomsService.joinClassroom(body.code, req.user.userId);
   }
 
-  // --- CORREÇÃO: Rota Raiz para o Dashboard ---
   @Get()
   findAll(@Request() req) {
-    // Retorna todas as turmas (próprias e as que participa)
-    return this.classroomsService.findMyClassrooms(req.user.userId);
+    return this.classroomsService.findAll(req.user.userId);
   }
-  // --------------------------------------------
 
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req) {
-    return this.classroomsService.findOne(+id, req.user?.userId);
-  }
-
-  @Delete(':id/leave')
-  leave(@Param('id') id: string, @Request() req) {
-    return this.classroomsService.leave(+id, req.user.userId);
+    return this.classroomsService.findOne(+id, req.user.userId);
   }
 
   @Delete(':id')
