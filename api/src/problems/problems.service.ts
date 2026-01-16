@@ -33,9 +33,7 @@ export class ProblemsService {
     const problem = this.problemsRepository.create({
       ...problemData,
       type: type as ProblemType,
-      // --- CORREÇÃO AQUI: Casting para 'any' para aceitar null ou Date ---
       deadline: (deadline ? new Date(deadline) : null) as any,
-      // ------------------------------------------------------------------
       timeLimit: timeLimit,
       parameters: parameters as any,
       classroom: { id: classroomId } as any,

@@ -38,7 +38,7 @@ export default function CreateProblem() {
 
   // Configurações
   const [type, setType] = useState<"EXERCISE" | "EXAM">("EXERCISE");
-  const [maxAttempts, setMaxAttempts] = useState<number | undefined>();
+  const [maxAttempts, setMaxAttempts] = useState<number | undefined>(1);
   const [deadline, setDeadline] = useState("");
 
   // --- NOVA SEÇÃO: ASSINATURA DA FUNÇÃO ---
@@ -166,9 +166,7 @@ export default function CreateProblem() {
         type,
         maxAttempts: maxAttempts ? Number(maxAttempts) : undefined,
         deadline: deadline ? new Date(deadline).toISOString() : undefined,
-        // --- ADICIONE O TIMELIMIT AQUI ---
         timeLimit: type === "EXAM" && timeLimit ? Number(timeLimit) : undefined,
-        // ---------------------------------
         parameters,
         returnType,
         testCases,

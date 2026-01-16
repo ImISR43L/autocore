@@ -73,8 +73,6 @@ export class CreateProblemDto {
   @IsString()
   deadline?: string;
 
-  // --- NOVOS CAMPOS QUE FALTAVAM ---
-
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ParameterDefinitionDto)
@@ -84,8 +82,6 @@ export class CreateProblemDto {
   @IsString()
   @IsOptional()
   returnType?: string;
-
-  // ---------------------------------
 
   @IsArray()
   @ValidateNested({ each: true })

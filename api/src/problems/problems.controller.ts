@@ -12,15 +12,14 @@ import {
 import { ProblemsService } from './problems.service';
 import { CreateProblemDto } from './dto/create-problem.dto';
 import { AuthGuard } from '@nestjs/passport';
-import { UpdateProblemDto } from './dto/update-problem.dto'; // <--- Importe
+import { UpdateProblemDto } from './dto/update-problem.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-// Removemos imports de Roles e UserRole
 
 @Controller('problems')
 export class ProblemsController {
   constructor(private readonly problemsService: ProblemsService) {}
 
-  @UseGuards(AuthGuard('jwt')) // Apenas Login necessário
+  @UseGuards(AuthGuard('jwt'))
   @Post()
   create(@Body() createProblemDto: CreateProblemDto, @Request() req) {
     return this.problemsService.create(createProblemDto, req.user.userId);
@@ -37,10 +36,13 @@ export class ProblemsController {
     return this.problemsService.findOne(id, req.user.userId);
   }
 
+  // --- CORREÇÃO AQUI: Adicionado @UseGuards(JwtAuthGuard) ---
+  @UseGuards(JwtAuthGuard)
   @Patch(':id/start')
   startExam(@Param('id') id: string, @Request() req) {
     return this.problemsService.startExam(id, req.user.userId);
   }
+  // ----------------------------------------------------------
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
