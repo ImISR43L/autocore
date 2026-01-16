@@ -40,6 +40,8 @@ interface Problem {
   returnType?: string;
   timeLimit?: number;
   startedAt?: string;
+  children?: Problem[];
+  parent?: Problem;
 }
 interface Classroom {
   id: number;
@@ -155,6 +157,8 @@ export default function ClassroomView() {
   const [examStatus, setExamStatus] = useState<
     "WAITING" | "RUNNING" | "FINISHED"
   >("WAITING");
+
+  const [activeChildIndex, setActiveChildIndex] = useState(0);
 
   // Helpers
   const getMyUserId = () => {
@@ -333,6 +337,10 @@ export default function ClassroomView() {
 
     return () => clearInterval(interval);
   }, [currentProblem]); // Dependência segura
+
+  useEffect(() => {
+    setActiveChildIndex(0);
+  }, [selectedProblemId]);
   // -------------------------------------------------------------------------
 
   // Actions
@@ -591,6 +599,11 @@ export default function ClassroomView() {
       )
       .slice(0, 3);
   }, [classroom]);
+
+  const displayProblem =
+    currentProblem?.children && currentProblem.children.length > 0
+      ? currentProblem.children[activeChildIndex]
+      : currentProblem;
 
   // --- 2. AGORA SIM O RETORNO CONDICIONAL ---
   if (!classroom) return <div className="container">Carregando...</div>;
@@ -1011,16 +1024,69 @@ export default function ClassroomView() {
               />
             </div>
             <div className="ide-info-panel">
-              {currentProblem ? (
+              {currentProblem?.children &&
+                currentProblem.children.length > 0 && (
+                  <div
+                    className="question-nav"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: "20px",
+                      paddingBottom: "15px",
+                      borderBottom: "1px solid #444",
+                    }}
+                  >
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      disabled={activeChildIndex <= 0}
+                      onClick={() => setActiveChildIndex((prev) => prev - 1)}
+                      style={{
+                        visibility:
+                          activeChildIndex <= 0 ? "hidden" : "visible",
+                      }}
+                    >
+                      ← Anterior
+                    </button>
+                    <span
+                      style={{
+                        fontWeight: "bold",
+                        color: "#fff",
+                        fontSize: "1rem",
+                      }}
+                    >
+                      Questão {activeChildIndex + 1}{" "}
+                      <span style={{ color: "#666", fontSize: "0.9rem" }}>
+                        / {currentProblem.children.length}
+                      </span>
+                    </span>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      disabled={
+                        activeChildIndex >= currentProblem.children.length - 1
+                      }
+                      onClick={() => setActiveChildIndex((prev) => prev + 1)}
+                      style={{
+                        visibility:
+                          activeChildIndex >= currentProblem.children.length - 1
+                            ? "hidden"
+                            : "visible",
+                      }}
+                    >
+                      Próxima →
+                    </button>
+                  </div>
+                )}
+              {displayProblem ? (
                 <>
-                  <h3 className="ide-info-title">{currentProblem.title}</h3>
+                  <h3 className="ide-info-title">{displayProblem.title}</h3>
                   <div className="ide-description markdown-body">
                     <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
-                      {currentProblem.description}
+                      {displayProblem.description}
                     </ReactMarkdown>
                   </div>
-                  {currentProblem.testCases &&
-                    currentProblem.testCases.length > 0 && (
+                  {displayProblem.testCases &&
+                    displayProblem.testCases.length > 0 && (
                       <div style={{ marginTop: "20px" }}>
                         <h4
                           style={{
@@ -1032,7 +1098,7 @@ export default function ClassroomView() {
                         >
                           Exemplos de Teste
                         </h4>
-                        {currentProblem.testCases.map(
+                        {displayProblem.testCases.map(
                           (tc: any, index: number) => (
                             <div
                               key={index}

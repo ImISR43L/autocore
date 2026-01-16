@@ -53,13 +53,11 @@ export class Problem {
   @Column({ type: 'timestamp', nullable: true })
   deadline: Date;
 
-  // --- NOVOS CAMPOS ---
   @Column({ type: 'int', nullable: true })
-  timeLimit: number; // Duração em minutos
+  timeLimit: number;
 
   @Column({ type: 'timestamp', nullable: true })
-  startedAt: Date; // Quando o professor iniciou
-  // --------------------
+  startedAt: Date;
 
   @CreateDateColumn()
   createdAt: Date;
@@ -74,4 +72,15 @@ export class Problem {
 
   @OneToMany(() => Submission, (submission) => submission.problem)
   submissions: Submission[];
+
+  // --- NOVAS RELAÇÕES PARA MÚLTIPLAS QUESTÕES ---
+  @ManyToOne(() => Problem, (problem) => problem.children, {
+    onDelete: 'CASCADE',
+    nullable: true,
+  })
+  parent: Problem;
+
+  @OneToMany(() => Problem, (problem) => problem.parent, { cascade: true })
+  children: Problem[];
+  // ---------------------------------------------
 }

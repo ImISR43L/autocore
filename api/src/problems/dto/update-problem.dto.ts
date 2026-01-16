@@ -1,5 +1,13 @@
-// api/src/problems/dto/update-problem.dto.ts
 import { PartialType } from '@nestjs/mapped-types';
-import { CreateProblemDto } from './create-problem.dto';
+import { CreateProblemDto, CreateQuestionDto } from './create-problem.dto';
+import { IsArray, IsOptional, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 
-export class UpdateProblemDto extends PartialType(CreateProblemDto) {}
+export class UpdateProblemDto extends PartialType(CreateProblemDto) {
+  // Adicionamos explicitamente para garantir a validação aninhada no Update
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateQuestionDto)
+  @IsOptional()
+  questions?: CreateQuestionDto[];
+}

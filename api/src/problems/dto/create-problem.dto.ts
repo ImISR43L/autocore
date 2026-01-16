@@ -26,7 +26,6 @@ export class CreateTestCaseDto {
   isHidden?: boolean;
 }
 
-// Classe auxiliar para validar os parâmetros dentro do JSON
 class ParameterDefinitionDto {
   @IsString()
   @IsNotEmpty()
@@ -38,6 +37,27 @@ class ParameterDefinitionDto {
   type: string;
 }
 
+// --- NOVO DTO PARA QUESTÕES FILHAS ---
+export class CreateQuestionDto {
+  @IsString() @IsNotEmpty() title: string;
+  @IsString() @IsNotEmpty() description: string;
+  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: 'Slug inválido' })
+  slug: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ParameterDefinitionDto)
+  parameters: ParameterDefinitionDto[];
+
+  @IsString() returnType: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateTestCaseDto)
+  testCases: CreateTestCaseDto[];
+}
+// -------------------------------------
+
 export class CreateProblemDto {
   @IsString()
   @IsNotEmpty()
@@ -47,14 +67,7 @@ export class CreateProblemDto {
   @IsNotEmpty()
   description: string;
 
-  @IsString()
-  @IsNotEmpty()
-  // Regex opcional para forçar slug (letras minúsculas, números e hífens)
-  // Se preferir livre, remova o @Matches.
-  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
-    message:
-      'O slug deve conter apenas letras minúsculas, números e hífens (ex: soma-dois-numeros)',
-  })
+  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
   slug: string;
 
   @IsInt()
@@ -73,10 +86,15 @@ export class CreateProblemDto {
   @IsString()
   deadline?: string;
 
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  timeLimit?: number;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ParameterDefinitionDto)
-  @IsOptional() // Opcional para manter compatibilidade
+  @IsOptional()
   parameters?: ParameterDefinitionDto[];
 
   @IsString()
@@ -86,10 +104,14 @@ export class CreateProblemDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateTestCaseDto)
-  testCases: CreateTestCaseDto[];
-
-  @IsInt()
-  @Min(1)
   @IsOptional()
-  timeLimit?: number;
+  testCases?: CreateTestCaseDto[];
+
+  // --- ARRAY DE QUESTÕES (OPCIONAL) ---
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateQuestionDto)
+  @IsOptional()
+  questions?: CreateQuestionDto[];
+  // ------------------------------------
 }
