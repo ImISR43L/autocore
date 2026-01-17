@@ -6,6 +6,7 @@ import {
   ManyToMany,
   JoinTable,
   OneToMany,
+  CreateDateColumn, // <--- Importar
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Problem } from '../../problems/entities/problem.entity';
@@ -21,6 +22,11 @@ export class Classroom {
 
   @Column({ unique: true })
   code: string;
+
+  // --- NOVA COLUNA NECESSÁRIA PARA ORDENAÇÃO ---
+  @CreateDateColumn()
+  createdAt: Date;
+  // ---------------------------------------------
 
   @ManyToOne(() => User, (user) => user.ownedClassrooms)
   owner: User;

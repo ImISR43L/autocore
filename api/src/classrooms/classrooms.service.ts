@@ -1,4 +1,3 @@
-// api/src/classrooms/classrooms.service.ts
 import {
   Injectable,
   NotFoundException,
@@ -37,7 +36,8 @@ export class ClassroomsService {
     return this.classroomsRepository.save(classroom);
   }
 
-  async join(code: string, userId: number) {
+  // --- RENOMEADO DE join PARA joinClassroom ---
+  async joinClassroom(code: string, userId: number) {
     const classroom = await this.classroomsRepository.findOne({
       where: { code },
       relations: ['owner', 'students'],
@@ -63,9 +63,8 @@ export class ClassroomsService {
     return this.classroomsRepository.save(classroom);
   }
 
-  // --- CORREÇÃO AQUI ---
-  async findMyClassrooms(userId: number) {
-    // 1. Turmas que eu ensino
+  // --- RENOMEADO DE findMyClassrooms PARA findAll ---
+  async findAll(userId: number) {
     const teaching = await this.classroomsRepository.find({
       where: { owner: { id: userId } },
       relations: ['owner', 'problems'],
@@ -76,55 +75,61 @@ export class ClassroomsService {
       relations: ['owner', 'problems'],
     });
 
-    // 3. RETORNAR UM ARRAY ÚNICO (FLAT LIST)
-    // Adicionamos a propriedade virtual 'isOwner' para o front saber filtrar
     return [
       ...teaching.map((c) => ({ ...c, isOwner: true })),
       ...enrolled.map((c) => ({ ...c, isOwner: false })),
     ];
   }
-  // ---------------------
 
-  async findOne(id: number, userId: number) {
+  async findOne(id: number, userId?: number) {
     const classroom = await this.classroomsRepository.findOne({
       where: { id },
       relations: [
         'owner',
         'students',
         'problems',
-        'problems.parent', // Garante que temos o parent para filtrar filhos do dropdown
+        'problems.parent',
+        'problems.testCases',
         'announcements',
         'announcements.author',
       ],
+      // Agora funciona pois adicionamos createdAt na entidade Classroom
       order: {
         createdAt: 'DESC',
         problems: { createdAt: 'DESC' },
         announcements: { createdAt: 'DESC' },
-      },
+      } as any,
     });
 
     if (!classroom) throw new NotFoundException('Turma não encontrada');
 
-    // Verifica se usuário tem acesso (opcional, mas recomendado)
-    const isStudent = classroom.students.some((s) => s.id === userId);
-    const isOwner = classroom.owner.id === userId;
-    if (!isStudent && !isOwner) throw new ForbiddenException('Acesso negado');
-
-    // --- LÓGICA DE FILTRAGEM ---
-    if (!isOwner) {
+    // LÓGICA DE FILTRAGEM (DATA DE INÍCIO) E PROTEÇÃO
+    if (userId && classroom.owner.id !== userId) {
       const now = new Date();
-      classroom.problems = classroom.problems.filter((p) => {
-        // 1. Remove filhos (já feito no front, mas bom garantir no back também se desejar)
-        // Mas aqui filtraremos principalmente por DATA.
 
-        // Se tiver startDate definido e for no futuro, esconde.
-        if (p.startDate && new Date(p.startDate) > now) {
-          return false;
-        }
-        return true;
-      });
+      // 1. Filtra provas agendadas para o futuro
+      if (classroom.problems) {
+        classroom.problems = classroom.problems.filter((p) => {
+          // Se for filho, esconde (já feito no front, mas reforça aqui)
+          if (p.parent) return false;
+          // Se tiver data futura, esconde
+          if (p.startDate && new Date(p.startDate) > now) return false;
+          return true;
+        });
+
+        // 2. Protege casos de teste ocultos
+        classroom.problems.forEach((p) => {
+          if (p.testCases) {
+            p.testCases = p.testCases.map((tc) => {
+              if (tc.isHidden) {
+                return { ...tc, input: '🔒', expectedOutput: '🔒' } as any;
+              }
+              return tc;
+            });
+          }
+        });
+      }
     }
-    // ---------------------------
 
     return classroom;
   }

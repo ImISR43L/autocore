@@ -36,11 +36,11 @@ interface Problem {
   type: "EXERCISE" | "EXAM";
   maxAttempts?: number;
   deadline?: string;
+  startDate?: string;
   parameters?: any[];
   returnType?: string;
   timeLimit?: number;
   startedAt?: string;
-  // Novos campos para hierarquia
   children?: Problem[];
   parent?: { id: string };
 }
@@ -63,6 +63,7 @@ interface Submission {
   user: { id: number; email: string };
   grade?: number;
   teacherComment?: string;
+  problemId?: string;
 }
 interface StatData {
   name: string;
@@ -133,10 +134,7 @@ export default function ClassroomView() {
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(
     null
   );
-
-  // O 'currentProblem' agora armazena os detalhes completos (incluindo children) buscados da API
   const [currentProblem, setCurrentProblem] = useState<Problem | null>(null);
-
   const [code, setCode] = useState<string>("");
 
   // UI & Execução
@@ -146,16 +144,26 @@ export default function ClassroomView() {
   const [loading, setLoading] = useState<boolean>(false);
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
-  const [inspectingSubmission, setInspectingSubmission] =
-    useState<Submission | null>(null);
+
+  // INSPEÇÃO
+  const [inspectingUser, setInspectingUser] = useState<{
+    id: number;
+    email: string;
+  } | null>(null);
+  const [studentSubmissions, setStudentSubmissions] = useState<
+    Record<string, Submission>
+  >({});
+  const [activeInspectionIndex, setActiveInspectionIndex] = useState(0);
+
   const [gradingGrade, setGradingGrade] = useState<string | number>("");
   const [gradingComment, setGradingComment] = useState("");
+
   const [newAnnouncement, setNewAnnouncement] = useState("");
   const [posting, setPosting] = useState(false);
   const [stats, setStats] = useState<StatData[]>([]);
   const [problemStats, setProblemStats] = useState<ProblemStat[]>([]);
 
-  // Timer & Navegação de Questões
+  // Timer & Navegação
   const [timeLeft, setTimeLeft] = useState<string | null>(null);
   const [examStatus, setExamStatus] = useState<
     "WAITING" | "RUNNING" | "FINISHED"
@@ -176,7 +184,6 @@ export default function ClassroomView() {
   const myUserId = getMyUserId();
   const isOwner = classroom?.owner?.id === myUserId;
 
-  // Determina qual problema exibir no editor (o pai ou um dos filhos)
   const displayProblem =
     currentProblem?.children && currentProblem.children.length > 0
       ? currentProblem.children[activeChildIndex]
@@ -264,39 +271,32 @@ export default function ClassroomView() {
     fetchClassroomData();
   }, [id]);
 
-  // --- BUSCA DETALHES DO PROBLEMA SELECIONADO (incluindo children) ---
   useEffect(() => {
     if (!selectedProblemId) return;
-
     const fetchProblemDetails = async () => {
       try {
         const token = localStorage.getItem("token");
-        // Esta chamada traz o problema COMPLETO (com children populado)
         const res = await axios.get(
           `${API_URL}/problems/${selectedProblemId}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         setCurrentProblem(res.data);
-        setActiveChildIndex(0); // Reseta para a primeira questão
+        setActiveChildIndex(0);
       } catch (e) {
-        console.error("Erro ao carregar detalhes do problema", e);
+        console.error("Erro ao carregar detalhes", e);
       }
     };
-
     fetchProblemDetails();
   }, [selectedProblemId]);
 
-  // Atualiza código quando muda o problema exibido (pai ou filho) ou linguagem
   useEffect(() => {
     const lang = LANGUAGES.find((l) => l.id === languageId);
-    if (!lang || !displayProblem) return; // displayProblem pode ser null no inicio
-
+    if (!lang || !displayProblem) return;
     const storageKey = getStorageKey(displayProblem.id, languageId);
     const savedCode = storageKey ? localStorage.getItem(storageKey) : null;
     const isPolluted = LANGUAGES.some(
       (l) => l.id !== languageId && l.defaultCode === savedCode
     );
-
     if (savedCode && !isPolluted) {
       setCode(savedCode);
     } else {
@@ -306,7 +306,6 @@ export default function ClassroomView() {
   }, [languageId, displayProblem, myUserId]);
 
   useEffect(() => {
-    // Busca submissões do problema ATIVO (seja pai ou filho)
     if (displayProblem && activeTab === "classwork") {
       fetchSubmissions(displayProblem.id);
       if (isOwner) fetchProblemStats(displayProblem.id);
@@ -323,34 +322,31 @@ export default function ClassroomView() {
     if (
       !currentProblem ||
       currentProblem.type !== "EXAM" ||
-      !currentProblem.timeLimit
+      !currentProblem.timeLimit ||
+      !currentProblem.startedAt
     ) {
       setTimeLeft(null);
-      setExamStatus("RUNNING");
-      return;
-    }
-    if (!currentProblem.startedAt) {
-      setExamStatus("WAITING");
-      setTimeLeft("Aguardando Início");
+      setExamStatus(
+        currentProblem && !currentProblem.startedAt ? "WAITING" : "RUNNING"
+      );
       return;
     }
     const interval = setInterval(() => {
       const now = new Date().getTime();
       const start = new Date(currentProblem.startedAt!).getTime();
-      const duration = currentProblem.timeLimit! * 60 * 1000;
-      const end = start + duration;
-      const diff = end - now;
+      const diff = start + currentProblem.timeLimit! * 60 * 1000 - now;
       if (diff <= 0) {
         setExamStatus("FINISHED");
         setTimeLeft("00:00:00");
         clearInterval(interval);
       } else {
         setExamStatus("RUNNING");
-        const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const s = Math.floor((diff % (1000 * 60)) / 1000);
         setTimeLeft(
-          `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s
+          `${Math.floor((diff % 864e5) / 36e5)
+            .toString()
+            .padStart(2, "0")}:${Math.floor((diff % 36e5) / 6e4)
+            .toString()
+            .padStart(2, "0")}:${Math.floor((diff % 6e4) / 1e3)
             .toString()
             .padStart(2, "0")}`
         );
@@ -358,6 +354,19 @@ export default function ClassroomView() {
     }, 1000);
     return () => clearInterval(interval);
   }, [currentProblem]);
+
+  const fetchSubmissions = async (probId: string) => {
+    if (!probId) return;
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get(`${API_URL}/submissions/problem/${probId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSubmissions(res.data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -383,6 +392,7 @@ export default function ClassroomView() {
       console.error("Erro problem stats");
     }
   };
+
   const handleCodeChange = (value: string | undefined) => {
     const val = value || "";
     setCode(val);
@@ -392,32 +402,84 @@ export default function ClassroomView() {
     }
   };
   const handleResetCode = () => {
-    if (!confirm("Restaurar código original?")) return;
+    if (!confirm("Restaurar código?")) return;
     const dynamicSig = generateFunctionSignature(languageId, displayProblem);
-    const defaultCode =
+    setCode(
       dynamicSig ||
-      LANGUAGES.find((l) => l.id === languageId)?.defaultCode ||
-      "";
-    setCode(defaultCode);
-    if (displayProblem) {
-      const key = getStorageKey(displayProblem.id, languageId);
-      if (key) localStorage.removeItem(key);
-    }
+        LANGUAGES.find((l) => l.id === languageId)?.defaultCode ||
+        ""
+    );
+    if (displayProblem)
+      localStorage.removeItem(getStorageKey(displayProblem.id, languageId)!);
     toast.success("Restaurado.");
   };
-  const handleInspect = (sub: Submission) => {
-    setInspectingSubmission(sub);
-    setGradingGrade(
-      sub.grade !== null && sub.grade !== undefined ? sub.grade : ""
-    );
-    setGradingComment(sub.teacherComment || "");
+
+  const handleStartInspection = async (user: { id: number; email: string }) => {
+    setInspectingUser(user);
+    setActiveInspectionIndex(0);
+    setStudentSubmissions({});
+    if (currentProblem) {
+      const problemsToFetch =
+        currentProblem.children && currentProblem.children.length > 0
+          ? currentProblem.children
+          : [currentProblem];
+      const token = localStorage.getItem("token");
+      const loadedSubs: Record<string, Submission> = {};
+      for (const p of problemsToFetch) {
+        try {
+          const res = await axios.get(
+            `${API_URL}/submissions/problem/${p.id}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          const userSub = res.data.find(
+            (s: Submission) => s.user.id === user.id
+          );
+          if (userSub) loadedSubs[p.id] = userSub;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      setStudentSubmissions(loadedSubs);
+      const firstProbId = problemsToFetch[0].id;
+      if (loadedSubs[firstProbId]) {
+        setGradingGrade(loadedSubs[firstProbId].grade ?? "");
+        setGradingComment(loadedSubs[firstProbId].teacherComment ?? "");
+      } else {
+        setGradingGrade("");
+        setGradingComment("");
+      }
+    }
   };
+
+  const handleInspectionTabChange = (index: number) => {
+    setActiveInspectionIndex(index);
+    if (!currentProblem || !inspectingUser) return;
+    const targetProb =
+      currentProblem.children && currentProblem.children.length > 0
+        ? currentProblem.children[index]
+        : currentProblem;
+    const sub = studentSubmissions[targetProb.id];
+    if (sub) {
+      setGradingGrade(sub.grade ?? "");
+      setGradingComment(sub.teacherComment ?? "");
+    } else {
+      setGradingGrade("");
+      setGradingComment("");
+    }
+  };
+
   const handleSaveGrade = async () => {
-    if (!inspectingSubmission) return;
+    if (!currentProblem || !inspectingUser) return;
+    const targetProb =
+      currentProblem.children && currentProblem.children.length > 0
+        ? currentProblem.children[activeInspectionIndex]
+        : currentProblem;
+    const sub = studentSubmissions[targetProb.id];
+    if (!sub) return toast.error("Nenhuma submissão para dar nota.");
     try {
       const token = localStorage.getItem("token");
       await axios.patch(
-        `${API_URL}/submissions/${inspectingSubmission.id}/grade`,
+        `${API_URL}/submissions/${sub.id}/grade`,
         {
           grade: gradingGrade === "" ? null : Number(gradingGrade),
           teacherComment: gradingComment,
@@ -425,16 +487,14 @@ export default function ClassroomView() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       toast.success("Nota salva!");
-      fetchSubmissions(displayProblem?.id || "");
-      setInspectingSubmission((prev) =>
-        prev
-          ? {
-              ...prev,
-              grade: gradingGrade === "" ? undefined : Number(gradingGrade),
-              teacherComment: gradingComment,
-            }
-          : null
-      );
+      setStudentSubmissions((prev) => ({
+        ...prev,
+        [targetProb.id]: {
+          ...sub,
+          grade: Number(gradingGrade),
+          teacherComment: gradingComment,
+        },
+      }));
     } catch {
       toast.error("Erro ao salvar nota.");
     }
@@ -447,29 +507,22 @@ export default function ClassroomView() {
         headers: { Authorization: `Bearer ${token}` },
       });
       setClassroom(res.data);
-      // Lógica de seleção inicial
       if (res.data.problems?.length > 0) {
-        // Filtra para pegar apenas os PAIS (se o backend já estiver mandando parent)
         const rootProblems = res.data.problems.filter(
           (p: Problem) => !p.parent
         );
         const targetList =
           rootProblems.length > 0 ? rootProblems : res.data.problems;
-
-        if (location.state && location.state.problemId) {
-          const problemExists = targetList.find(
-            (p: Problem) => p.id === location.state.problemId
-          );
-          if (problemExists) {
-            setSelectedProblemId(location.state.problemId);
-            return;
-          }
+        if (
+          location.state?.problemId &&
+          targetList.find((p: Problem) => p.id === location.state.problemId)
+        ) {
+          setSelectedProblemId(location.state.problemId);
+          return;
         }
-        const storedProbId = localStorage.getItem(`lastProblemId_${id}`);
-        const problemExists = targetList.find(
-          (p: Problem) => p.id === storedProbId
-        );
-        if (storedProbId && problemExists) setSelectedProblemId(storedProbId);
+        const stored = localStorage.getItem(`lastProblemId_${id}`);
+        if (stored && targetList.find((p: Problem) => p.id === stored))
+          setSelectedProblemId(stored);
         else if (targetList.length > 0) setSelectedProblemId(targetList[0].id);
       }
     } catch {
@@ -478,18 +531,6 @@ export default function ClassroomView() {
     }
   };
 
-  const fetchSubmissions = async (probId: string) => {
-    if (!probId) return;
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get(`${API_URL}/submissions/problem/${probId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSubmissions(res.data);
-    } catch (error) {
-      console.error(error);
-    }
-  };
   const handlePostAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAnnouncement.trim()) return;
@@ -580,9 +621,8 @@ export default function ClassroomView() {
       setLoading(false);
     }
   };
-
   const handleStartExam = async () => {
-    if (!confirm("Iniciar a prova agora?")) return;
+    if (!confirm("Iniciar?")) return;
     try {
       const token = localStorage.getItem("token");
       await axios.patch(
@@ -590,17 +630,15 @@ export default function ClassroomView() {
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      toast.success("Prova iniciada!");
-      // Recarrega detalhes
+      toast.success("Iniciada!");
       const res = await axios.get(`${API_URL}/problems/${selectedProblemId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setCurrentProblem(res.data);
     } catch {
-      toast.error("Erro ao iniciar.");
+      toast.error("Erro.");
     }
   };
-
   const handleGoToProblem = (probId: string) => {
     setSelectedProblemId(probId);
     setActiveTab("classwork");
@@ -610,10 +648,8 @@ export default function ClassroomView() {
     if (!myUserId) return 0;
     return (submissions || []).filter((s) => s.user?.id === myUserId).length;
   }, [submissions, myUserId]);
-
   const upcomingWork = useMemo(() => {
     if (!classroom?.problems) return [];
-    // Filtra apenas PAIS para o mural
     const rootProblems = classroom.problems.filter((p) => !p.parent);
     const now = new Date();
     return rootProblems
@@ -627,23 +663,34 @@ export default function ClassroomView() {
 
   if (!classroom) return <div className="container">Carregando...</div>;
 
-  // Lógica de bloqueio baseada no PAI (currentProblem)
   const isExam = currentProblem?.type === "EXAM";
-  const maxAttempts = currentProblem?.maxAttempts || 0;
+
+  // --- CORREÇÃO AQUI: Se maxAttempts for null ou undefined, é Infinito ---
+  const hasLimit = currentProblem?.maxAttempts != null;
+  const maxAttempts = hasLimit ? currentProblem!.maxAttempts! : Infinity;
+
   const isDeadlinePassed = currentProblem?.deadline
     ? new Date() > new Date(currentProblem.deadline)
     : false;
-  const attemptsLeft = isExam
-    ? Math.max(0, maxAttempts - myAttemptsCount)
-    : Infinity;
+
+  const attemptsLeft =
+    isExam && hasLimit ? Math.max(0, maxAttempts - myAttemptsCount) : Infinity;
+
   const isBlocked =
-    (isExam && !isOwner && attemptsLeft === 0) ||
+    (isExam && !isOwner && hasLimit && attemptsLeft === 0) ||
     (!isOwner && isDeadlinePassed) ||
     (isExam && examStatus === "WAITING" && !isOwner) ||
     (isExam && examStatus === "FINISHED" && !isOwner);
+  // -----------------------------------------------------------------------
 
-  // Lista para o Dropdown (Filtrada)
   const dropdownOptions = classroom.problems.filter((p) => !p.parent);
+  const activeInspectionProblem =
+    currentProblem?.children && currentProblem.children.length > 0
+      ? currentProblem.children[activeInspectionIndex]
+      : currentProblem;
+  const activeSubmission = activeInspectionProblem
+    ? studentSubmissions[activeInspectionProblem.id]
+    : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -695,7 +742,6 @@ export default function ClassroomView() {
         </nav>
       </header>
 
-      {/* ... (Stream e People mantidos iguais, omitindo para brevidade, mantenha o código anterior) ... */}
       {activeTab === "stream" && (
         <div className="stream-container">
           <div className="stream-wrapper">
@@ -724,14 +770,6 @@ export default function ClassroomView() {
                 ) : (
                   <div className="upcoming-empty">
                     Nenhuma atividade para a próxima semana!
-                  </div>
-                )}
-                {upcomingWork.length === 0 && (
-                  <div
-                    className="view-all-link"
-                    onClick={() => setActiveTab("classwork")}
-                  >
-                    Ver tudo
                   </div>
                 )}
               </div>
@@ -768,18 +806,6 @@ export default function ClassroomView() {
                 </div>
               )}
               <div className="announcements-list">
-                {(!classroom.announcements ||
-                  classroom.announcements.length === 0) && (
-                  <div
-                    style={{
-                      textAlign: "center",
-                      color: "#666",
-                      padding: "40px",
-                    }}
-                  >
-                    Nenhum aviso no mural.
-                  </div>
-                )}
                 {classroom.announcements?.map((a) => (
                   <div key={a.id} className="announcement-card">
                     <div className="announcement-header">
@@ -813,37 +839,32 @@ export default function ClassroomView() {
       )}
       {activeTab === "people" && (
         <div className="people-container">
-          <div style={{ marginBottom: "40px" }}>
-            <div className="section-header">
-              <span>Professores</span>
+          <div className="section-header">
+            <span>Professores</span>
+          </div>
+          <div className="person-item">
+            <div className="person-avatar">
+              {classroom.owner.email.charAt(0).toUpperCase()}
             </div>
-            <div className="person-item">
+            <span>{classroom.owner.email}</span>
+          </div>
+          <div className="section-header">
+            <span>Estudantes</span>
+          </div>
+          {classroom.students?.map((s) => (
+            <div key={s.id} className="person-item">
               <div className="person-avatar">
-                {classroom.owner.email.charAt(0).toUpperCase()}
+                {s.email.charAt(0).toUpperCase()}
               </div>
-              <span>{classroom.owner.email}</span>
+              <span>{s.email}</span>
             </div>
-          </div>
-          <div>
-            <div className="section-header">
-              <span>Estudantes ({classroom.students?.length || 0})</span>
-            </div>
-            {classroom.students?.map((s) => (
-              <div key={s.id} className="person-item">
-                <div className="person-avatar">
-                  {s.email.charAt(0).toUpperCase()}
-                </div>
-                <span>{s.email}</span>
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
       )}
 
       {activeTab === "classwork" && (
         <div className="ide-container" style={{ flex: 1, borderTop: "none" }}>
           <div className="ide-toolbar">
-            {/* DROPDOWN FILTRADO (Apenas Pais) */}
             <select
               className="form-select"
               style={{ width: "auto", minWidth: "250px" }}
@@ -860,7 +881,6 @@ export default function ClassroomView() {
               ))}
             </select>
 
-            {/* TIMER AREA */}
             {currentProblem?.type === "EXAM" && currentProblem.timeLimit && (
               <div
                 style={{
@@ -955,6 +975,8 @@ export default function ClassroomView() {
                 📊 {isOwner ? "Turma" : "Histórico"}
               </button>
             )}
+
+            {/* MOSTRA TENTATIVAS APENAS SE HOUVER LIMITE */}
             <div
               style={{
                 marginLeft: "auto",
@@ -985,7 +1007,7 @@ export default function ClassroomView() {
                       ).toLocaleDateString()}`}
                 </div>
               )}
-              {isExam && !isOwner && (
+              {isExam && !isOwner && hasLimit && (
                 <div
                   style={{
                     padding: "5px 12px",
@@ -1006,6 +1028,7 @@ export default function ClassroomView() {
                 </div>
               )}
             </div>
+
             <div style={{ display: "flex", gap: "10px" }}>
               <button
                 onClick={handleResetCode}
@@ -1051,7 +1074,6 @@ export default function ClassroomView() {
             </div>
 
             <div className="ide-info-panel">
-              {/* --- NAVEGAÇÃO DE QUESTÕES (CHEVRONS) --- */}
               {currentProblem?.children &&
                 currentProblem.children.length > 0 && (
                   <div
@@ -1194,8 +1216,6 @@ export default function ClassroomView() {
                         )}
                       </div>
                     )}
-
-                  {/* --- GRÁFICO DE ESTATÍSTICAS (Reintroduzido para corrigir o erro TS6133) --- */}
                   {isOwner && problemStats.length > 0 && (
                     <div
                       style={{
@@ -1261,15 +1281,26 @@ export default function ClassroomView() {
                     <strong>Resultado:</strong> {verdict}
                   </div>
                   {executionError && (
-                    <pre className="feedback-code error">{executionError}</pre>
+                    <pre
+                      className="feedback-code error"
+                      style={{ whiteSpace: "pre-wrap" }}
+                    >
+                      {executionError}
+                    </pre>
                   )}
                   {executionOutput && verdict !== "Accepted" && (
-                    <pre className="feedback-code">{executionOutput}</pre>
+                    <pre
+                      className="feedback-code"
+                      style={{ whiteSpace: "pre-wrap" }}
+                    >
+                      {executionOutput}
+                    </pre>
                   )}
                 </div>
               )}
             </div>
           </div>
+          {/* ... Modais ... */}
           {showSubmissions && (
             <div className="modal-overlay">
               <div className="modal-content large">
@@ -1307,174 +1338,340 @@ export default function ClassroomView() {
                               {sub.status}
                             </span>
                           </td>
-                          <td>
-                            {sub.grade !== null && sub.grade !== undefined ? (
-                              <span
-                                style={{ fontWeight: "bold", color: "#4caf50" }}
-                              >
-                                {sub.grade}
-                              </span>
-                            ) : (
-                              <span style={{ color: "#666" }}>-</span>
-                            )}
-                          </td>
+                          <td>{sub.grade ?? "-"}</td>
                           <td>{new Date(sub.createdAt).toLocaleString()}</td>
                           <td>
                             <button
                               className="btn btn-sm btn-primary"
-                              onClick={() => handleInspect(sub)}
+                              onClick={() => handleStartInspection(sub.user)}
                             >
                               Inspecionar
                             </button>
                           </td>
                         </tr>
                       ))}
-                    {submissions.filter(
-                      (sub) => isOwner || sub.user?.id === myUserId
-                    ).length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          style={{
-                            textAlign: "center",
-                            padding: "20px",
-                            color: "#666",
-                          }}
-                        >
-                          Nenhuma submissão.
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
-          {inspectingSubmission && (
+          {inspectingUser && (
             <div className="modal-overlay" style={{ zIndex: 1100 }}>
-              <div className="modal-content x-large">
-                <div className="modal-header">
-                  <h3>Inspecionando: {inspectingSubmission.user?.email}</h3>
+              <div
+                className="modal-content x-large"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  height: "90vh",
+                  padding: 0,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  className="modal-header"
+                  style={{
+                    padding: "15px 20px",
+                    borderBottom: "1px solid #333",
+                  }}
+                >
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    <h3 style={{ margin: 0 }}>
+                      Inspecionando: {inspectingUser.email}
+                    </h3>
+                    <span style={{ fontSize: "0.8rem", color: "#888" }}>
+                      {currentProblem?.title}
+                    </span>
+                  </div>
                   <button
-                    onClick={() => setInspectingSubmission(null)}
+                    onClick={() => setInspectingUser(null)}
                     className="btn btn-secondary"
                   >
-                    Voltar
+                    Fechar
                   </button>
                 </div>
-                <div className="inspection-grid">
-                  <div className="inspection-code">
-                    <Editor
-                      height="50vh"
-                      language={LANGUAGE_MAP[71]}
-                      theme="vs-dark"
-                      value={inspectingSubmission.code}
-                      options={{ readOnly: true, minimap: { enabled: false } }}
-                    />
-                  </div>
-                  <div
-                    className="inspection-output"
-                    style={{ overflowY: "auto", maxHeight: "50vh" }}
-                  >
-                    {(isOwner ||
-                      inspectingSubmission.grade != null ||
-                      inspectingSubmission.teacherComment) && (
+                <div
+                  className="inspection-layout"
+                  style={{ display: "flex", flex: 1, overflow: "hidden" }}
+                >
+                  {currentProblem?.children &&
+                    currentProblem.children.length > 0 && (
                       <div
-                        className="output-block"
+                        className="inspection-sidebar"
                         style={{
-                          border: "1px solid #4caf50",
-                          padding: "15px",
-                          borderRadius: "4px",
-                          background: "rgba(76, 175, 80, 0.05)",
-                          marginBottom: "20px",
+                          width: "220px",
+                          borderRight: "1px solid #333",
+                          background: "#1e1e1e",
+                          overflowY: "auto",
                         }}
                       >
-                        <h4
-                          className="label"
-                          style={{ color: "#4caf50", marginTop: 0 }}
+                        <div
+                          style={{
+                            padding: "10px 15px",
+                            fontSize: "0.8rem",
+                            fontWeight: "bold",
+                            color: "#666",
+                            textTransform: "uppercase",
+                          }}
                         >
-                          📝 Feedback
-                        </h4>
-                        {isOwner ? (
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: "10px",
-                            }}
-                          >
-                            <div>
-                              <label
-                                style={{ fontSize: "0.8rem", color: "#ccc" }}
-                              >
-                                Nota
-                              </label>
-                              <input
-                                type="number"
-                                className="form-input"
-                                value={gradingGrade}
-                                onChange={(e) =>
-                                  setGradingGrade(e.target.value)
-                                }
-                              />
-                            </div>
-                            <div>
-                              <label
-                                style={{ fontSize: "0.8rem", color: "#ccc" }}
-                              >
-                                Comentário
-                              </label>
-                              <textarea
-                                className="form-textarea"
-                                rows={3}
-                                value={gradingComment}
-                                onChange={(e) =>
-                                  setGradingComment(e.target.value)
-                                }
-                              />
-                            </div>
-                            <button
-                              onClick={handleSaveGrade}
-                              className="btn btn-primary"
+                          Questões
+                        </div>
+                        {currentProblem.children.map((child, index) => {
+                          const sub = studentSubmissions[child.id];
+                          return (
+                            <div
+                              key={child.id}
+                              onClick={() => handleInspectionTabChange(index)}
+                              style={{
+                                padding: "12px 15px",
+                                cursor: "pointer",
+                                background:
+                                  activeInspectionIndex === index
+                                    ? "#2d2d30"
+                                    : "transparent",
+                                borderLeft:
+                                  activeInspectionIndex === index
+                                    ? "3px solid #4caf50"
+                                    : "3px solid transparent",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "4px",
+                              }}
                             >
-                              Salvar
-                            </button>
-                          </div>
-                        ) : (
-                          <div>
-                            {inspectingSubmission.grade != null && (
-                              <div>
-                                Nota:{" "}
-                                <strong>{inspectingSubmission.grade}</strong>
+                              <div
+                                style={{
+                                  fontSize: "0.9rem",
+                                  fontWeight:
+                                    activeInspectionIndex === index
+                                      ? "bold"
+                                      : "normal",
+                                  color: "#fff",
+                                }}
+                              >
+                                Q{index + 1}: {child.title}
                               </div>
-                            )}
-                            {inspectingSubmission.teacherComment && (
+                              <div style={{ fontSize: "0.75rem" }}>
+                                {sub ? (
+                                  <span
+                                    style={{
+                                      color:
+                                        sub.status === "Accepted"
+                                          ? "#4caf50"
+                                          : "#f44336",
+                                    }}
+                                  >
+                                    {sub.status === "Accepted"
+                                      ? "✔ Aceito"
+                                      : "✖ Erro"}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: "#666" }}>
+                                    - Pendente
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  <div
+                    className="inspection-content"
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {activeSubmission ? (
+                      <>
+                        <div
+                          style={{ flex: 1, borderBottom: "1px solid #333" }}
+                        >
+                          <Editor
+                            height="100%"
+                            language={LANGUAGE_MAP[71]}
+                            theme="vs-dark"
+                            value={activeSubmission.code}
+                            options={{
+                              readOnly: true,
+                              minimap: { enabled: false },
+                              scrollBeyondLastLine: false,
+                            }}
+                          />
+                        </div>
+                        <div
+                          style={{
+                            height: "250px",
+                            background: "#1e1e1e",
+                            padding: "15px",
+                            overflowY: "auto",
+                            display: "flex",
+                            gap: "20px",
+                          }}
+                        >
+                          <div style={{ flex: 1 }}>
+                            <h4
+                              style={{
+                                marginTop: 0,
+                                fontSize: "0.85rem",
+                                color: "#ccc",
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              Output do Aluno
+                            </h4>
+                            <div
+                              style={{
+                                fontFamily: "monospace",
+                                fontSize: "0.9rem",
+                                background: "#000",
+                                padding: "10px",
+                                borderRadius: "4px",
+                                minHeight: "100px",
+                                whiteSpace: "pre-wrap",
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {activeSubmission.stdout || (
+                                <span
+                                  style={{ color: "#666", fontStyle: "italic" }}
+                                >
+                                  Sem output (vazio)
+                                </span>
+                              )}
+                            </div>
+                            {activeSubmission.stderr && (
                               <div
                                 style={{
                                   marginTop: "10px",
-                                  fontStyle: "italic",
+                                  fontFamily: "monospace",
+                                  fontSize: "0.9rem",
+                                  background: "#3e1e1e",
+                                  color: "#ff8a80",
+                                  padding: "10px",
+                                  borderRadius: "4px",
+                                  whiteSpace: "pre-wrap",
+                                  wordBreak: "break-word",
                                 }}
                               >
-                                "{inspectingSubmission.teacherComment}"
+                                {activeSubmission.stderr}
                               </div>
                             )}
                           </div>
-                        )}
+                          {(isOwner || activeSubmission.grade != null) && (
+                            <div
+                              style={{
+                                width: "300px",
+                                borderLeft: "1px solid #333",
+                                paddingLeft: "20px",
+                              }}
+                            >
+                              <h4
+                                style={{
+                                  marginTop: 0,
+                                  fontSize: "0.85rem",
+                                  color: "#4caf50",
+                                  textTransform: "uppercase",
+                                }}
+                              >
+                                Feedback
+                              </h4>
+                              {isOwner ? (
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: "10px",
+                                  }}
+                                >
+                                  <div>
+                                    <label style={{ fontSize: "0.8rem" }}>
+                                      Nota
+                                    </label>
+                                    <input
+                                      className="form-input"
+                                      type="number"
+                                      value={gradingGrade}
+                                      onChange={(e) =>
+                                        setGradingGrade(e.target.value)
+                                      }
+                                    />
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize: "0.8rem" }}>
+                                      Comentário
+                                    </label>
+                                    <textarea
+                                      className="form-textarea"
+                                      rows={3}
+                                      value={gradingComment}
+                                      onChange={(e) =>
+                                        setGradingComment(e.target.value)
+                                      }
+                                    />
+                                  </div>
+                                  <button
+                                    onClick={handleSaveGrade}
+                                    className="btn btn-primary btn-sm"
+                                  >
+                                    Salvar Nota
+                                  </button>
+                                </div>
+                              ) : (
+                                <div>
+                                  <div
+                                    style={{
+                                      fontSize: "1.2rem",
+                                      fontWeight: "bold",
+                                      marginBottom: "5px",
+                                    }}
+                                  >
+                                    {activeSubmission.grade ?? "-"}{" "}
+                                    <span
+                                      style={{
+                                        fontSize: "0.8rem",
+                                        fontWeight: "normal",
+                                      }}
+                                    >
+                                      / 100
+                                    </span>
+                                  </div>
+                                  <div
+                                    style={{
+                                      color: "#ccc",
+                                      fontStyle: "italic",
+                                    }}
+                                  >
+                                    "
+                                    {activeSubmission.teacherComment ||
+                                      "Sem comentários"}
+                                    "
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: "100%",
+                          color: "#666",
+                          flexDirection: "column",
+                        }}
+                      >
+                        <div style={{ fontSize: "2rem", marginBottom: "10px" }}>
+                          ∅
+                        </div>
+                        <div>
+                          O aluno não enviou uma solução para esta questão.
+                        </div>
                       </div>
-                    )}
-                    <div className="output-block">
-                      <h4>Status</h4>
-                      <div>{inspectingSubmission.status}</div>
-                    </div>
-                    {inspectingSubmission.stdout && (
-                      <pre className="code-block">
-                        {inspectingSubmission.stdout}
-                      </pre>
-                    )}
-                    {inspectingSubmission.stderr && (
-                      <pre className="code-block error">
-                        {inspectingSubmission.stderr}
-                      </pre>
                     )}
                   </div>
                 </div>

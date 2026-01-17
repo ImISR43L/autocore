@@ -153,14 +153,6 @@ export class SubmissionsService {
       );
     }
 
-    if (problem.type === ProblemType.EXAM && problem.maxAttempts) {
-      const attempts = await this.submissionsRepository.count({
-        where: { problem: { id: problem.id }, user: { id: userId } },
-      });
-      if (attempts >= problem.maxAttempts)
-        throw new ForbiddenException(`Limite de tentativas excedido.`);
-    }
-
     if (problem.type === ProblemType.EXAM) {
       // 1. Verifica Tentativas
       if (problem.maxAttempts) {

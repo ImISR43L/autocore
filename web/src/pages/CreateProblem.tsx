@@ -37,24 +37,22 @@ export default function CreateProblem() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // --- ESTADO DO WIZARD (Passo 1 ou 2) ---
   const [step, setStep] = useState<1 | 2>(1);
 
-  // --- DADOS DA ATIVIDADE (PAI) ---
   const [mainTitle, setMainTitle] = useState("");
-  const [mainDescription, setMainDescription] = useState(""); // Agora usado
+  const [mainDescription, setMainDescription] = useState("");
   const [mainSlug, setMainSlug] = useState("");
   const [classroomId, setClassroomId] = useState<number | null>(null);
   const [type, setType] = useState<"EXERCISE" | "EXAM">("EXERCISE");
-  const [maxAttempts, setMaxAttempts] = useState<number | undefined>();
+
+  // Alterado para permitir string vazia no input visualmente
+  const [maxAttempts, setMaxAttempts] = useState<number | "">("");
   const [deadline, setDeadline] = useState("");
   const [timeLimit, setTimeLimit] = useState<number | "">("");
 
-  // --- MODO MULTI-QUESTÕES (PROVA) ---
   const [questions, setQuestions] = useState<Question[]>([]);
   const [activeQuestionIndex, setActiveQuestionIndex] = useState<number>(0);
 
-  // --- DADOS DA QUESTÃO ATUAL (Ou EXERCÍCIO ÚNICO) ---
   const [qTitle, setQTitle] = useState("");
   const [qDesc, setQDesc] = useState("");
   const [qSlug, setQSlug] = useState("");
@@ -64,10 +62,9 @@ export default function CreateProblem() {
   const [returnType, setReturnType] = useState("int");
   const [testCases, setTestCases] = useState<TestCase[]>([]);
 
-  // Inputs Temporários
   const [currentInputs, setCurrentInputs] = useState<string[]>([""]);
   const [currentOutput, setCurrentOutput] = useState("");
-  const [currentIsHidden, setCurrentIsHidden] = useState(false); // Agora usado
+  const [currentIsHidden, setCurrentIsHidden] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -79,7 +76,14 @@ export default function CreateProblem() {
       setMainTitle(p.title);
       setMainSlug(p.slug);
       setMainDescription(p.description);
-      // Lógica de edição completa exigiria popular questions/testCases aqui
+      // Ao carregar, se maxAttempts for null/undefined, setamos como "" (vazio)
+      setMaxAttempts(p.maxAttempts ?? "");
+      setTimeLimit(p.timeLimit ?? "");
+      if (p.deadline)
+        setDeadline(new Date(p.deadline).toISOString().slice(0, 16));
+      else if (p.startDate)
+        setDeadline(new Date(p.startDate).toISOString().slice(0, 16));
+
       setStep(2);
     }
   }, [location.state]);
@@ -88,13 +92,11 @@ export default function CreateProblem() {
     setCurrentInputs(new Array(parameters.length).fill(""));
   }, [parameters.length]);
 
-  // --- LÓGICA DE SELEÇÃO INICIAL (STEP 1) ---
   const handleSelectType = (selectedType: "EXERCISE" | "EXAM") => {
     setType(selectedType);
     setStep(2);
   };
 
-  // --- LÓGICA DE QUESTÕES (STEP 2) ---
   const saveCurrentQuestionState = () => {
     if (type !== "EXAM") return;
     const updatedQuestions = [...questions];
@@ -148,7 +150,6 @@ export default function CreateProblem() {
     }
   };
 
-  // --- HELPERS DE FORMULÁRIO ---
   const addParameter = () =>
     setParameters([
       ...parameters,
@@ -220,14 +221,18 @@ export default function CreateProblem() {
 
     try {
       const token = localStorage.getItem("token");
+
+      // --- CORREÇÃO DE LÓGICA DO PAYLOAD ---
+      // Se maxAttempts for string vazia ou 0, enviamos NULL para remover o limite.
+      // Se timeLimit for string vazia ou 0, enviamos NULL.
       const payload: any = {
         title: mainTitle,
         description: mainDescription || "...",
         slug: mainSlug,
         classroomId,
         type,
-        maxAttempts: maxAttempts ? Number(maxAttempts) : undefined,
-        timeLimit: type === "EXAM" && timeLimit ? Number(timeLimit) : undefined,
+        maxAttempts: maxAttempts ? Number(maxAttempts) : null, // <--- Aqui garante NULL se vazio
+        timeLimit: type === "EXAM" && timeLimit ? Number(timeLimit) : null, // <--- Aqui garante NULL se vazio
         startDate:
           type === "EXAM" && deadline
             ? new Date(deadline).toISOString()
@@ -249,20 +254,29 @@ export default function CreateProblem() {
         payload.testCases = testCases;
       }
 
-      await axios.post(`${API_URL}/problems`, payload, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      toast.success("Criado com sucesso!");
+      if (location.state?.problemToEdit) {
+        await axios.patch(
+          `${API_URL}/problems/${location.state.problemToEdit.id}`,
+          payload,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        toast.success("Atualizado com sucesso!");
+      } else {
+        await axios.post(`${API_URL}/problems`, payload, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        toast.success("Criado com sucesso!");
+      }
+
       navigate(`/class/${classroomId}`);
     } catch (e) {
       console.error(e);
-      toast.error("Erro ao criar.");
+      toast.error("Erro ao salvar.");
     } finally {
       setLoading(false);
     }
   };
 
-  // --- RENDERIZAÇÃO: PASSO 1 (SELEÇÃO) ---
   if (step === 1) {
     return (
       <div
@@ -276,7 +290,6 @@ export default function CreateProblem() {
         >
           ← Cancelar
         </button>
-
         <div style={{ textAlign: "center", marginBottom: "40px" }}>
           <h1 style={{ fontSize: "2rem", marginBottom: "10px" }}>
             O que você deseja criar?
@@ -285,7 +298,6 @@ export default function CreateProblem() {
             Escolha o tipo de atividade para adicionar à turma.
           </p>
         </div>
-
         <div
           style={{
             display: "grid",
@@ -293,7 +305,6 @@ export default function CreateProblem() {
             gap: "30px",
           }}
         >
-          {/* CARD EXERCÍCIO */}
           <div
             onClick={() => handleSelectType("EXERCISE")}
             className="selection-card"
@@ -315,11 +326,9 @@ export default function CreateProblem() {
             </h2>
             <p style={{ color: "#888", fontSize: "0.9rem", lineHeight: "1.5" }}>
               Uma atividade única de programação com casos de teste
-              automatizados. Ideal para fixação de conteúdo e tarefas de casa.
+              automatizados.
             </p>
           </div>
-
-          {/* CARD PROVA */}
           <div
             onClick={() => handleSelectType("EXAM")}
             className="selection-card"
@@ -341,7 +350,7 @@ export default function CreateProblem() {
             </h2>
             <p style={{ color: "#888", fontSize: "0.9rem", lineHeight: "1.5" }}>
               Um conjunto de questões com controle de tempo, tentativas
-              limitadas e agendamento de início.
+              limitadas e agendamento.
             </p>
           </div>
         </div>
@@ -349,7 +358,6 @@ export default function CreateProblem() {
     );
   }
 
-  // --- RENDERIZAÇÃO: PASSO 2 (FORMULÁRIO) ---
   return (
     <div
       className="container"
@@ -390,7 +398,6 @@ export default function CreateProblem() {
         </div>
       </div>
 
-      {/* --- CONFIGS GERAIS DA ATIVIDADE --- */}
       <div
         style={{
           display: "grid",
@@ -442,9 +449,13 @@ export default function CreateProblem() {
               <input
                 type="number"
                 className="form-input"
-                placeholder="Ex: 90"
+                placeholder="Ex: 90 (Deixe vazio para ilimitado)"
                 value={timeLimit}
-                onChange={(e) => setTimeLimit(Number(e.target.value))}
+                onChange={(e) =>
+                  setTimeLimit(
+                    e.target.value === "" ? "" : Number(e.target.value)
+                  )
+                }
               />
             </div>
             <div>
@@ -456,14 +467,19 @@ export default function CreateProblem() {
                 onChange={(e) => setDeadline(e.target.value)}
               />
             </div>
+            {/* AQUI: Input de MaxAttempts tratado corretamente para aceitar vazio */}
             <div>
               <label className="form-label">Limite de Tentativas</label>
               <input
                 type="number"
                 className="form-input"
-                placeholder="Opcional"
-                value={maxAttempts || ""}
-                onChange={(e) => setMaxAttempts(Number(e.target.value))}
+                placeholder="Ilimitado (Deixe em branco)"
+                value={maxAttempts}
+                onChange={(e) =>
+                  setMaxAttempts(
+                    e.target.value === "" ? "" : Number(e.target.value)
+                  )
+                }
               />
             </div>
           </>
@@ -480,7 +496,6 @@ export default function CreateProblem() {
         )}
       </div>
 
-      {/* --- BARRA DE NAVEGAÇÃO DE QUESTÕES (SÓ PARA EXAM) --- */}
       {type === "EXAM" && (
         <div style={{ marginBottom: "20px" }}>
           <h4
@@ -503,49 +518,44 @@ export default function CreateProblem() {
               borderBottom: "1px solid #333",
             }}
           >
-            {questions.map(
-              (
-                _,
-                i // Corrigido: 'q' removido
-              ) => (
-                <div
-                  key={i}
-                  onClick={() => {
-                    saveCurrentQuestionState();
-                    loadQuestionState(i);
-                  }}
+            {questions.map((_, i) => (
+              <div
+                key={i}
+                onClick={() => {
+                  saveCurrentQuestionState();
+                  loadQuestionState(i);
+                }}
+                style={{
+                  padding: "8px 15px",
+                  background: activeQuestionIndex === i ? "#4caf50" : "#333",
+                  color: "#fff",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  border:
+                    activeQuestionIndex === i
+                      ? "1px solid #66bb6a"
+                      : "1px solid transparent",
+                  transition: "all 0.2s",
+                }}
+              >
+                <strong>Q{i + 1}</strong>
+                <span
+                  onClick={(e) => handleRemoveQuestion(e, i)}
                   style={{
-                    padding: "8px 15px",
-                    background: activeQuestionIndex === i ? "#4caf50" : "#333",
-                    color: "#fff",
-                    borderRadius: "4px",
+                    fontSize: "0.8rem",
+                    opacity: 0.7,
                     cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    border:
-                      activeQuestionIndex === i
-                        ? "1px solid #66bb6a"
-                        : "1px solid transparent",
-                    transition: "all 0.2s",
+                    paddingLeft: "5px",
                   }}
                 >
-                  <strong>Q{i + 1}</strong>
-                  <span
-                    onClick={(e) => handleRemoveQuestion(e, i)}
-                    style={{
-                      fontSize: "0.8rem",
-                      opacity: 0.7,
-                      cursor: "pointer",
-                      paddingLeft: "5px",
-                    }}
-                  >
-                    ✕
-                  </span>
-                </div>
-              )
-            )}
+                  ✕
+                </span>
+              </div>
+            ))}
             <button
               onClick={handleAddNewQuestion}
               className="btn btn-sm btn-secondary"
@@ -557,7 +567,6 @@ export default function CreateProblem() {
         </div>
       )}
 
-      {/* --- ÁREA DE EDIÇÃO --- */}
       <div
         className="card-box"
         style={{
@@ -585,7 +594,6 @@ export default function CreateProblem() {
             EDITANDO QUESTÃO {activeQuestionIndex + 1}
           </div>
         )}
-
         <div
           style={{
             display: "grid",
@@ -614,7 +622,6 @@ export default function CreateProblem() {
             />
           </div>
         </div>
-
         <div style={{ marginBottom: "20px" }}>
           <label className="form-label">Enunciado (Markdown)</label>
           <div
@@ -635,7 +642,6 @@ export default function CreateProblem() {
             />
           </div>
         </div>
-
         <div style={{ borderTop: "1px solid #333", paddingTop: "20px" }}>
           <h4 style={{ marginTop: 0, color: "#4caf50", fontSize: "1rem" }}>
             ⚙️ Assinatura & Código
@@ -711,7 +717,6 @@ export default function CreateProblem() {
             </div>
           </div>
         </div>
-
         <div
           style={{
             marginTop: "30px",
@@ -770,7 +775,6 @@ export default function CreateProblem() {
                   placeholder="Ex: 10 ou true"
                 />
               </div>
-              {/* Checkbox de Oculto (Corrigido) */}
               <div
                 style={{
                   display: "flex",
@@ -804,7 +808,6 @@ export default function CreateProblem() {
               </button>
             </div>
           </div>
-
           {testCases.length > 0 && (
             <table className="custom-table">
               <thead>
