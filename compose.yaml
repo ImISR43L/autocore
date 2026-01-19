@@ -1,0 +1,107 @@
+services:
+  api:
+    build: ./api
+    ports:
+      - "3000:3000"
+    # O container da API carrega o arquivo .env da pasta ./api
+    env_file:
+      - ./api/.env
+    depends_on:
+      - db
+    develop:
+      watch:
+        - action: sync
+          path: ./api/src
+          target: /app/src
+        - action: rebuild
+          path: ./api/package.json
+    volumes:
+      #- ./api:/app
+      - /app/node_modules
+
+  db:
+    image: postgres:13
+    # Mapeamos as variáveis do .env da API para as do Postgres
+    environment:
+      POSTGRES_USER: autocore_user # Hardcoded para garantir ou use ${DB_USER} se tiver um .env na raiz
+      POSTGRES_PASSWORD: autocore_password
+      POSTGRES_DB: autocore_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  web:
+    build: ./web
+    ports:
+      - "8080:80"
+    env_file:
+      - ./web/.env
+    depends_on:
+      - api
+    develop:
+      watch:
+        - action: sync
+          path: ./web/src
+          target: /app/src
+
+  # --- Serviços do Judge0 ---
+  #judge0-server:
+  # image: judge0/judge0:1.13.1
+  #volumes:
+  # - ./judge0.conf:/judge0.conf:ro
+  #- /sys/fs/cgroup:/sys/fs/cgroup:rw
+  #ports:
+  # - "2358:2358"
+  #privileged: true
+  #cgroupns: host
+  #environment:
+  #  - REDIS_PASSWORD=judge0redispassword
+  #  - POSTGRES_PASSWORD=judge0dbpassword
+  #  - REDIS_HOST=judge0-redis
+  #  - POSTGRES_HOST=judge0-db
+  #  - POSTGRES_USER=judge0
+  #  - POSTGRES_DB=judge0
+  #depends_on:
+  #  - judge0-redis
+  #  - judge0-db
+  #restart: always
+
+  #judge0-worker:
+  #image: judge0/judge0:1.13.1
+  #command: ["./scripts/workers"]
+  #volumes:
+  #- ./judge0.conf:/judge0.conf:ro
+  #- /sys/fs/cgroup:/sys/fs/cgroup:rw
+  #privileged: true
+  #cgroupns: host
+  #environment:
+  #- REDIS_PASSWORD=judge0redispassword
+  #- POSTGRES_PASSWORD=judge0dbpassword
+  #- REDIS_HOST=judge0-redis
+  #- POSTGRES_HOST=judge0-db
+  #- POSTGRES_USER=judge0
+  #- POSTGRES_DB=judge0
+  #depends_on:
+  #- judge0-redis
+  #- judge0-db
+  #restart: always
+
+  judge0-db:
+    image: postgres:13.0
+    environment:
+      - POSTGRES_USER=judge0
+      - POSTGRES_PASSWORD=judge0dbpassword
+      - POSTGRES_DB=judge0
+    volumes:
+      - judge0-db-data:/var/lib/postgresql/data
+    restart: always
+
+  judge0-redis:
+    image: redis:6.0
+    command: ["redis-server", "--requirepass", "judge0redispassword"]
+    restart: always
+
+volumes:
+  postgres_data:
+  judge0-db-data:

@@ -153,30 +153,28 @@ export class SubmissionsService {
       );
     }
 
+    // --- Lógica de Prova ---
     if (problem.type === ProblemType.EXAM) {
-      // 1. Verifica Tentativas
       if (problem.maxAttempts) {
         const attempts = await this.submissionsRepository.count({
           where: { problem: { id: problem.id }, user: { id: userId } },
         });
-        if (attempts >= problem.maxAttempts)
+        if (attempts >= problem.maxAttempts) {
           throw new ForbiddenException(`Limite de tentativas excedido.`);
+        }
       }
 
-      // 2. Verifica Temporizador em Tempo Real
       if (problem.timeLimit) {
         if (!problem.startedAt) {
           throw new ForbiddenException(
             'A prova ainda não foi iniciada pelo professor.',
           );
         }
-
         const now = new Date().getTime();
         const startTime = new Date(problem.startedAt).getTime();
         const limitMs = problem.timeLimit * 60 * 1000;
         const endTime = startTime + limitMs;
 
-        // Margem de tolerância de 30 segundos para latência de rede
         if (now > endTime + 30000) {
           throw new ForbiddenException('O tempo da prova acabou.');
         }
@@ -208,60 +206,75 @@ export class SubmissionsService {
       code,
     );
 
-    const judgeUrl = 'https://judge0-ce.p.rapidapi.com/submissions';
-    const rapidApiKey = process.env.RAPIDAPI_KEY;
+    const judgeUrl =
+      process.env.JUDGE0_URL || 'http://judge0-server:2358/submissions';
 
-    if (!rapidApiKey) {
-      console.error('RAPIDAPI_KEY ausente.');
-      finalVerdict = 'Internal Error';
-    } else if (problem.testCases?.length > 0) {
+    if (problem.testCases?.length > 0) {
       for (const testCase of problem.testCases) {
         try {
           const payload = {
-            source_code: Buffer.from(codeToRun).toString('base64'), // Envia o código COMBINADO
+            source_code: Buffer.from(codeToRun).toString('base64'),
             language_id: language_id,
             stdin: Buffer.from(testCase.input).toString('base64'),
             expected_output: Buffer.from(testCase.expectedOutput).toString(
               'base64',
             ),
           };
+
           const response = await axios.post(
             `${judgeUrl}?base64_encoded=true&wait=true`,
             payload,
-            {
-              headers: {
-                'Content-Type': 'application/json',
-                'x-rapidapi-host': 'judge0-ce.p.rapidapi.com',
-                'x-rapidapi-key': rapidApiKey,
-              },
-            },
+            { headers: { 'Content-Type': 'application/json' } },
           );
+
           const result = response.data;
+
           if (result.status.id !== 3) {
             finalVerdict = result.status.description;
+
             executionStdout = result.stdout
               ? Buffer.from(result.stdout, 'base64').toString()
               : null;
+
+            // --- MELHORIA AQUI ---
+            // Captura erros de execução padrão
             executionStderr = result.stderr
               ? Buffer.from(result.stderr, 'base64').toString()
               : null;
-            if (result.compile_output)
-              executionStderr = Buffer.from(
+
+            // Captura erros de compilação
+            if (result.compile_output) {
+              const compileErr = Buffer.from(
                 result.compile_output,
                 'base64',
               ).toString();
+              executionStderr = executionStderr
+                ? executionStderr + '\n' + compileErr
+                : compileErr;
+            }
+
+            // Captura MENSAGENS DE ERRO do sistema (ex: sandbox falhou)
+            if (result.message) {
+              const sysErr = `System Error: ${result.message}`;
+              executionStderr = executionStderr
+                ? executionStderr + '\n' + sysErr
+                : sysErr;
+            }
+            // ---------------------
+
             break;
           }
         } catch (e) {
+          console.error('Erro ao conectar com Judge0:', e.message);
           finalVerdict = 'Execution Error';
+          executionStderr = 'Falha de comunicação com o servidor de execução.';
           break;
         }
       }
     }
 
-    // Salva no banco APENAS o código do aluno (sem o wrapper), para ele ver o que escreveu
     const sub = this.submissionsRepository.create({
-      code, // Salva o original
+      code,
       language_id,
       status: finalVerdict,
       stdout: executionStdout,
@@ -269,6 +282,7 @@ export class SubmissionsService {
       problem,
       user: { id: userId } as any,
     });
+
     return this.submissionsRepository.save(sub);
   }
 
