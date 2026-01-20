@@ -2,10 +2,10 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import axios from 'axios';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
 import { Submission } from './entities/submission.entity';
@@ -140,6 +140,7 @@ export class SubmissionsService {
   async create(createSubmissionDto: CreateSubmissionDto, userId: number) {
     const { code, language_id, problem_id } = createSubmissionDto;
 
+    // 1. Buscando o Problema
     const problem = await this.problemsRepository.findOne({
       where: { id: problem_id },
       relations: ['testCases', 'classroom', 'classroom.owner'],
@@ -147,14 +148,16 @@ export class SubmissionsService {
 
     if (!problem) throw new NotFoundException('Exercício não encontrado');
 
+    // 2. Validação: Professor não submete
     if (problem.classroom.owner.id === userId) {
       throw new ForbiddenException(
         'Professores não devem enviar soluções para análise, apenas alunos.',
       );
     }
 
-    // --- Lógica de Prova ---
+    // 3. Validação: Regras de Prova (Exam)
     if (problem.type === ProblemType.EXAM) {
+      // 3.1 Limite de Tentativas
       if (problem.maxAttempts) {
         const attempts = await this.submissionsRepository.count({
           where: { problem: { id: problem.id }, user: { id: userId } },
@@ -164,27 +167,32 @@ export class SubmissionsService {
         }
       }
 
+      // 3.2 Tempo de Prova
       if (problem.timeLimit) {
         if (!problem.startedAt) {
           throw new ForbiddenException(
             'A prova ainda não foi iniciada pelo professor.',
           );
         }
+
         const now = new Date().getTime();
         const startTime = new Date(problem.startedAt).getTime();
         const limitMs = problem.timeLimit * 60 * 1000;
         const endTime = startTime + limitMs;
 
+        // Tolerância de 30s
         if (now > endTime + 30000) {
           throw new ForbiddenException('O tempo da prova acabou.');
         }
       }
     }
 
+    // 4. Validação: Prazo Geral
     if (problem.deadline && new Date() > new Date(problem.deadline)) {
       throw new ForbiddenException(`Prazo encerrado.`);
     }
 
+    // 5. Preparação para Execução
     let finalVerdict = 'Accepted';
     let executionStdout: string | null = null;
     let executionStderr: string | null = null;
@@ -199,6 +207,7 @@ export class SubmissionsService {
 
     const returnType = problem.returnType || 'string';
 
+    // Gera o código final com o Wrapper
     const codeToRun = WrapperGenerator.generate(
       language_id,
       params,
@@ -206,75 +215,95 @@ export class SubmissionsService {
       code,
     );
 
-    const judgeUrl =
-      process.env.JUDGE0_URL || 'http://judge0-server:2358/submissions';
+    // URL do Go-Judge (Definida no docker-compose como serviço 'go-judge')
+    const judgeUrl = process.env.GO_JUDGE_URL || 'http://go-judge:5050/run';
 
+    // Configuração da Linguagem (Comando de execução)
+    let langConfig;
+    try {
+      langConfig = this.getLanguageConfig(language_id);
+    } catch (error) {
+      throw new InternalServerErrorException(error.message);
+    }
+
+    // 6. Loop de Testes
     if (problem.testCases?.length > 0) {
       for (const testCase of problem.testCases) {
         try {
+          // Payload específico do Go-Judge
+          // Documentação: https://github.com/criyle/go-judge
           const payload = {
-            source_code: Buffer.from(codeToRun).toString('base64'),
-            language_id: language_id,
-            stdin: Buffer.from(testCase.input).toString('base64'),
-            expected_output: Buffer.from(testCase.expectedOutput).toString(
-              'base64',
-            ),
+            cmd: langConfig.runCommand,
+            files: [
+              {
+                name: langConfig.fileName,
+                content: codeToRun,
+              },
+            ],
+            stdin: testCase.input,
           };
 
-          const response = await axios.post(
-            `${judgeUrl}?base64_encoded=true&wait=true`,
-            payload,
-            { headers: { 'Content-Type': 'application/json' } },
-          );
+          console.log('PAYLOAD:', JSON.stringify(payload, null, 2));
 
-          const result = response.data;
+          // Execução Síncrona (Go-Judge retorna array de resultados)
+          const rawData = JSON.stringify(payload);
 
-          if (result.status.id !== 3) {
-            finalVerdict = result.status.description;
+          const response = await fetch(judgeUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            // Enviamos o JSON cru. O fetch não altera isso.
+            body: JSON.stringify(payload),
+          });
 
-            executionStdout = result.stdout
-              ? Buffer.from(result.stdout, 'base64').toString()
-              : null;
+          if (!response.ok) {
+            throw new Error(
+              `Go-Judge Error: ${response.status} ${response.statusText}`,
+            );
+          }
 
-            // --- MELHORIA AQUI ---
-            // Captura erros de execução padrão
-            executionStderr = result.stderr
-              ? Buffer.from(result.stderr, 'base64').toString()
-              : null;
+          // O Go-Judge retorna uma lista de resultados. Pegamos o primeiro.
+          const result: any = await response.json();
 
-            // Captura erros de compilação
-            if (result.compile_output) {
-              const compileErr = Buffer.from(
-                result.compile_output,
-                'base64',
-              ).toString();
-              executionStderr = executionStderr
-                ? executionStderr + '\n' + compileErr
-                : compileErr;
+          // 6.1 Verifica Erros de Execução/Compilação
+          // Go-Judge retorna status textual ou exitStatus != 0
+          if (result.status !== 'Accepted') {
+            finalVerdict = result.status; // Ex: 'Memory Limit Exceeded', 'Runtime Error'
+            executionStdout = result.files?.stdout || '';
+            executionStderr = result.files?.stderr || '';
+
+            // Se houve erro de compilação ou execução (Exit Code != 0)
+            if (result.exitStatus !== 0 && finalVerdict === 'Accepted') {
+              finalVerdict = 'Runtime Error';
             }
+            break; // Para no primeiro erro
+          }
 
-            // Captura MENSAGENS DE ERRO do sistema (ex: sandbox falhou)
-            if (result.message) {
-              const sysErr = `System Error: ${result.message}`;
-              executionStderr = executionStderr
-                ? executionStderr + '\n' + sysErr
-                : sysErr;
-            }
-            // ---------------------
+          // 6.2 Comparação de Saída (Lógica de Juiz)
+          // Normalizamos removendo espaços em branco extras nas pontas
+          const actualOutput = (result.files?.stdout || '').trim();
+          const expectedOutput = (testCase.expectedOutput || '').trim();
 
+          if (actualOutput !== expectedOutput) {
+            finalVerdict = 'Wrong Answer';
+            executionStdout = actualOutput; // Mostra o que saiu errado
+            // Para debug do aluno, podemos concatenar o esperado no stderr se quiser
+            // executionStderr = `Esperado: ${expectedOutput}`;
             break;
           }
         } catch (e) {
-          console.error('Erro ao conectar com Judge0:', e.message);
-          finalVerdict = 'Execution Error';
-          executionStderr = 'Falha de comunicação com o servidor de execução.';
+          console.error('Erro de comunicação com Go-Judge:', e.message);
+          finalVerdict = 'Internal Error';
+          executionStderr = 'Falha ao comunicar com o servidor de execução.';
           break;
         }
       }
     }
 
+    // 7. Salvar Submissão
     const sub = this.submissionsRepository.create({
-      code,
+      code, // Salva o código original do aluno
       language_id,
       status: finalVerdict,
       stdout: executionStdout,
@@ -296,5 +325,30 @@ export class SubmissionsService {
 
   async findAll() {
     return this.submissionsRepository.find({ relations: ['problem', 'user'] });
+  }
+
+  private getLanguageConfig(languageId: number) {
+    switch (languageId) {
+      case 71: // Python
+        return {
+          fileName: 'main.py',
+          runCommand: ['python3', 'main.py'],
+        };
+
+      case 63: // JavaScript (Node)
+        return {
+          fileName: 'index.js',
+          runCommand: ['node', 'index.js'],
+        };
+
+      case 62: // Java
+        return {
+          fileName: 'Main.java',
+          runCommand: ['java', 'Main.java'],
+        };
+
+      default:
+        throw new Error(`Linguagem ID ${languageId} não suportada.`);
+    }
   }
 }
