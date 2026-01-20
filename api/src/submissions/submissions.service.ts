@@ -137,7 +137,7 @@ export class SubmissionsService {
     return this.submissionsRepository.save(submission);
   }
 
-  async create(createSubmissionDto: CreateSubmissionDto, userId: number) {
+async create(createSubmissionDto: CreateSubmissionDto, userId: number) {
     const { code, language_id, problem_id } = createSubmissionDto;
 
     // 1. Buscando o Problema
@@ -157,7 +157,6 @@ export class SubmissionsService {
 
     // 3. Validação: Regras de Prova (Exam)
     if (problem.type === ProblemType.EXAM) {
-      // 3.1 Limite de Tentativas
       if (problem.maxAttempts) {
         const attempts = await this.submissionsRepository.count({
           where: { problem: { id: problem.id }, user: { id: userId } },
@@ -167,20 +166,16 @@ export class SubmissionsService {
         }
       }
 
-      // 3.2 Tempo de Prova
       if (problem.timeLimit) {
         if (!problem.startedAt) {
           throw new ForbiddenException(
             'A prova ainda não foi iniciada pelo professor.',
           );
         }
-
         const now = new Date().getTime();
         const startTime = new Date(problem.startedAt).getTime();
         const limitMs = problem.timeLimit * 60 * 1000;
         const endTime = startTime + limitMs;
-
-        // Tolerância de 30s
         if (now > endTime + 30000) {
           throw new ForbiddenException('O tempo da prova acabou.');
         }
@@ -207,7 +202,6 @@ export class SubmissionsService {
 
     const returnType = problem.returnType || 'string';
 
-    // Gera o código final com o Wrapper
     const codeToRun = WrapperGenerator.generate(
       language_id,
       params,
@@ -215,10 +209,9 @@ export class SubmissionsService {
       code,
     );
 
-    // URL do Go-Judge (Definida no docker-compose como serviço 'go-judge')
+    // URL DE PRODUÇÃO (Go-Judge na porta 5050)
     const judgeUrl = process.env.GO_JUDGE_URL || 'http://go-judge:5050/run';
 
-    // Configuração da Linguagem (Comando de execução)
     let langConfig;
     try {
       langConfig = this.getLanguageConfig(language_id);
@@ -230,30 +223,29 @@ export class SubmissionsService {
     if (problem.testCases?.length > 0) {
       for (const testCase of problem.testCases) {
         try {
-          // Payload específico do Go-Judge
-          // Documentação: https://github.com/criyle/go-judge
+          // --- AQUI ESTÁ A PARTE QUE VOCÊ PERGUNTOU ---
+          // Criamos essa variável para garantir que o comando seja sempre um Array
+          const commandToRun = Array.isArray(langConfig.runCommand) 
+            ? langConfig.runCommand 
+            : [langConfig.runCommand];
+
           const payload = {
-            cmd: langConfig.runCommand,
+            cmd: commandToRun, // Usamos a variável aqui
             files: [
               {
                 name: langConfig.fileName,
                 content: codeToRun,
               },
             ],
-            stdin: testCase.input,
+            stdin: testCase.input || "",
           };
 
-          console.log('PAYLOAD:', JSON.stringify(payload, null, 2));
-
-          // Execução Síncrona (Go-Judge retorna array de resultados)
-          const rawData = JSON.stringify(payload);
-
+          // Execução usando FETCH nativo (Recomendado para evitar bugs de JSON)
           const response = await fetch(judgeUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            // Enviamos o JSON cru. O fetch não altera isso.
             body: JSON.stringify(payload),
           });
 
@@ -263,33 +255,28 @@ export class SubmissionsService {
             );
           }
 
-          // O Go-Judge retorna uma lista de resultados. Pegamos o primeiro.
+          // Go-Judge retorna um objeto único se enviamos objeto único
           const result: any = await response.json();
 
           // 6.1 Verifica Erros de Execução/Compilação
-          // Go-Judge retorna status textual ou exitStatus != 0
           if (result.status !== 'Accepted') {
-            finalVerdict = result.status; // Ex: 'Memory Limit Exceeded', 'Runtime Error'
+            finalVerdict = result.status;
             executionStdout = result.files?.stdout || '';
             executionStderr = result.files?.stderr || '';
 
-            // Se houve erro de compilação ou execução (Exit Code != 0)
             if (result.exitStatus !== 0 && finalVerdict === 'Accepted') {
               finalVerdict = 'Runtime Error';
             }
-            break; // Para no primeiro erro
+            break; 
           }
 
-          // 6.2 Comparação de Saída (Lógica de Juiz)
-          // Normalizamos removendo espaços em branco extras nas pontas
+          // 6.2 Comparação de Saída
           const actualOutput = (result.files?.stdout || '').trim();
           const expectedOutput = (testCase.expectedOutput || '').trim();
 
           if (actualOutput !== expectedOutput) {
             finalVerdict = 'Wrong Answer';
-            executionStdout = actualOutput; // Mostra o que saiu errado
-            // Para debug do aluno, podemos concatenar o esperado no stderr se quiser
-            // executionStderr = `Esperado: ${expectedOutput}`;
+            executionStdout = actualOutput;
             break;
           }
         } catch (e) {
@@ -303,7 +290,7 @@ export class SubmissionsService {
 
     // 7. Salvar Submissão
     const sub = this.submissionsRepository.create({
-      code, // Salva o código original do aluno
+      code,
       language_id,
       status: finalVerdict,
       stdout: executionStdout,
@@ -345,6 +332,12 @@ export class SubmissionsService {
         return {
           fileName: 'Main.java',
           runCommand: ['java', 'Main.java'],
+        };
+      case 60: // Go (Golang)
+      case 95: // Go (Versões mais novas) - Adicione por segurança
+        return {
+          fileName: 'main.go',
+          runCommand: ['go', 'run', 'main.go'],
         };
 
       default:
