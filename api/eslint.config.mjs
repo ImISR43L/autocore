@@ -3,11 +3,13 @@ import eslint from '@eslint/js';
 import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import security from 'eslint-plugin-security';
 
 export default tseslint.config(
   {
     ignores: ['eslint.config.mjs'],
   },
+  security.configs.recommended,
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   eslintPluginPrettierRecommended,

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -40,19 +40,8 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node))
-        setShowMenu(false);
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const fetchData = async () => {
+  // Função envolvida em useCallback para satisfazer o linter
+  const fetchData = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
       if (!token) {
@@ -67,7 +56,20 @@ export default function Dashboard() {
       toast.error("Sessão expirada.");
       navigate("/");
     }
-  };
+  }, [API_URL, navigate]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node))
+        setShowMenu(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleCreateClassroom = async () => {
     if (!newClassName.trim()) return;
@@ -77,18 +79,19 @@ export default function Dashboard() {
       await axios.post(
         `${API_URL}/classrooms`,
         { name: newClassName },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       toast.success("Turma criada!");
       setNewClassName("");
       setShowCreateModal(false);
       fetchData();
     } catch {
-      toast.error("Erro.");
+      toast.error("Erro ao criar turma.");
     } finally {
       setIsLoading(false);
     }
   };
+
   const handleJoinClassroom = async () => {
     if (!joinCode.trim()) return;
     setIsLoading(true);
@@ -97,21 +100,22 @@ export default function Dashboard() {
       await axios.post(
         `${API_URL}/classrooms/join`,
         { code: joinCode },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
-      toast.success("Entrou!");
+      toast.success("Entrou na turma!");
       setShowJoinModal(false);
       setJoinCode("");
       fetchData();
     } catch {
-      toast.error("Código inválido.");
+      toast.error("Código inválido ou erro ao entrar.");
     } finally {
       setIsLoading(false);
     }
   };
+
   const handleDeleteClassroom = async (
     e: React.MouseEvent,
-    classId: number
+    classId: number,
   ) => {
     e.preventDefault();
     e.stopPropagation();
@@ -124,13 +128,14 @@ export default function Dashboard() {
       toast.success("Excluída.");
       fetchData();
     } catch {
-      toast.error("Erro.");
+      toast.error("Erro ao excluir.");
     }
   };
+
   const navigateToAssignment = (
     e: React.MouseEvent,
     classId: number,
-    problemId: string
+    problemId: string,
   ) => {
     e.preventDefault();
     e.stopPropagation();

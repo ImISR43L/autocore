@@ -33,7 +33,14 @@ export class ClassroomsService {
       owner,
     });
 
-    return this.classroomsRepository.save(classroom);
+    const savedClassroom = await this.classroomsRepository.save(classroom);
+
+    // CORREÇÃO: Adicionamos manualmente a propriedade isOwner: true
+    // para que o frontend reconheça que quem criou é o professor.
+    return {
+      ...savedClassroom,
+      isOwner: true,
+    };
   }
 
   // --- RENOMEADO DE join PARA joinClassroom ---
@@ -93,7 +100,6 @@ export class ClassroomsService {
         'announcements',
         'announcements.author',
       ],
-      // Agora funciona pois adicionamos createdAt na entidade Classroom
       order: {
         createdAt: 'DESC',
         problems: { createdAt: 'DESC' },
@@ -103,21 +109,17 @@ export class ClassroomsService {
 
     if (!classroom) throw new NotFoundException('Turma não encontrada');
 
-    // LÓGICA DE FILTRAGEM (DATA DE INÍCIO) E PROTEÇÃO
+    // LÓGICA DE FILTRAGEM E PROTEÇÃO
     if (userId && classroom.owner.id !== userId) {
       const now = new Date();
 
-      // 1. Filtra provas agendadas para o futuro
       if (classroom.problems) {
         classroom.problems = classroom.problems.filter((p) => {
-          // Se for filho, esconde (já feito no front, mas reforça aqui)
           if (p.parent) return false;
-          // Se tiver data futura, esconde
           if (p.startDate && new Date(p.startDate) > now) return false;
           return true;
         });
 
-        // 2. Protege casos de teste ocultos
         classroom.problems.forEach((p) => {
           if (p.testCases) {
             p.testCases = p.testCases.map((tc) => {

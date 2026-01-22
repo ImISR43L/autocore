@@ -26,6 +26,9 @@ export class CreateTestCaseDto {
   isHidden?: boolean;
 }
 
+// Tipo auxiliar para evitar repetição e garantir sincronia
+type ParamType = 'int' | 'float' | 'string' | 'boolean' | 'int[]' | 'string[]';
+
 class ParameterDefinitionDto {
   @IsString()
   @IsNotEmpty()
@@ -34,13 +37,15 @@ class ParameterDefinitionDto {
   @IsString()
   @IsNotEmpty()
   @IsEnum(['int', 'float', 'string', 'boolean', 'int[]', 'string[]'])
-  type: string;
+  // CORREÇÃO: Tipagem estrita em vez de 'string' genérica
+  type: ParamType;
 }
 
-// --- NOVO DTO PARA QUESTÕES FILHAS ---
 export class CreateQuestionDto {
   @IsString() @IsNotEmpty() title: string;
   @IsString() @IsNotEmpty() description: string;
+
+  // eslint-disable-next-line security/detect-unsafe-regex
   @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: 'Slug inválido' })
   slug: string;
 
@@ -56,7 +61,6 @@ export class CreateQuestionDto {
   @Type(() => CreateTestCaseDto)
   testCases: CreateTestCaseDto[];
 }
-// -------------------------------------
 
 export class CreateProblemDto {
   @IsString()
@@ -67,6 +71,7 @@ export class CreateProblemDto {
   @IsNotEmpty()
   description: string;
 
+  // eslint-disable-next-line security/detect-unsafe-regex
   @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
   slug: string;
 
@@ -107,13 +112,11 @@ export class CreateProblemDto {
   @IsOptional()
   testCases?: CreateTestCaseDto[];
 
-  // --- ARRAY DE QUESTÕES (OPCIONAL) ---
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateQuestionDto)
   @IsOptional()
   questions?: CreateQuestionDto[];
-  // ------------------------------------
 
   @IsOptional()
   @IsString()

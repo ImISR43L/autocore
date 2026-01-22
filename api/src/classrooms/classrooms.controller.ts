@@ -8,42 +8,57 @@ import {
   Param,
   Delete,
 } from '@nestjs/common';
-// O AuthGuard pode ser removido das importações se não for usado explicitamente
-// import { AuthGuard } from '@nestjs/passport';
 import { ClassroomsService } from './classrooms.service';
 import { CreateClassroomDto } from './dto/create-classroom.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-// --- CORREÇÃO: Mantido apenas o JwtAuthGuard ---
+// Interface para tipar o Request autenticado
+interface RequestWithUser {
+  user: {
+    userId: number;
+    email: string;
+    role: string;
+  };
+}
+
 @UseGuards(JwtAuthGuard)
 @Controller('classrooms')
 export class ClassroomsController {
   constructor(private readonly classroomsService: ClassroomsService) {}
 
   @Post()
-  create(@Body() createClassroomDto: CreateClassroomDto, @Request() req) {
+  create(
+    @Body() createClassroomDto: CreateClassroomDto,
+    @Request() req: RequestWithUser,
+  ) {
     return this.classroomsService.create(createClassroomDto, req.user.userId);
   }
 
   @Post('join')
-  joinClassroom(@Body() body: { code: string }, @Request() req) {
-    // Nota: O nome do método no service deve ser verificado (join ou joinClassroom)
-    // Baseado no seu código anterior, parece ser joinClassroom
+  joinClassroom(
+    @Body() body: { code: string },
+    @Request() req: RequestWithUser,
+  ) {
     return this.classroomsService.joinClassroom(body.code, req.user.userId);
   }
 
   @Get()
-  findAll(@Request() req) {
+  findAll(@Request() req: RequestWithUser) {
     return this.classroomsService.findAll(req.user.userId);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string, @Request() req) {
+  findOne(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.classroomsService.findOne(+id, req.user.userId);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string, @Request() req) {
+  remove(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.classroomsService.remove(+id, req.user.userId);
+  }
+
+  @Delete(':id/leave')
+  leave(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.classroomsService.leave(+id, req.user.userId);
   }
 }

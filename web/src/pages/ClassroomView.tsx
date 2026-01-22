@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import axios from "axios";
 import Editor from "@monaco-editor/react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
@@ -27,23 +27,36 @@ interface Announcement {
   createdAt: string;
   author: { email: string };
 }
+
+interface Parameter {
+  name: string;
+  type: string;
+}
+
+interface TestCase {
+  input: string;
+  expectedOutput: string;
+  isHidden: boolean;
+}
+
 interface Problem {
   id: string;
   title: string;
   description: string;
   slug: string;
-  testCases?: any[];
+  testCases?: TestCase[];
   type: "EXERCISE" | "EXAM";
   maxAttempts?: number;
   deadline?: string;
   startDate?: string;
-  parameters?: any[];
+  parameters?: Parameter[];
   returnType?: string;
   timeLimit?: number;
   startedAt?: string;
   children?: Problem[];
   parent?: { id: string };
 }
+
 interface Classroom {
   id: number;
   name: string;
@@ -53,6 +66,7 @@ interface Classroom {
   problems: Problem[];
   announcements: Announcement[];
 }
+
 interface Submission {
   id: string;
   status: string;
@@ -65,11 +79,13 @@ interface Submission {
   teacherComment?: string;
   problemId?: string;
 }
+
 interface StatData {
   name: string;
   Accepted: number;
   Error: number;
 }
+
 interface ProblemStat {
   name: string;
   value: number;
@@ -128,11 +144,11 @@ export default function ClassroomView() {
     "stream" | "classwork" | "people" | "analytics"
   >("stream");
   const [languageId, setLanguageId] = useState<number>(
-    () => Number(localStorage.getItem(`languageId`)) || 71
+    () => Number(localStorage.getItem(`languageId`)) || 71,
   );
   const [classroom, setClassroom] = useState<Classroom | null>(null);
   const [selectedProblemId, setSelectedProblemId] = useState<string | null>(
-    null
+    null,
   );
   const [currentProblem, setCurrentProblem] = useState<Problem | null>(null);
   const [code, setCode] = useState<string>("");
@@ -189,24 +205,31 @@ export default function ClassroomView() {
       ? currentProblem.children[activeChildIndex]
       : currentProblem;
 
-  const getStorageKey = (probId: string, langId: number) => {
-    if (!myUserId) return null;
-    return `autosave_${myUserId}_${probId}_${langId}`;
-  };
+  // Envolvido em useCallback para ser usado em dependências de useEffect
+  const getStorageKey = useCallback(
+    (probId: string, langId: number) => {
+      if (!myUserId) return null;
+      return `autosave_${myUserId}_${probId}_${langId}`;
+    },
+    [myUserId],
+  );
 
-  const generateFunctionSignature = (langId: number, problem: any) => {
+  const generateFunctionSignature = (langId: number, problem: Problem) => {
     if (!problem || !problem.parameters) return "";
     const params = problem.parameters;
     const retType = problem.returnType || "void";
+
     switch (langId) {
-      case 71:
-        const pyArgs = params.map((p: any) => p.name).join(", ");
+      case 71: {
+        const pyArgs = params.map((p) => p.name).join(", ");
         return `def solve(${pyArgs}):\n    # Escreva sua lógica aqui\n    pass`;
-      case 63:
-        const jsArgs = params.map((p: any) => p.name).join(", ");
+      }
+      case 63: {
+        const jsArgs = params.map((p) => p.name).join(", ");
         return `function solve(${jsArgs}) {\n    // Escreva sua lógica aqui\n}`;
-      case 62:
-        const javaTypeMap: any = {
+      }
+      case 62: {
+        const javaTypeMap: Record<string, string> = {
           int: "int",
           string: "String",
           "int[]": "int[]",
@@ -215,18 +238,19 @@ export default function ClassroomView() {
           "string[]": "String[]",
         };
         const javaArgs = params
-          .map((p: any) => `${javaTypeMap[p.type] || "Object"} ${p.name}`)
+          .map((p) => `${javaTypeMap[p.type] || "Object"} ${p.name}`)
           .join(", ");
         const javaRet = javaTypeMap[retType] || "void";
-        return `class Solution {\n    public ${javaRet} solve(${javaArgs}) {\n        // Escreva sua lógica aqui\n        return ${
+        const returnVal =
           retType === "boolean"
             ? "false"
             : retType.includes("[]")
-            ? "new " + javaRet + "{}"
-            : "0"
-        };\n    }\n}`;
-      case 54:
-        const cppTypeMap: any = {
+              ? "new " + javaRet + "{}"
+              : "0";
+        return `class Solution {\n    public ${javaRet} solve(${javaArgs}) {\n        // Escreva sua lógica aqui\n        return ${returnVal};\n    }\n}`;
+      }
+      case 54: {
+        const cppTypeMap: Record<string, string> = {
           int: "int",
           string: "std::string",
           "int[]": "std::vector<int>",
@@ -235,15 +259,15 @@ export default function ClassroomView() {
           "string[]": "std::vector<std::string>",
         };
         const cppArgs = params
-          .map((p: any) => `${cppTypeMap[p.type] || "auto"} ${p.name}`)
+          .map((p) => `${cppTypeMap[p.type] || "auto"} ${p.name}`)
           .join(", ");
         const cppRet = cppTypeMap[retType] || "void";
         const includes =
-          retType.includes("[]") ||
-          params.some((p: any) => p.type.includes("[]"))
+          retType.includes("[]") || params.some((p) => p.type.includes("[]"))
             ? "#include <vector>\n"
             : "";
         return `${includes}#include <string>\n\n${cppRet} solve(${cppArgs}) {\n    // Escreva sua lógica aqui\n}`;
+      }
       default:
         return "";
     }
@@ -267,9 +291,90 @@ export default function ClassroomView() {
   useEffect(() => {
     localStorage.setItem(`languageId`, String(languageId));
   }, [languageId]);
+
+  // Funções de Fetch movidas para cima (antes dos useEffects que as usam) para evitar hoisting issues
+  const fetchClassroomData = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get(`${API_URL}/classrooms/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setClassroom(res.data);
+      if (res.data.problems?.length > 0) {
+        const rootProblems = res.data.problems.filter(
+          (p: Problem) => !p.parent,
+        );
+        const targetList =
+          rootProblems.length > 0 ? rootProblems : res.data.problems;
+        if (
+          location.state?.problemId &&
+          targetList.find((p: Problem) => p.id === location.state.problemId)
+        ) {
+          setSelectedProblemId(location.state.problemId);
+          return;
+        }
+        const stored = localStorage.getItem(`lastProblemId_${id}`);
+        if (stored && targetList.find((p: Problem) => p.id === stored))
+          setSelectedProblemId(stored);
+        else if (targetList.length > 0) setSelectedProblemId(targetList[0].id);
+      }
+    } catch {
+      toast.error("Erro ao carregar turma.");
+      navigate("/dashboard");
+    }
+  }, [id, API_URL, navigate, location.state]);
+
+  const fetchSubmissions = useCallback(
+    async (probId: string) => {
+      if (!probId) return;
+      try {
+        const token = localStorage.getItem("token");
+        const res = await axios.get(
+          `${API_URL}/submissions/problem/${probId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+        setSubmissions(res.data);
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    [API_URL],
+  );
+
+  const fetchProblemStats = useCallback(
+    async (probId: string) => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await axios.get(
+          `${API_URL}/submissions/stats/problem/${probId}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        setProblemStats(res.data);
+      } catch {
+        console.error("Erro problem stats");
+      }
+    },
+    [API_URL],
+  );
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get(
+        `${API_URL}/submissions/stats/classroom/${id}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      setStats(res.data);
+    } catch {
+      console.error("Erro stats");
+    }
+  }, [id, API_URL]);
+
   useEffect(() => {
     fetchClassroomData();
-  }, [id]);
+  }, [fetchClassroomData]);
 
   useEffect(() => {
     if (!selectedProblemId) return;
@@ -278,7 +383,7 @@ export default function ClassroomView() {
         const token = localStorage.getItem("token");
         const res = await axios.get(
           `${API_URL}/problems/${selectedProblemId}`,
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers: { Authorization: `Bearer ${token}` } },
         );
         setCurrentProblem(res.data);
         setActiveChildIndex(0);
@@ -287,7 +392,7 @@ export default function ClassroomView() {
       }
     };
     fetchProblemDetails();
-  }, [selectedProblemId]);
+  }, [selectedProblemId, API_URL]);
 
   useEffect(() => {
     const lang = LANGUAGES.find((l) => l.id === languageId);
@@ -295,7 +400,7 @@ export default function ClassroomView() {
     const storageKey = getStorageKey(displayProblem.id, languageId);
     const savedCode = storageKey ? localStorage.getItem(storageKey) : null;
     const isPolluted = LANGUAGES.some(
-      (l) => l.id !== languageId && l.defaultCode === savedCode
+      (l) => l.id !== languageId && l.defaultCode === savedCode,
     );
     if (savedCode && !isPolluted) {
       setCode(savedCode);
@@ -303,20 +408,20 @@ export default function ClassroomView() {
       const dynamicSig = generateFunctionSignature(languageId, displayProblem);
       setCode(dynamicSig || lang.defaultCode);
     }
-  }, [languageId, displayProblem, myUserId]);
+  }, [languageId, displayProblem, myUserId, getStorageKey]);
 
   useEffect(() => {
     if (displayProblem && activeTab === "classwork") {
       fetchSubmissions(displayProblem.id);
       if (isOwner) fetchProblemStats(displayProblem.id);
     }
-  }, [displayProblem, activeTab, isOwner]);
+  }, [displayProblem, activeTab, isOwner, fetchSubmissions, fetchProblemStats]);
 
   useEffect(() => {
     if (activeTab === "analytics" && isOwner && id) {
       fetchStats();
     }
-  }, [activeTab, isOwner, id]);
+  }, [activeTab, isOwner, id, fetchStats]);
 
   useEffect(() => {
     if (
@@ -327,7 +432,7 @@ export default function ClassroomView() {
     ) {
       setTimeLeft(null);
       setExamStatus(
-        currentProblem && !currentProblem.startedAt ? "WAITING" : "RUNNING"
+        currentProblem && !currentProblem.startedAt ? "WAITING" : "RUNNING",
       );
       return;
     }
@@ -348,50 +453,12 @@ export default function ClassroomView() {
             .toString()
             .padStart(2, "0")}:${Math.floor((diff % 6e4) / 1e3)
             .toString()
-            .padStart(2, "0")}`
+            .padStart(2, "0")}`,
         );
       }
     }, 1000);
     return () => clearInterval(interval);
   }, [currentProblem]);
-
-  const fetchSubmissions = async (probId: string) => {
-    if (!probId) return;
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get(`${API_URL}/submissions/problem/${probId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSubmissions(res.data);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const fetchStats = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get(
-        `${API_URL}/submissions/stats/classroom/${id}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setStats(res.data);
-    } catch {
-      console.error("Erro stats");
-    }
-  };
-  const fetchProblemStats = async (probId: string) => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get(
-        `${API_URL}/submissions/stats/problem/${probId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setProblemStats(res.data);
-    } catch {
-      console.error("Erro problem stats");
-    }
-  };
 
   const handleCodeChange = (value: string | undefined) => {
     const val = value || "";
@@ -401,16 +468,21 @@ export default function ClassroomView() {
       if (key) localStorage.setItem(key, val);
     }
   };
+
   const handleResetCode = () => {
     if (!confirm("Restaurar código?")) return;
-    const dynamicSig = generateFunctionSignature(languageId, displayProblem);
+    const dynamicSig = displayProblem
+      ? generateFunctionSignature(languageId, displayProblem)
+      : "";
     setCode(
       dynamicSig ||
         LANGUAGES.find((l) => l.id === languageId)?.defaultCode ||
-        ""
+        "",
     );
-    if (displayProblem)
-      localStorage.removeItem(getStorageKey(displayProblem.id, languageId)!);
+    if (displayProblem) {
+      const key = getStorageKey(displayProblem.id, languageId);
+      if (key) localStorage.removeItem(key);
+    }
     toast.success("Restaurado.");
   };
 
@@ -429,10 +501,10 @@ export default function ClassroomView() {
         try {
           const res = await axios.get(
             `${API_URL}/submissions/problem/${p.id}`,
-            { headers: { Authorization: `Bearer ${token}` } }
+            { headers: { Authorization: `Bearer ${token}` } },
           );
           const userSub = res.data.find(
-            (s: Submission) => s.user.id === user.id
+            (s: Submission) => s.user.id === user.id,
           );
           if (userSub) loadedSubs[p.id] = userSub;
         } catch (e) {
@@ -484,7 +556,7 @@ export default function ClassroomView() {
           grade: gradingGrade === "" ? null : Number(gradingGrade),
           teacherComment: gradingComment,
         },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       toast.success("Nota salva!");
       setStudentSubmissions((prev) => ({
@@ -500,37 +572,6 @@ export default function ClassroomView() {
     }
   };
 
-  const fetchClassroomData = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get(`${API_URL}/classrooms/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setClassroom(res.data);
-      if (res.data.problems?.length > 0) {
-        const rootProblems = res.data.problems.filter(
-          (p: Problem) => !p.parent
-        );
-        const targetList =
-          rootProblems.length > 0 ? rootProblems : res.data.problems;
-        if (
-          location.state?.problemId &&
-          targetList.find((p: Problem) => p.id === location.state.problemId)
-        ) {
-          setSelectedProblemId(location.state.problemId);
-          return;
-        }
-        const stored = localStorage.getItem(`lastProblemId_${id}`);
-        if (stored && targetList.find((p: Problem) => p.id === stored))
-          setSelectedProblemId(stored);
-        else if (targetList.length > 0) setSelectedProblemId(targetList[0].id);
-      }
-    } catch {
-      toast.error("Erro ao carregar turma.");
-      navigate("/dashboard");
-    }
-  };
-
   const handlePostAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAnnouncement.trim()) return;
@@ -540,7 +581,7 @@ export default function ClassroomView() {
       await axios.post(
         `${API_URL}/announcements`,
         { content: newAnnouncement, classroomId: classroom?.id },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       toast.success("Aviso postado!");
       setNewAnnouncement("");
@@ -551,6 +592,7 @@ export default function ClassroomView() {
       setPosting(false);
     }
   };
+
   const handleDeleteAnnouncement = async (id: string) => {
     if (!confirm("Apagar?")) return;
     try {
@@ -564,6 +606,7 @@ export default function ClassroomView() {
       toast.error("Erro.");
     }
   };
+
   const handleDeleteProblem = async () => {
     if (!selectedProblemId || !confirm("Certeza?")) return;
     try {
@@ -578,6 +621,7 @@ export default function ClassroomView() {
       toast.error("Erro.");
     }
   };
+
   const handleEditProblem = () => {
     if (selectedProblemId && classroom) {
       const p = classroom.problems.find((p) => p.id === selectedProblemId);
@@ -587,6 +631,7 @@ export default function ClassroomView() {
         });
     }
   };
+
   const submitSolution = async () => {
     if (!displayProblem) return toast.warning("Selecione um exercício!");
     setLoading(true);
@@ -598,7 +643,7 @@ export default function ClassroomView() {
       const res = await axios.post(
         `${API_URL}/submissions`,
         { code, language_id: languageId, problem_id: displayProblem.id },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       const data = res.data;
       setVerdict(data.status);
@@ -608,19 +653,25 @@ export default function ClassroomView() {
       else toast.error("Erro/Incorreto");
       fetchSubmissions(displayProblem.id);
       if (isOwner) fetchProblemStats(displayProblem.id);
-    } catch (error: any) {
-      if (error.response?.status === 403) {
-        setVerdict("Bloqueado");
-        setExecutionError(error.response.data.message);
-        toast.error(error.response.data.message);
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error) && error.response) {
+        if (error.response.status === 403) {
+          setVerdict("Bloqueado");
+          setExecutionError(error.response.data.message);
+          toast.error(error.response.data.message);
+        } else {
+          setVerdict("Erro");
+          toast.error("Falha na submissão");
+        }
       } else {
         setVerdict("Erro");
-        toast.error("Falha na submissão");
+        toast.error("Erro inesperado");
       }
     } finally {
       setLoading(false);
     }
   };
+
   const handleStartExam = async () => {
     if (!confirm("Iniciar?")) return;
     try {
@@ -628,7 +679,7 @@ export default function ClassroomView() {
       await axios.patch(
         `${API_URL}/problems/${selectedProblemId}/start`,
         {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       toast.success("Iniciada!");
       const res = await axios.get(`${API_URL}/problems/${selectedProblemId}`, {
@@ -639,6 +690,7 @@ export default function ClassroomView() {
       toast.error("Erro.");
     }
   };
+
   const handleGoToProblem = (probId: string) => {
     setSelectedProblemId(probId);
     setActiveTab("classwork");
@@ -648,6 +700,7 @@ export default function ClassroomView() {
     if (!myUserId) return 0;
     return (submissions || []).filter((s) => s.user?.id === myUserId).length;
   }, [submissions, myUserId]);
+
   const upcomingWork = useMemo(() => {
     if (!classroom?.problems) return [];
     const rootProblems = classroom.problems.filter((p) => !p.parent);
@@ -656,7 +709,7 @@ export default function ClassroomView() {
       .filter((p) => p.deadline && new Date(p.deadline) > now)
       .sort(
         (a, b) =>
-          new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime()
+          new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime(),
       )
       .slice(0, 3);
   }, [classroom]);
@@ -664,8 +717,6 @@ export default function ClassroomView() {
   if (!classroom) return <div className="container">Carregando...</div>;
 
   const isExam = currentProblem?.type === "EXAM";
-
-  // --- CORREÇÃO AQUI: Se maxAttempts for null ou undefined, é Infinito ---
   const hasLimit = currentProblem?.maxAttempts != null;
   const maxAttempts = hasLimit ? currentProblem!.maxAttempts! : Infinity;
 
@@ -681,7 +732,6 @@ export default function ClassroomView() {
     (!isOwner && isDeadlinePassed) ||
     (isExam && examStatus === "WAITING" && !isOwner) ||
     (isExam && examStatus === "FINISHED" && !isOwner);
-  // -----------------------------------------------------------------------
 
   const dropdownOptions = classroom.problems.filter((p) => !p.parent);
   const activeInspectionProblem =
@@ -891,8 +941,8 @@ export default function ClassroomView() {
                     examStatus === "RUNNING"
                       ? "#2e7d32"
                       : examStatus === "FINISHED"
-                      ? "#c62828"
-                      : "#f57f17",
+                        ? "#c62828"
+                        : "#f57f17",
                   color: "#fff",
                   fontWeight: "bold",
                   display: "flex",
@@ -904,8 +954,8 @@ export default function ClassroomView() {
                   {examStatus === "WAITING"
                     ? "⏳ Aguardando"
                     : examStatus === "FINISHED"
-                    ? "🛑 Encerrado"
-                    : "⏱️ Tempo Restante:"}
+                      ? "🛑 Encerrado"
+                      : "⏱️ Tempo Restante:"}
                 </span>
                 {examStatus !== "WAITING" && (
                   <span style={{ fontFamily: "monospace", fontSize: "1.1rem" }}>
@@ -976,7 +1026,6 @@ export default function ClassroomView() {
               </button>
             )}
 
-            {/* MOSTRA TENTATIVAS APENAS SE HOUVER LIMITE */}
             <div
               style={{
                 marginLeft: "auto",
@@ -1003,7 +1052,7 @@ export default function ClassroomView() {
                   {isDeadlinePassed
                     ? "🔒 Encerrado"
                     : `🕒 Até ${new Date(
-                        currentProblem.deadline
+                        currentProblem.deadline,
                       ).toLocaleDateString()}`}
                 </div>
               )}
@@ -1149,71 +1198,69 @@ export default function ClassroomView() {
                         >
                           Exemplos de Teste
                         </h4>
-                        {displayProblem.testCases.map(
-                          (tc: any, index: number) => (
-                            <div
-                              key={index}
-                              style={{
-                                background: "#252526",
-                                padding: "10px",
-                                borderRadius: "6px",
-                                marginBottom: "10px",
-                                borderLeft: "3px solid #4caf50",
-                              }}
-                            >
-                              <div style={{ marginBottom: "5px" }}>
-                                <span
-                                  style={{
-                                    color: "#888",
-                                    fontSize: "0.8rem",
-                                    fontWeight: "bold",
-                                  }}
-                                >
-                                  Entrada:
-                                </span>
-                                <pre
-                                  style={{
-                                    margin: "5px 0",
-                                    fontFamily: "monospace",
-                                    background: "#1e1e1e",
-                                    padding: "8px",
-                                    borderRadius: "4px",
-                                    overflowX: "auto",
-                                    fontSize: "0.9rem",
-                                    color: "#e0e0e0",
-                                  }}
-                                >
-                                  {tc.input}
-                                </pre>
-                              </div>
-                              <div>
-                                <span
-                                  style={{
-                                    color: "#888",
-                                    fontSize: "0.8rem",
-                                    fontWeight: "bold",
-                                  }}
-                                >
-                                  Saída Esperada:
-                                </span>
-                                <pre
-                                  style={{
-                                    margin: "5px 0",
-                                    fontFamily: "monospace",
-                                    background: "#1e1e1e",
-                                    padding: "8px",
-                                    borderRadius: "4px",
-                                    overflowX: "auto",
-                                    fontSize: "0.9rem",
-                                    color: "#e0e0e0",
-                                  }}
-                                >
-                                  {tc.expectedOutput}
-                                </pre>
-                              </div>
+                        {displayProblem.testCases.map((tc, index) => (
+                          <div
+                            key={index}
+                            style={{
+                              background: "#252526",
+                              padding: "10px",
+                              borderRadius: "6px",
+                              marginBottom: "10px",
+                              borderLeft: "3px solid #4caf50",
+                            }}
+                          >
+                            <div style={{ marginBottom: "5px" }}>
+                              <span
+                                style={{
+                                  color: "#888",
+                                  fontSize: "0.8rem",
+                                  fontWeight: "bold",
+                                }}
+                              >
+                                Entrada:
+                              </span>
+                              <pre
+                                style={{
+                                  margin: "5px 0",
+                                  fontFamily: "monospace",
+                                  background: "#1e1e1e",
+                                  padding: "8px",
+                                  borderRadius: "4px",
+                                  overflowX: "auto",
+                                  fontSize: "0.9rem",
+                                  color: "#e0e0e0",
+                                }}
+                              >
+                                {tc.input}
+                              </pre>
                             </div>
-                          )
-                        )}
+                            <div>
+                              <span
+                                style={{
+                                  color: "#888",
+                                  fontSize: "0.8rem",
+                                  fontWeight: "bold",
+                                }}
+                              >
+                                Saída Esperada:
+                              </span>
+                              <pre
+                                style={{
+                                  margin: "5px 0",
+                                  fontFamily: "monospace",
+                                  background: "#1e1e1e",
+                                  padding: "8px",
+                                  borderRadius: "4px",
+                                  overflowX: "auto",
+                                  fontSize: "0.9rem",
+                                  color: "#e0e0e0",
+                                }}
+                              >
+                                {tc.expectedOutput}
+                              </pre>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
                   {isOwner && problemStats.length > 0 && (

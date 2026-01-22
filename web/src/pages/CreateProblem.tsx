@@ -5,15 +5,18 @@ import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
 import "../App.css";
 
+// --- INTERFACES ---
 interface TestCase {
   input: string;
   expectedOutput: string;
   isHidden: boolean;
 }
+
 interface Parameter {
   name: string;
   type: string;
 }
+
 interface Question {
   title: string;
   description: string;
@@ -21,6 +24,35 @@ interface Question {
   parameters: Parameter[];
   returnType: string;
   testCases: TestCase[];
+}
+
+// Interface para o Payload de Criação/Edição
+interface ProblemPayload {
+  title: string;
+  description: string;
+  slug: string;
+  classroomId: number | null;
+  type: "EXERCISE" | "EXAM";
+  maxAttempts: number | null;
+  timeLimit: number | null;
+  startDate?: string;
+  deadline?: string;
+  questions?: Question[];
+  parameters?: Parameter[];
+  returnType?: string;
+  testCases?: TestCase[];
+}
+
+interface ProblemToEdit {
+  id: string;
+  type: "EXERCISE" | "EXAM";
+  title: string;
+  slug: string;
+  description: string;
+  maxAttempts?: number;
+  timeLimit?: number;
+  deadline?: string;
+  startDate?: string;
 }
 
 const DATA_TYPES = [
@@ -71,7 +103,7 @@ export default function CreateProblem() {
     if (location.state?.classroomId) setClassroomId(location.state.classroomId);
 
     if (location.state?.problemToEdit) {
-      const p = location.state.problemToEdit;
+      const p = location.state.problemToEdit as ProblemToEdit;
       setType(p.type);
       setMainTitle(p.title);
       setMainSlug(p.slug);
@@ -222,17 +254,15 @@ export default function CreateProblem() {
     try {
       const token = localStorage.getItem("token");
 
-      // --- CORREÇÃO DE LÓGICA DO PAYLOAD ---
-      // Se maxAttempts for string vazia ou 0, enviamos NULL para remover o limite.
-      // Se timeLimit for string vazia ou 0, enviamos NULL.
-      const payload: any = {
+      // --- CORREÇÃO DE LÓGICA DO PAYLOAD e TIPAGEM ---
+      const payload: ProblemPayload = {
         title: mainTitle,
         description: mainDescription || "...",
         slug: mainSlug,
         classroomId,
         type,
-        maxAttempts: maxAttempts ? Number(maxAttempts) : null, // <--- Aqui garante NULL se vazio
-        timeLimit: type === "EXAM" && timeLimit ? Number(timeLimit) : null, // <--- Aqui garante NULL se vazio
+        maxAttempts: maxAttempts ? Number(maxAttempts) : null,
+        timeLimit: type === "EXAM" && timeLimit ? Number(timeLimit) : null,
         startDate:
           type === "EXAM" && deadline
             ? new Date(deadline).toISOString()
@@ -258,7 +288,7 @@ export default function CreateProblem() {
         await axios.patch(
           `${API_URL}/problems/${location.state.problemToEdit.id}`,
           payload,
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers: { Authorization: `Bearer ${token}` } },
         );
         toast.success("Atualizado com sucesso!");
       } else {
@@ -269,9 +299,13 @@ export default function CreateProblem() {
       }
 
       navigate(`/class/${classroomId}`);
-    } catch (e) {
+    } catch (e: unknown) {
       console.error(e);
-      toast.error("Erro ao salvar.");
+      if (axios.isAxiosError(e)) {
+        toast.error(e.response?.data?.message || "Erro ao salvar.");
+      } else {
+        toast.error("Erro desconhecido ao salvar.");
+      }
     } finally {
       setLoading(false);
     }
@@ -453,7 +487,7 @@ export default function CreateProblem() {
                 value={timeLimit}
                 onChange={(e) =>
                   setTimeLimit(
-                    e.target.value === "" ? "" : Number(e.target.value)
+                    e.target.value === "" ? "" : Number(e.target.value),
                   )
                 }
               />
@@ -477,7 +511,7 @@ export default function CreateProblem() {
                 value={maxAttempts}
                 onChange={(e) =>
                   setMaxAttempts(
-                    e.target.value === "" ? "" : Number(e.target.value)
+                    e.target.value === "" ? "" : Number(e.target.value),
                   )
                 }
               />
@@ -862,8 +896,8 @@ export default function CreateProblem() {
         {loading
           ? "Processando..."
           : type === "EXAM"
-          ? "FINALIZAR CRIAÇÃO DA PROVA"
-          : "CRIAR EXERCÍCIO"}
+            ? "FINALIZAR CRIAÇÃO DA PROVA"
+            : "CRIAR EXERCÍCIO"}
       </button>
     </div>
   );

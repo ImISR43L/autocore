@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import Editor from "@monaco-editor/react";
-import { useNavigate } from "react-router-dom"; // [1] Importe isso]
+import { useNavigate } from "react-router-dom";
 import "../App.css";
 import "../index.css";
 
@@ -18,13 +18,14 @@ interface Submission {
   language_id: number;
   status: string;
   created_at: string;
-  problem: {
+  // O problema pode vir nulo se foi deletado, ou incompleto
+  problem?: {
     id: number;
     title: string;
   };
 }
 
-const LANGUAGE_MAP: { [key: number]: string } = {
+const LANGUAGE_MAP: Record<number, string> = {
   71: "python",
   63: "javascript",
   54: "cpp",
@@ -57,12 +58,12 @@ const LANGUAGES = [
 
 function Home() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
-  const navigate = useNavigate(); // [2] Inicialize o hook
+  const navigate = useNavigate();
   const role = localStorage.getItem("role");
 
   // Estados
-  const [problems, setProblems] = useState<Problem[]>([]); // [Novo] Lista dinâmica
-  const [problemId, setProblemId] = useState<number | null>(null); // [Alterado] Pode ser null se não tiver problemas
+  const [problems, setProblems] = useState<Problem[]>([]);
+  const [problemId, setProblemId] = useState<number | null>(null);
   const [languageId, setLanguageId] = useState<number>(71);
   const [code, setCode] = useState<string>(LANGUAGES[0].defaultCode);
   const [verdict, setVerdict] = useState<string | null>(null);
@@ -70,35 +71,35 @@ function Home() {
   const [history, setHistory] = useState<Submission[]>([]);
 
   // Buscar Problemas do Backend
-  const fetchProblems = async () => {
+  const fetchProblems = useCallback(async () => {
     try {
       const res = await axios.get(`${API_URL}/problems`);
       setProblems(res.data);
 
-      // Seleciona o primeiro problema automaticamente se houver
-      if (res.data.length > 0 && !problemId) {
-        setProblemId(res.data[0].id);
+      // Seleciona o primeiro problema automaticamente se houver e nenhum estiver selecionado
+      if (res.data.length > 0) {
+        setProblemId((prev) => (prev === null ? res.data[0].id : prev));
       }
     } catch (error) {
       console.error("Erro ao buscar problemas:", error);
     }
-  };
+  }, [API_URL]);
 
   // Buscar Histórico
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     try {
       const res = await axios.get(`${API_URL}/submissions`);
       setHistory(res.data);
     } catch (error) {
       console.error("Erro ao buscar histórico", error);
     }
-  };
+  }, [API_URL]);
 
   // Carrega dados iniciais
   useEffect(() => {
     fetchProblems();
     fetchHistory();
-  }, []);
+  }, [fetchProblems, fetchHistory]);
 
   const handleLanguageChange = (id: number) => {
     setLanguageId(id);
@@ -121,8 +122,15 @@ function Home() {
       const data = response.data;
       setVerdict(data.status);
       fetchHistory();
-    } catch (error: any) {
-      setVerdict("Error: " + error.message);
+    } catch (error: unknown) {
+      // Correção do 'any' e tipagem segura do erro
+      if (axios.isAxiosError(error) && error.response) {
+        setVerdict("Error: " + (error.response.data.message || error.message));
+      } else if (error instanceof Error) {
+        setVerdict("Error: " + error.message);
+      } else {
+        setVerdict("Erro desconhecido");
+      }
     } finally {
       setLoading(false);
     }
@@ -392,7 +400,11 @@ function Home() {
                 </span>
               </div>
               <div style={{ color: "#aaa", fontSize: "0.75rem" }}>
-                {sub.problem?.title || "Problema " + (sub.problem as any)?.id}{" "}
+                {/* Correção do acesso seguro ao título do problema */}
+                {sub.problem?.title ||
+                  (sub.problem
+                    ? "Problema " + sub.problem.id
+                    : "Problema Removido")}
                 <br />
                 {new Date(sub.created_at).toLocaleTimeString()}
               </div>

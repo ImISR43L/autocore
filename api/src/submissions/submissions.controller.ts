@@ -1,4 +1,3 @@
-// api/src/submissions/submissions.controller.ts
 import {
   Controller,
   Get,
@@ -14,23 +13,33 @@ import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
+interface RequestWithUser {
+  user: {
+    userId: number;
+    email: string;
+    role: string;
+  };
+}
+
 @Controller('submissions')
 export class SubmissionsController {
   constructor(private readonly submissionsService: SubmissionsService) {}
 
   @UseGuards(JwtAuthGuard)
   @Post()
-  create(@Body() createSubmissionDto: CreateSubmissionDto, @Request() req) {
+  create(
+    @Body() createSubmissionDto: CreateSubmissionDto,
+    @Request() req: RequestWithUser,
+  ) {
     return this.submissionsService.create(createSubmissionDto, req.user.userId);
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('stats')
-  getStats(@Request() req) {
+  getStats(@Request() req: RequestWithUser) {
     return this.submissionsService.getTeacherStats(req.user.userId);
   }
 
-  // --- NOVA ROTA: ESTATÍSTICAS DO PROBLEMA ---
   @UseGuards(JwtAuthGuard)
   @Get('stats/problem/:id')
   getProblemStats(@Param('id') id: string) {
@@ -42,7 +51,7 @@ export class SubmissionsController {
   grade(
     @Param('id') id: string,
     @Body() gradeDto: GradeSubmissionDto,
-    @Request() req,
+    @Request() req: RequestWithUser,
   ) {
     return this.submissionsService.grade(id, gradeDto, req.user.userId);
   }
@@ -53,14 +62,9 @@ export class SubmissionsController {
     return this.submissionsService.findAllByProblem(id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get()
   findAll() {
     return this.submissionsService.findAll();
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Get('stats/classroom/:id')
-  getClassroomStats(@Param('id') id: string, @Request() req) {
-    return this.submissionsService.getClassroomStats(+id, req.user.userId);
   }
 }

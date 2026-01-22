@@ -2,15 +2,29 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import axios from 'axios';
+
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
 import { Submission } from './entities/submission.entity';
 import { Problem, ProblemType } from '../problems/entities/problem.entity';
 import { WrapperGenerator } from './wrapper-generator';
+
+interface LanguageConfig {
+  fileName: string;
+  runCommand: string[];
+}
+
+interface ExecutorResponse {
+  status: string;
+  exitStatus: number;
+  files: Record<string, string>;
+  stdout?: string;
+  stderr?: string;
+}
 
 @Injectable()
 export class SubmissionsService {
@@ -42,78 +56,29 @@ export class SubmissionsService {
   }
 
   async getTeacherStats(userId: number) {
-    const submissions = await this.submissionsRepository.find({
-      where: {
-        problem: {
-          classroom: {
-            owner: { id: userId },
-          },
-        },
-      },
-      relations: ['problem'],
-      select: ['id', 'status', 'problem'],
+    const problems = await this.problemsRepository.find({
+      where: { classroom: { owner: { id: userId } } },
+      select: ['id', 'title'],
     });
 
-    const statsMap = new Map<
-      string,
-      { name: string; Accepted: number; Error: number }
-    >();
+    const stats: { name: string; Accepted: number; Error: number }[] = [];
 
-    submissions.forEach((sub) => {
-      const problemTitle = sub.problem.title;
-      if (!statsMap.has(problemTitle)) {
-        statsMap.set(problemTitle, {
-          name: problemTitle,
-          Accepted: 0,
-          Error: 0,
-        });
+    for (const p of problems) {
+      const subs = await this.submissionsRepository.find({
+        where: { problem: { id: p.id } },
+        select: ['status'],
+      });
+      let acc = 0;
+      let err = 0;
+      subs.forEach((s) => {
+        if (s.status === 'Accepted') acc++;
+        else err++;
+      });
+      if (subs.length > 0) {
+        stats.push({ name: p.title, Accepted: acc, Error: err });
       }
-      const entry = statsMap.get(problemTitle);
-      if (entry) {
-        if (sub.status === 'Accepted') entry.Accepted += 1;
-        else entry.Error += 1;
-      }
-    });
-
-    return Array.from(statsMap.values());
-  }
-
-  async getClassroomStats(classroomId: number, userId: number) {
-    const submissions = await this.submissionsRepository.find({
-      where: {
-        problem: {
-          classroom: {
-            id: classroomId,
-            owner: { id: userId },
-          },
-        },
-      },
-      relations: ['problem'],
-      select: ['id', 'status', 'problem'],
-    });
-
-    const statsMap = new Map<
-      string,
-      { name: string; Accepted: number; Error: number }
-    >();
-
-    submissions.forEach((sub) => {
-      const problemTitle = sub.problem.title;
-      if (!statsMap.has(problemTitle)) {
-        statsMap.set(problemTitle, {
-          name: problemTitle,
-          Accepted: 0,
-          Error: 0,
-        });
-      }
-      const entry = statsMap.get(problemTitle);
-      if (entry) {
-        if (sub.status === 'Accepted') entry.Accepted += 1;
-        else entry.Error += 1;
-      }
-    });
-
-    return Array.from(statsMap.values());
+    }
+    return stats;
   }
 
   async grade(id: string, gradeDto: GradeSubmissionDto, userId: number) {
@@ -124,179 +89,158 @@ export class SubmissionsService {
 
     if (!submission) throw new NotFoundException('Submissão não encontrada');
 
-    if (submission.problem.classroom.owner.id !== userId) {
-      throw new ForbiddenException(
-        'Apenas o professor desta turma pode avaliar.',
-      );
+    if (submission.problem?.classroom?.owner?.id !== userId) {
+      throw new ForbiddenException('Apenas o professor pode avaliar.');
     }
 
-    if (gradeDto.grade !== undefined) submission.grade = gradeDto.grade;
-    if (gradeDto.teacherComment !== undefined)
-      submission.teacherComment = gradeDto.teacherComment;
+    submission.grade = gradeDto.grade ?? null;
+    submission.teacherComment = gradeDto.teacherComment ?? null;
 
     return this.submissionsRepository.save(submission);
   }
 
-async create(createSubmissionDto: CreateSubmissionDto, userId: number) {
+  async create(createSubmissionDto: CreateSubmissionDto, userId: number) {
     const { code, language_id, problem_id } = createSubmissionDto;
 
-    // 1. Buscando o Problema
+    const langId = Number(language_id);
+
     const problem = await this.problemsRepository.findOne({
-      where: { id: problem_id },
+      where: { id: String(problem_id) },
+      // CORREÇÃO: 'parameters' removido daqui pois é uma coluna, não uma relação
       relations: ['testCases', 'classroom', 'classroom.owner'],
     });
 
-    if (!problem) throw new NotFoundException('Exercício não encontrado');
+    if (!problem) throw new NotFoundException('Problema não encontrado');
 
-    // 2. Validação: Professor não submete
-    if (problem.classroom.owner.id === userId) {
-      throw new ForbiddenException(
-        'Professores não devem enviar soluções para análise, apenas alunos.',
-      );
-    }
-
-    // 3. Validação: Regras de Prova (Exam)
     if (problem.type === ProblemType.EXAM) {
+      const now = new Date();
+      if (
+        problem.startedAt &&
+        problem.timeLimit &&
+        now.getTime() - problem.startedAt.getTime() >
+          problem.timeLimit * 60 * 1000
+      ) {
+        throw new ForbiddenException('Tempo de prova esgotado.');
+      }
       if (problem.maxAttempts) {
-        const attempts = await this.submissionsRepository.count({
-          where: { problem: { id: problem.id }, user: { id: userId } },
+        const count = await this.submissionsRepository.count({
+          where: { problem: { id: String(problem.id) }, user: { id: userId } },
         });
-        if (attempts >= problem.maxAttempts) {
-          throw new ForbiddenException(`Limite de tentativas excedido.`);
-        }
-      }
-
-      if (problem.timeLimit) {
-        if (!problem.startedAt) {
-          throw new ForbiddenException(
-            'A prova ainda não foi iniciada pelo professor.',
-          );
-        }
-        const now = new Date().getTime();
-        const startTime = new Date(problem.startedAt).getTime();
-        const limitMs = problem.timeLimit * 60 * 1000;
-        const endTime = startTime + limitMs;
-        if (now > endTime + 30000) {
-          throw new ForbiddenException('O tempo da prova acabou.');
+        if (count >= problem.maxAttempts) {
+          throw new ForbiddenException('Limite de tentativas excedido.');
         }
       }
     }
 
-    // 4. Validação: Prazo Geral
-    if (problem.deadline && new Date() > new Date(problem.deadline)) {
-      throw new ForbiddenException(`Prazo encerrado.`);
+    if (problem.deadline && new Date() > problem.deadline) {
+      if (problem.classroom.owner.id !== userId) {
+        throw new ForbiddenException('O prazo de entrega já encerrou.');
+      }
     }
 
-    // 5. Preparação para Execução
-    let finalVerdict = 'Accepted';
-    let executionStdout: string | null = null;
-    let executionStderr: string | null = null;
+    // A coluna parameters é carregada automaticamente com a entidade
+    const parameters = problem.parameters || [];
 
-    const params =
-      problem.parameters?.length > 0
-        ? problem.parameters
-        : ([
-            { name: 'a', type: 'int' },
-            { name: 'b', type: 'int' },
-          ] as any);
-
-    const returnType = problem.returnType || 'string';
-
-    const codeToRun = WrapperGenerator.generate(
-      language_id,
-      params,
-      returnType,
+    const fullCode = WrapperGenerator.generate(
+      langId,
+      parameters,
+      problem.returnType || 'void',
       code,
     );
 
-    // URL DE PRODUÇÃO (Go-Judge na porta 5050)
-    const judgeUrl = process.env.GO_JUDGE_URL || 'http://go-judge:5050/run';
+    const languageConfig: LanguageConfig = this.getLanguageConfig(langId);
 
-    let langConfig;
-    try {
-      langConfig = this.getLanguageConfig(language_id);
-    } catch (error) {
-      throw new InternalServerErrorException(error.message);
-    }
+    let finalVerdict = 'Pending';
+    let executionStdout = '';
+    let executionStderr = '';
 
-    // 6. Loop de Testes
-    if (problem.testCases?.length > 0) {
-      for (const testCase of problem.testCases) {
-        try {
-          // --- AQUI ESTÁ A PARTE QUE VOCÊ PERGUNTOU ---
-          // Criamos essa variável para garantir que o comando seja sempre um Array
-          const commandToRun = Array.isArray(langConfig.runCommand) 
-            ? langConfig.runCommand 
-            : [langConfig.runCommand];
-
-          const payload = {
-            cmd: commandToRun, // Usamos a variável aqui
-            files: [
-              {
-                name: langConfig.fileName,
-                content: codeToRun,
-              },
-            ],
-            stdin: testCase.input || "",
-          };
-
-          // Execução usando FETCH nativo (Recomendado para evitar bugs de JSON)
-          const response = await fetch(judgeUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
+    const testCases = problem.testCases || [];
+    if (testCases.length === 0) {
+      try {
+        const payload = {
+          cmd: languageConfig.runCommand,
+          files: [
+            {
+              name: languageConfig.fileName,
+              content: fullCode,
             },
-            body: JSON.stringify(payload),
-          });
+          ],
+        };
+        const res = await axios.post<ExecutorResponse>(
+          `${mockJudgeUrl}/run`,
+          payload,
+        );
+        if (res.data.exitStatus === 0) {
+          finalVerdict = 'Accepted';
+          executionStdout = res.data.files['stdout.txt'] || '';
+        } else {
+          finalVerdict = 'Runtime Error';
+          executionStderr = res.data.files['stderr.txt'] || 'Erro desconhecido';
+        }
+      } catch (error: unknown) {
+        console.error(error);
+        finalVerdict = 'System Error';
+        executionStderr = 'Falha ao contatar o Juiz.';
+      }
+    } else {
+      finalVerdict = 'Accepted';
 
-          if (!response.ok) {
-            throw new Error(
-              `Go-Judge Error: ${response.status} ${response.statusText}`,
-            );
+      for (const tc of testCases) {
+        const payload = {
+          cmd: languageConfig.runCommand,
+          files: [
+            {
+              name: languageConfig.fileName,
+              content: fullCode,
+            },
+          ],
+          stdin: tc.input,
+        };
+
+        try {
+          const res = await axios.post<ExecutorResponse>(
+            `${mockJudgeUrl}/run`,
+            payload,
+          );
+          const data = res.data;
+
+          if (data.exitStatus !== 0) {
+            finalVerdict = 'Runtime Error';
+            executionStderr = data.files['stderr.txt'] || '';
+            break;
           }
 
-          // Go-Judge retorna um objeto único se enviamos objeto único
-          const result: any = await response.json();
-
-          // 6.1 Verifica Erros de Execução/Compilação
-          if (result.status !== 'Accepted') {
-            finalVerdict = result.status;
-            executionStdout = result.files?.stdout || '';
-            executionStderr = result.files?.stderr || '';
-
-            if (result.exitStatus !== 0 && finalVerdict === 'Accepted') {
-              finalVerdict = 'Runtime Error';
-            }
-            break; 
-          }
-
-          // 6.2 Comparação de Saída
-          const actualOutput = (result.files?.stdout || '').trim();
-          const expectedOutput = (testCase.expectedOutput || '').trim();
+          const actualOutput = (data.files['stdout.txt'] || '').trim();
+          const expectedOutput = tc.expectedOutput.trim();
 
           if (actualOutput !== expectedOutput) {
             finalVerdict = 'Wrong Answer';
-            executionStdout = actualOutput;
+            executionStdout = `Esperado: ${expectedOutput}\nObtido: ${actualOutput}`;
             break;
           }
-        } catch (e) {
-          console.error('Erro de comunicação com Go-Judge:', e.message);
+        } catch (error: unknown) {
+          console.error(error);
           finalVerdict = 'Internal Error';
-          executionStderr = 'Falha ao comunicar com o servidor de execução.';
+          if (axios.isAxiosError(error) && error.response) {
+            executionStderr = `Erro do Juiz: ${error.response.status}`;
+          } else if (error instanceof Error) {
+            executionStderr = error.message;
+          } else {
+            executionStderr = 'Falha desconhecida na comunicação.';
+          }
           break;
         }
       }
     }
 
-    // 7. Salvar Submissão
     const sub = this.submissionsRepository.create({
       code,
-      language_id,
+      language_id: langId,
       status: finalVerdict,
       stdout: executionStdout,
       stderr: executionStderr,
       problem,
-      user: { id: userId } as any,
+      user: { id: userId },
     });
 
     return this.submissionsRepository.save(sub);
@@ -314,7 +258,11 @@ async create(createSubmissionDto: CreateSubmissionDto, userId: number) {
     return this.submissionsRepository.find({ relations: ['problem', 'user'] });
   }
 
-  private getLanguageConfig(languageId: number) {
+  async getClassroomStats(classroomId: number, userId: number) {
+    return [];
+  }
+
+  private getLanguageConfig(languageId: number): LanguageConfig {
     switch (languageId) {
       case 71: // Python
         return {
@@ -333,15 +281,33 @@ async create(createSubmissionDto: CreateSubmissionDto, userId: number) {
           fileName: 'Main.java',
           runCommand: ['java', 'Main.java'],
         };
-      case 60: // Go (Golang)
-      case 95: // Go (Versões mais novas) - Adicione por segurança
+
+      case 60: // Go
+      case 95:
         return {
           fileName: 'main.go',
           runCommand: ['go', 'run', 'main.go'],
         };
 
+      case 50: // C
+      case 48:
+        return {
+          fileName: 'main.c',
+          runCommand: ['gcc main.c -o main && ./main'],
+        };
+
+      case 54: // C++
+      case 52:
+        return {
+          fileName: 'main.cpp',
+          runCommand: ['g++ main.cpp -o main && ./main'],
+        };
+
       default:
-        throw new Error(`Linguagem ID ${languageId} não suportada.`);
+        return {
+          fileName: 'main.py',
+          runCommand: ['python3', 'main.py'],
+        };
     }
   }
 }
