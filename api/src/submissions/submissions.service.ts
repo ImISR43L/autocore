@@ -106,7 +106,6 @@ export class SubmissionsService {
 
     const problem = await this.problemsRepository.findOne({
       where: { id: String(problem_id) },
-      // CORREÇÃO: 'parameters' removido daqui pois é uma coluna, não uma relação
       relations: ['testCases', 'classroom', 'classroom.owner'],
     });
 
@@ -138,7 +137,6 @@ export class SubmissionsService {
       }
     }
 
-    // A coluna parameters é carregada automaticamente com a entidade
     const parameters = problem.parameters || [];
 
     const fullCode = WrapperGenerator.generate(
@@ -149,6 +147,11 @@ export class SubmissionsService {
     );
 
     const languageConfig: LanguageConfig = this.getLanguageConfig(langId);
+    
+    // --- CORREÇÃO AQUI ---
+    // Definimos a variável que estava faltando.
+    // Como você está rodando o go-judge via docker-compose, o nome do host é 'go-judge'
+    const mockJudgeUrl = 'http://go-judge:5050'; 
 
     let finalVerdict = 'Pending';
     let executionStdout = '';
@@ -276,7 +279,7 @@ export class SubmissionsService {
           runCommand: ['node', 'index.js'],
         };
 
-      case 62: // Java
+case 62: // Java
         return {
           fileName: 'Main.java',
           runCommand: ['java', 'Main.java'],

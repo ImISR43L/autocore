@@ -23,6 +23,8 @@ services:
       - /app/node_modules
 
     command: sh -c "npm install && npm run start:dev"
+    extra_hosts:
+      - "go-judge:host-gateway"
 
   db:
     image: postgres:13
@@ -55,32 +57,22 @@ services:
           path: ./web/src
           target: /app/src
 
-  # --- NOVO SERVIÇO: Go-Judge ---
-  # Substitui toda a stack complexa do Judge0 (Server, Worker, Redis, DB)
+# --- NOVO SERVIÇO: Go-Judge ---
   go-judge:
-    image: criyle/go-judge:v1.8.5
+    image: criyle/go-judge:latest
     ports:
       - "5050:5050"
     command: -enable-debug
-    # --- Configurações Críticas para WSL2 ---
     privileged: true
     shm_size: "256m"
     restart: always
-
-    # 1. Permite que o container manipule syscalls de isolamento
     security_opt:
       - seccomp:unconfined
       - apparmor:unconfined
-
-    # 2. Monta o Cgroup do host com permissão de escrita (RW)
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
-
-    # 3. Configurações opcionais de log e memória
     tmpfs:
       - /opt/sandbox:size=128M
-
-  # --- REMOVIDOS: judge0-server, judge0-worker, judge0-db, judge0-redis ---
 
 volumes:
   postgres_data:
