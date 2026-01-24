@@ -2,16 +2,14 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-  RequestTimeoutException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import axios from 'axios';
-
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
 import { Submission } from './entities/submission.entity';
-import { Problem, ProblemType } from '../problems/entities/problem.entity';
+import { Problem } from '../problems/entities/problem.entity';
 import { WrapperGenerator } from './wrapper-generator';
 
 interface LanguageConfig {
@@ -122,7 +120,9 @@ export class SubmissionsService {
       let executionStderr = '';
 
       const casesToRun =
-        testCases.length > 0 ? testCases : [{ input: '', expectedOutput: '' }];
+        testCases.length > 0
+          ? testCases
+          : [{ input: '', expectedOutput: '', isHidden: false }];
       console.log(`[DEBUG] Executando ${casesToRun.length} casos.`);
 
       for (const [index, tc] of casesToRun.entries()) {
@@ -177,7 +177,14 @@ export class SubmissionsService {
             const expected = (tc.expectedOutput || '').trim();
             if (actual !== expected) {
               finalVerdict = 'Wrong Answer';
-              executionStdout = `Esperado: ${expected}\nObtido: ${actual}`;
+              if (tc.isHidden) {
+                executionStdout = 'Caso de teste oculto falhou.';
+                // Opcional: Se quiser ser ainda mais restrito, deixe vazio ou use uma mensagem genérica
+              } else {
+                executionStdout = `Esperado: ${expected}\nObtido: ${actual}`;
+              }
+              // === FIM DA CORREÇÃO ===
+
               break;
             }
           } else {

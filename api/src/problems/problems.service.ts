@@ -55,7 +55,7 @@ export class ProblemsService {
           type: problem.type,
           classroom: { id: classroomId },
           // CORREÇÃO: Cast explícito
-          parameters: parameters,
+          parameters: q.parameters as any,
           testCases: q.testCases.map((tc) =>
             this.testCasesRepository.create({ ...tc }),
           ),
@@ -85,14 +85,35 @@ export class ProblemsService {
         'classroom.owner',
       ],
     });
+
     if (!problem) throw new NotFoundException('Problema não encontrado');
 
+    // Se o usuário NÃO é o dono da turma (é Aluno ou outro Professor), aplicamos restrições.
     if (problem.classroom && problem.classroom.owner.id !== userId) {
-      if (
-        problem.type === ProblemType.EXAM &&
-        (!problem.startedAt || problem.startedAt > new Date())
-      ) {
-        // Lógica de restrição (opcional)
+      // 1. LÓGICA ESPECÍFICA DE PROVA (Bloqueio de Acesso)
+      if (problem.type === ProblemType.EXAM) {
+        // Se a prova não tem data de início ou a data é futura -> Bloqueia
+        if (!problem.startedAt || problem.startedAt > new Date()) {
+          throw new ForbiddenException(
+            'Esta prova ainda não foi iniciada pelo professor. Aguarde o início.',
+          );
+        }
+      }
+
+      // Aplica-se a TODOS os tipos (Exercícios e Provas)
+
+      // Filtra os casos de teste do problema principal (se houver)
+      if (problem.testCases) {
+        problem.testCases = problem.testCases.filter((tc) => !tc.isHidden);
+      }
+
+      // Filtra os casos de teste das questões filhas (importante para Provas com múltiplas questões)
+      if (problem.children && problem.children.length > 0) {
+        problem.children.forEach((child) => {
+          if (child.testCases) {
+            child.testCases = child.testCases.filter((tc) => !tc.isHidden);
+          }
+        });
       }
     }
 
