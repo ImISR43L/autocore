@@ -53,6 +53,10 @@ interface ProblemToEdit {
   timeLimit?: number;
   deadline?: string;
   startDate?: string;
+  parameters?: Parameter[];
+  returnType?: string;
+  testCases?: TestCase[];
+  children?: any[];
 }
 
 const DATA_TYPES = [
@@ -103,22 +107,78 @@ export default function CreateProblem() {
     if (location.state?.classroomId) setClassroomId(location.state.classroomId);
 
     if (location.state?.problemToEdit) {
-      const p = location.state.problemToEdit as ProblemToEdit;
-      setType(p.type);
-      setMainTitle(p.title);
-      setMainSlug(p.slug);
-      setMainDescription(p.description);
-      // Ao carregar, se maxAttempts for null/undefined, setamos como "" (vazio)
-      setMaxAttempts(p.maxAttempts ?? "");
-      setTimeLimit(p.timeLimit ?? "");
-      if (p.deadline)
-        setDeadline(new Date(p.deadline).toISOString().slice(0, 16));
-      else if (p.startDate)
-        setDeadline(new Date(p.startDate).toISOString().slice(0, 16));
+      const initialP = location.state.problemToEdit as ProblemToEdit;
+      const token = localStorage.getItem("token");
 
-      setStep(2);
+      // 1. Preenche dados básicos imediatamente (para não piscar a tela)
+      setType(initialP.type);
+      setMainTitle(initialP.title);
+      setMainSlug(initialP.slug);
+      setMainDescription(initialP.description);
+      setMaxAttempts(initialP.maxAttempts ?? "");
+      setTimeLimit(initialP.timeLimit ?? "");
+
+      if (initialP.deadline)
+        setDeadline(new Date(initialP.deadline).toISOString().slice(0, 16));
+      else if (initialP.startDate)
+        setDeadline(new Date(initialP.startDate).toISOString().slice(0, 16));
+
+      setStep(2); // Vai para a tela de edição
+
+      // 2. BUSCA OS DADOS COMPLETOS (I/O, Questões, Test Cases)
+      // O objeto 'initialP' vindo da listagem não tem children/testCases. Precisamos buscar.
+      axios
+        .get(`${API_URL}/problems/${initialP.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((res) => {
+          const fullProblem = res.data;
+
+          if (
+            fullProblem.type === "EXAM" &&
+            fullProblem.children &&
+            fullProblem.children.length > 0
+          ) {
+            // --- MODO PROVA: Carregar Questões Filhas ---
+            const loadedQuestions = fullProblem.children.map((child: any) => ({
+              title: child.title,
+              description: child.description,
+              slug: child.slug,
+              parameters: child.parameters || [],
+              returnType: child.returnType || "void",
+              testCases: child.testCases || [],
+            }));
+
+            setQuestions(loadedQuestions);
+
+            // Carrega a primeira questão no editor visual
+            const first = loadedQuestions[0];
+            setQTitle(first.title);
+            setQDesc(first.description);
+            setQSlug(first.slug);
+            setParameters(first.parameters);
+            setReturnType(first.returnType);
+            setTestCases(first.testCases);
+            setActiveQuestionIndex(0);
+          } else {
+            // --- MODO EXERCÍCIO: Carregar I/O do Próprio Problema ---
+            // Garante que parameters não seja undefined
+            setQTitle(fullProblem.title);
+            setQDesc(fullProblem.description);
+            setQSlug(fullProblem.slug);
+            setParameters(
+              fullProblem.parameters || [{ name: "arg1", type: "int" }],
+            );
+            setReturnType(fullProblem.returnType || "int");
+            setTestCases(fullProblem.testCases || []);
+          }
+        })
+        .catch((err) => {
+          console.error(err);
+          toast.error("Erro ao carregar detalhes da questão (I/O).");
+        });
     }
-  }, [location.state]);
+  }, [location.state, API_URL]);
 
   useEffect(() => {
     setCurrentInputs(new Array(parameters.length).fill(""));
@@ -228,6 +288,11 @@ export default function CreateProblem() {
   const handleCreate = async () => {
     if (!mainTitle || !mainSlug)
       return toast.warning("Preencha o título e slug da atividade.");
+
+    const actionName = location.state?.problemToEdit ? "atualizar" : "criar";
+    if (!confirm(`Tem certeza que deseja ${actionName} esta atividade?`)) {
+      return;
+    }
     setLoading(true);
 
     let finalQuestions = questions;
@@ -308,6 +373,29 @@ export default function CreateProblem() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Adicione esta função dentro do componente CreateProblem
+  const handleCancel = () => {
+    // 1. Pergunta de segurança
+    if (
+      !confirm(
+        "Tem certeza que deseja cancelar? Todas as alterações não salvas serão perdidas.",
+      )
+    ) {
+      return;
+    }
+
+    // 2. Lógica de Redirecionamento
+    if (location.state?.problemToEdit) {
+      // Se estava EDITANDO, volta para a IDE da turma selecionando o problema
+      navigate(`/class/${classroomId}`, {
+        state: { problemId: location.state.problemToEdit.id },
+      });
+    } else {
+      // Se estava CRIANDO NOVO, volta para a IDE da turma (sem selecionar nada específico ou mantendo o anterior)
+      navigate(`/class/${classroomId}`);
     }
   };
 
@@ -409,11 +497,11 @@ export default function CreateProblem() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
           <button
-            onClick={() => setStep(1)}
+            onClick={handleCancel}
             className="btn btn-ghost"
-            title="Mudar Tipo"
+            title="Cancelar Edição"
           >
-            ← Voltar
+            ← Cancelar
           </button>
           <h1 style={{ margin: 0 }}>
             {type === "EXAM" ? "Nova Prova" : "Novo Exercício"}
