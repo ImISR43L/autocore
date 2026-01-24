@@ -57,23 +57,15 @@ services:
           path: ./web/src
           target: /app/src
 
-# --- NOVO SERVIÇO: Go-Judge ---
   go-judge:
-    image: criyle/go-judge:latest
+    build: ./judge
     ports:
       - "5050:5050"
-    command: -enable-debug
-    privileged: true
-    shm_size: "256m"
     restart: always
+    privileged: true
+    shm_size: "512mb" # Essencial para Java/Node/Python
     security_opt:
       - seccomp:unconfined
-      - apparmor:unconfined
-    volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
-    tmpfs:
-      - /opt/sandbox:size=128M
 
 volumes:
   postgres_data:
-  # judge0-db-data: (Removido)

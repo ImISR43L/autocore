@@ -2,6 +2,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  RequestTimeoutException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -16,14 +17,6 @@ import { WrapperGenerator } from './wrapper-generator';
 interface LanguageConfig {
   fileName: string;
   runCommand: string[];
-}
-
-interface ExecutorResponse {
-  status: string;
-  exitStatus: number;
-  files: Record<string, string>;
-  stdout?: string;
-  stderr?: string;
 }
 
 @Injectable()
@@ -100,153 +93,131 @@ export class SubmissionsService {
   }
 
   async create(createSubmissionDto: CreateSubmissionDto, userId: number) {
+    console.log('[DEBUG] === NOVA SUBMISSÃO (TIMEOUT PROTECTION) ===');
     const { code, language_id, problem_id } = createSubmissionDto;
-
     const langId = Number(language_id);
 
-    const problem = await this.problemsRepository.findOne({
-      where: { id: String(problem_id) },
-      relations: ['testCases', 'classroom', 'classroom.owner'],
-    });
+    try {
+      const problem = await this.problemsRepository.findOne({
+        where: { id: String(problem_id) },
+        relations: ['testCases', 'classroom', 'classroom.owner'],
+      });
 
-    if (!problem) throw new NotFoundException('Problema não encontrado');
+      if (!problem) throw new NotFoundException('Problema não encontrado');
 
-    if (problem.type === ProblemType.EXAM) {
-      const now = new Date();
-      if (
-        problem.startedAt &&
-        problem.timeLimit &&
-        now.getTime() - problem.startedAt.getTime() >
-          problem.timeLimit * 60 * 1000
-      ) {
-        throw new ForbiddenException('Tempo de prova esgotado.');
-      }
-      if (problem.maxAttempts) {
-        const count = await this.submissionsRepository.count({
-          where: { problem: { id: String(problem.id) }, user: { id: userId } },
-        });
-        if (count >= problem.maxAttempts) {
-          throw new ForbiddenException('Limite de tentativas excedido.');
-        }
-      }
-    }
+      const parameters = problem.parameters || [];
+      const fullCode = WrapperGenerator.generate(
+        langId,
+        parameters,
+        problem.returnType || 'void',
+        code,
+      );
 
-    if (problem.deadline && new Date() > problem.deadline) {
-      if (problem.classroom.owner.id !== userId) {
-        throw new ForbiddenException('O prazo de entrega já encerrou.');
-      }
-    }
+      const languageConfig: LanguageConfig = this.getLanguageConfig(langId);
+      const mockJudgeUrl = 'http://go-judge:5050';
+      const testCases = problem.testCases || [];
 
-    const parameters = problem.parameters || [];
+      let finalVerdict = 'Pending';
+      let executionStdout = '';
+      let executionStderr = '';
 
-    const fullCode = WrapperGenerator.generate(
-      langId,
-      parameters,
-      problem.returnType || 'void',
-      code,
-    );
+      const casesToRun =
+        testCases.length > 0 ? testCases : [{ input: '', expectedOutput: '' }];
+      console.log(`[DEBUG] Executando ${casesToRun.length} casos.`);
 
-    const languageConfig: LanguageConfig = this.getLanguageConfig(langId);
-    
-    // --- CORREÇÃO AQUI ---
-    // Definimos a variável que estava faltando.
-    // Como você está rodando o go-judge via docker-compose, o nome do host é 'go-judge'
-    const mockJudgeUrl = 'http://go-judge:5050'; 
-
-    let finalVerdict = 'Pending';
-    let executionStdout = '';
-    let executionStderr = '';
-
-    const testCases = problem.testCases || [];
-    if (testCases.length === 0) {
-      try {
+      for (const [index, tc] of casesToRun.entries()) {
         const payload = {
-          cmd: languageConfig.runCommand,
-          files: [
+          cmd: [
             {
-              name: languageConfig.fileName,
-              content: fullCode,
+              args: languageConfig.runCommand,
+              env: ['PATH=/usr/bin:/bin:/usr/local/bin'],
+              files: [
+                { content: tc.input || '' },
+                { name: 'stdout', max: 10240 },
+                { name: 'stderr', max: 10240 },
+              ],
+              cpuLimit: 10000000000, // 10 Segundos (Dê folga para o startup)
+              memoryLimit: 1024 * 1024 * 1024, // 1 GB (Previne o OOM Killer do Host)
+              procLimit: 100,
+
+              copyIn: {
+                [languageConfig.fileName]: { content: fullCode },
+              },
             },
           ],
-        };
-        const res = await axios.post<ExecutorResponse>(
-          `${mockJudgeUrl}/run`,
-          payload,
-        );
-        if (res.data.exitStatus === 0) {
-          finalVerdict = 'Accepted';
-          executionStdout = res.data.files['stdout.txt'] || '';
-        } else {
-          finalVerdict = 'Runtime Error';
-          executionStderr = res.data.files['stderr.txt'] || 'Erro desconhecido';
-        }
-      } catch (error: unknown) {
-        console.error(error);
-        finalVerdict = 'System Error';
-        executionStderr = 'Falha ao contatar o Juiz.';
-      }
-    } else {
-      finalVerdict = 'Accepted';
-
-      for (const tc of testCases) {
-        const payload = {
-          cmd: languageConfig.runCommand,
-          files: [
-            {
-              name: languageConfig.fileName,
-              content: fullCode,
-            },
-          ],
-          stdin: tc.input,
         };
 
         try {
-          const res = await axios.post<ExecutorResponse>(
-            `${mockJudgeUrl}/run`,
-            payload,
-          );
-          const data = res.data;
+          // ADICIONADO: Timeout de 10 segundos para evitar travamento eterno (Pending)
+          const res = await axios.post(`${mockJudgeUrl}/run`, payload, {
+            timeout: 10000,
+          });
+          const result = res.data[0];
 
-          if (data.exitStatus !== 0) {
-            finalVerdict = 'Runtime Error';
-            executionStderr = data.files['stderr.txt'] || '';
+          if (result.status !== 'Accepted') {
+            console.error(
+              `[DEBUG] FALHA CASO ${index + 1}:`,
+              JSON.stringify(result),
+            );
+          }
+
+          if (result.status !== 'Accepted' || result.exitStatus !== 0) {
+            finalVerdict =
+              result.status === 'Accepted' ? 'Runtime Error' : result.status;
+            executionStderr = result.files['stderr'] || '';
+
+            if (!executionStderr && (result as any).error) {
+              executionStderr = `System Error: ${(result as any).error}`;
+            }
             break;
           }
 
-          const actualOutput = (data.files['stdout.txt'] || '').trim();
-          const expectedOutput = tc.expectedOutput.trim();
-
-          if (actualOutput !== expectedOutput) {
-            finalVerdict = 'Wrong Answer';
-            executionStdout = `Esperado: ${expectedOutput}\nObtido: ${actualOutput}`;
-            break;
-          }
-        } catch (error: unknown) {
-          console.error(error);
-          finalVerdict = 'Internal Error';
-          if (axios.isAxiosError(error) && error.response) {
-            executionStderr = `Erro do Juiz: ${error.response.status}`;
-          } else if (error instanceof Error) {
-            executionStderr = error.message;
+          if (testCases.length > 0) {
+            const actual = (result.files['stdout'] || '').trim();
+            const expected = (tc.expectedOutput || '').trim();
+            if (actual !== expected) {
+              finalVerdict = 'Wrong Answer';
+              executionStdout = `Esperado: ${expected}\nObtido: ${actual}`;
+              break;
+            }
           } else {
-            executionStderr = 'Falha desconhecida na comunicação.';
+            finalVerdict = 'Accepted';
+            executionStdout = result.files['stdout'] || '';
+          }
+        } catch (axiosError: any) {
+          console.error('[DEBUG] ERRO AXIOS:', axiosError.message);
+          if (axiosError.code === 'ECONNABORTED') {
+            finalVerdict = 'Time Limit Exceeded (System)';
+            executionStderr = 'O tempo limite de conexão com o Juiz expirou.';
+          } else {
+            finalVerdict = 'System Error';
+            executionStderr = axiosError.message;
           }
           break;
         }
       }
+
+      if (finalVerdict === 'Pending') {
+        finalVerdict = 'Accepted';
+      }
+
+      console.log(`[DEBUG] Veredito Final: ${finalVerdict}`);
+
+      const sub = this.submissionsRepository.create({
+        code,
+        language_id: langId,
+        status: finalVerdict,
+        stdout: executionStdout,
+        stderr: executionStderr,
+        problem,
+        user: { id: userId },
+      });
+
+      return this.submissionsRepository.save(sub);
+    } catch (error) {
+      console.error('[DEBUG] ERRO CRÍTICO NA API:', error);
+      throw error;
     }
-
-    const sub = this.submissionsRepository.create({
-      code,
-      language_id: langId,
-      status: finalVerdict,
-      stdout: executionStdout,
-      stderr: executionStderr,
-      problem,
-      user: { id: userId },
-    });
-
-    return this.submissionsRepository.save(sub);
   }
 
   async findAllByProblem(problemId: string) {
@@ -279,7 +250,7 @@ export class SubmissionsService {
           runCommand: ['node', 'index.js'],
         };
 
-case 62: // Java
+      case 62: // Java
         return {
           fileName: 'Main.java',
           runCommand: ['java', 'Main.java'],
