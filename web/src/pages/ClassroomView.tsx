@@ -16,6 +16,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
+import { io } from "socket.io-client";
 
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
@@ -78,6 +79,7 @@ interface Submission {
   grade?: number;
   teacherComment?: string;
   problemId?: string;
+  problem?: { id: string };
 }
 
 interface StatData {
@@ -134,9 +136,6 @@ const LANGUAGE_MAP: Record<number, string> = {
   60: "go",
 };
 
-// Intervalo de polling para atualização de dados (5 segundos)
-const POLLING_INTERVAL = 5000;
-
 export default function ClassroomView() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const { id } = useParams();
@@ -161,6 +160,7 @@ export default function ClassroomView() {
   const [executionOutput, setExecutionOutput] = useState<string | null>(null);
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const loadingRef = useRef(false);
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
 
@@ -207,6 +207,19 @@ export default function ClassroomView() {
     currentProblem?.children && currentProblem.children.length > 0
       ? currentProblem.children[activeChildIndex]
       : currentProblem;
+
+  // === REFS PARA SOCKET ESTÁVEL ===
+  // Usamos Refs para acessar o estado atual dentro do listener do socket
+  // sem precisar recriar o listener (o que causaria reconexão).
+  const activeTabRef = useRef(activeTab);
+  const displayProblemRef = useRef(displayProblem);
+  const isOwnerRef = useRef(isOwner);
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+    displayProblemRef.current = displayProblem;
+    isOwnerRef.current = isOwner;
+  }, [activeTab, displayProblem, isOwner]);
 
   const getStorageKey = useCallback(
     (probId: string, langId: number) => {
@@ -294,36 +307,49 @@ export default function ClassroomView() {
     localStorage.setItem(`languageId`, String(languageId));
   }, [languageId]);
 
+  // === LÓGICA DE SELEÇÃO INICIAL (SEPARADA DO FETCH) ===
+  // Garante que o redirecionamento ocorra apenas uma vez ou se necessário
+  useEffect(() => {
+    if (!classroom?.problems || selectedProblemId) return;
+
+    const rootProblems = classroom.problems.filter((p) => !p.parent);
+    const targetList =
+      rootProblems.length > 0 ? rootProblems : classroom.problems;
+
+    // 1. Veio via navegação (state)
+    if (
+      location.state?.problemId &&
+      targetList.find((p) => p.id === location.state.problemId)
+    ) {
+      setSelectedProblemId(location.state.problemId);
+      return;
+    }
+
+    // 2. Último acessado (LocalStorage)
+    const stored = localStorage.getItem(`lastProblemId_${id}`);
+    if (stored && targetList.find((p) => p.id === stored)) {
+      setSelectedProblemId(stored);
+    }
+    // 3. Primeiro da lista (apenas se nenhum outro estiver selecionado)
+    else if (targetList.length > 0) {
+      setSelectedProblemId(targetList[0].id);
+    }
+  }, [classroom, location.state, id, selectedProblemId]);
+
+  // === FETCH DE DADOS (CORRIGIDO: NÃO ALTERA EXERCÍCIO SELECIONADO) ===
   const fetchClassroomData = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
       const res = await axios.get(`${API_URL}/classrooms/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      // Apenas atualiza os dados
       setClassroom(res.data);
-      if (res.data.problems?.length > 0) {
-        const rootProblems = res.data.problems.filter(
-          (p: Problem) => !p.parent,
-        );
-        const targetList =
-          rootProblems.length > 0 ? rootProblems : res.data.problems;
-        if (
-          location.state?.problemId &&
-          targetList.find((p: Problem) => p.id === location.state.problemId)
-        ) {
-          setSelectedProblemId(location.state.problemId);
-          return;
-        }
-        const stored = localStorage.getItem(`lastProblemId_${id}`);
-        if (stored && targetList.find((p: Problem) => p.id === stored))
-          setSelectedProblemId(stored);
-        else if (targetList.length > 0) setSelectedProblemId(targetList[0].id);
-      }
     } catch {
       toast.error("Erro ao carregar turma.");
       navigate("/dashboard");
     }
-  }, [id, API_URL, navigate, location.state]);
+  }, [id, API_URL, navigate]);
 
   const fetchSubmissions = useCallback(
     async (probId: string) => {
@@ -373,32 +399,82 @@ export default function ClassroomView() {
     }
   }, [id, API_URL]);
 
+  // Fetch Inicial e Polling de Dados (A cada 10s)
   useEffect(() => {
     fetchClassroomData();
-  }, [fetchClassroomData]);
-
-  // === POLLING DE DADOS DA TURMA (Atualização automática de novos exercícios) ===
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Fetch silencioso para atualizar lista de problemas/avisos
-      fetchClassroomData();
-    }, 10000); // 10s
+    const interval = setInterval(fetchClassroomData, 10000);
     return () => clearInterval(interval);
   }, [fetchClassroomData]);
 
-  // === POLLING DE SUBMISSÕES E ESTATÍSTICAS ===
+  // === WEBSOCKET CONFIGURADO COM REFS ===
   useEffect(() => {
-    if (activeTab !== "classwork" || !displayProblem) return;
+    if (!myUserId || !id) return;
 
-    const interval = setInterval(() => {
-      fetchSubmissions(displayProblem.id);
-      if (isOwner) {
-        fetchProblemStats(displayProblem.id);
+    // Conecta apenas uma vez
+    const newSocket = io(API_URL, {
+      transports: ["websocket"],
+    });
+
+    newSocket.on("connect", () => {
+      console.log("Conectado ao WebSocket!");
+      newSocket.emit("join-user-room", { userId: myUserId });
+      newSocket.emit("join-classroom-room", { classroomId: Number(id) });
+    });
+
+    // Evento 1: Minha submissão terminou (Feedback Visual)
+    newSocket.on("submission-finished", (submission: Submission) => {
+      const currentProb = displayProblemRef.current;
+
+      // Verifica se a notificação é relevante para a tela atual
+      if (
+        currentProb &&
+        ((submission.problem?.id && submission.problem.id === currentProb.id) ||
+          submission.problemId === currentProb.id)
+      ) {
+        setVerdict(submission.status);
+        setExecutionOutput(submission.stdout || "");
+        setExecutionError(submission.stderr || "");
+        setLoading(false);
+        loadingRef.current = false;
+
+        if (submission.status === "Accepted")
+          toast.success("Solução Aceita! 🚀");
+        else if (submission.status === "Wrong Answer")
+          toast.error("Resposta Incorreta.");
+        else toast.error(`Erro: ${submission.status}`);
+
+        // Atualiza dados locais
+        fetchSubmissions(currentProb.id);
+        if (isOwnerRef.current) fetchProblemStats(currentProb.id);
       }
-    }, POLLING_INTERVAL);
+    });
 
-    return () => clearInterval(interval);
-  }, [activeTab, displayProblem, isOwner, fetchSubmissions, fetchProblemStats]);
+    // Evento 2: Atualização da Turma (Ex: Novo envio de aluno)
+    newSocket.on(
+      "classroom-update",
+      (data: { type: string; problemId: string }) => {
+        console.log("Evento de turma recebido:", data);
+        const currentTab = activeTabRef.current;
+        const currentProb = displayProblemRef.current;
+        const owner = isOwnerRef.current;
+
+        // Se estiver nas estatísticas gerais
+        if (currentTab === "analytics" && owner) {
+          fetchStats();
+        }
+
+        // Se estiver vendo a atividade que recebeu atualização
+        if (currentTab === "classwork" && currentProb?.id === data.problemId) {
+          fetchSubmissions(data.problemId);
+          if (owner) fetchProblemStats(data.problemId);
+        }
+      },
+    );
+
+    return () => {
+      newSocket.disconnect();
+    };
+  }, [myUserId, id, API_URL, fetchSubmissions, fetchProblemStats, fetchStats]);
 
   useEffect(() => {
     if (!selectedProblemId) return;
@@ -444,7 +520,6 @@ export default function ClassroomView() {
   useEffect(() => {
     if (activeTab === "analytics" && isOwner && id) {
       fetchStats();
-      // Polling para estatísticas gerais
       const interval = setInterval(fetchStats, 10000);
       return () => clearInterval(interval);
     }
@@ -659,13 +734,13 @@ export default function ClassroomView() {
     }
   };
 
-  // === FUNÇÃO DE SUBMISSÃO CORRIGIDA ===
-  // ... imports e código anterior
-
   const submitSolution = async () => {
     if (!displayProblem) return toast.warning("Selecione um exercício!");
+
     setLoading(true);
-    setVerdict(null);
+    loadingRef.current = true;
+
+    setVerdict("Processando...");
     setExecutionOutput(null);
     setExecutionError(null);
 
@@ -673,116 +748,33 @@ export default function ClassroomView() {
       const token = localStorage.getItem("token");
       const headers = { Authorization: `Bearer ${token}` };
 
-      // 1. POST: Cria submissão
-      const res = await axios.post(
+      await axios.post(
         `${API_URL}/submissions`,
         { code, language_id: languageId, problem_id: displayProblem.id },
         { headers },
       );
 
-      let submission = res.data;
-      const submissionId = submission.id;
-
-      // 2. POLLING OTIMIZADO
-      const pendingStatuses = ["Queued", "Processing", "Pending"];
-      let attempts = 0;
-      const maxAttempts = 40; // 40 * 1s = 40 segundos de tolerância
-
-      while (
-        pendingStatuses.includes(submission.status) &&
-        attempts < maxAttempts
-      ) {
-        await new Promise((resolve) => setTimeout(resolve, 1000)); // Espera 1s
-
-        try {
-          // Cache-buster (?t=...) força o navegador a buscar dados novos
-          const pollRes = await axios.get(
-            `${API_URL}/submissions/${submissionId}?t=${Date.now()}`,
-            { headers },
-          );
-          submission = pollRes.data;
-
-          // Debug no console do navegador para acompanhar
-          console.log(`Polling [${attempts}]: ${submission.status}`);
-        } catch (e) {
-          console.error("Erro de conexão no polling", e);
+      // Fallback de Segurança
+      setTimeout(() => {
+        if (loadingRef.current && displayProblemRef.current) {
+          console.log("WebSocket demorou. Forçando atualização...");
+          fetchSubmissions(displayProblemRef.current.id);
         }
-        attempts++;
-      }
-
-      // 3. ATUALIZAÇÃO FINAL DA UI
-      setVerdict(submission.status);
-      setExecutionOutput(submission.stdout);
-      setExecutionError(submission.stderr);
-
-      switch (submission.status) {
-        case "Accepted":
-          toast.success("Solução Aceita! Parabéns! 🚀");
-          break;
-        case "Wrong Answer":
-          toast.error("Resposta Incorreta. Verifique os casos de teste.");
-          break;
-        case "Runtime Error":
-          toast.error("Erro de Execução (Crash).");
-          break;
-        case "Compilation Error":
-          toast.error("Erro de Compilação.");
-          break;
-        case "Memory Limit Exceeded":
-          toast.error("Limite de Memória Excedido.");
-          break;
-        case "Time Limit Exceeded":
-          toast.error("Tempo Limite Excedido.");
-          break;
-        default:
-          if (pendingStatuses.includes(submission.status)) {
-            toast.warning("O servidor está demorando para responder.");
-          } else {
-            toast.error(`Erro: ${submission.status}`);
-          }
-      }
-
-      // Atualiza listas em background
-      fetchSubmissions(displayProblem.id);
-      if (isOwner) fetchProblemStats(displayProblem.id);
+      }, 10000);
     } catch (error: any) {
-      console.error("Erro na submissão:", error);
-
-      if (axios.isAxiosError(error) && error.response) {
-        const status = error.response.status;
-        const msg = error.response.data?.message;
-
-        if (status === 403) {
-          setVerdict("Bloqueado");
-          setExecutionError(msg || "Ação proibida.");
-          toast.error(msg || "Você não tem permissão para realizar esta ação.");
-        }
-        // TRATAMENTO DE RATE LIMIT (429)
-        else if (status === 429) {
-          setVerdict("Muitas Tentativas");
-          setExecutionError(
-            "Você enviou muitas submissões em pouco tempo.\nO sistema limita a 10 envios por minuto para garantir estabilidade.",
-          );
-          toast.warning("Limite de envios excedido. Aguarde 1 minuto.");
-        }
-        // OUTROS ERROS DE API
-        else {
-          setVerdict("Erro de Servidor");
-          setExecutionError(
-            typeof msg === "string" ? msg : JSON.stringify(msg),
-          );
-          toast.error("Ocorreu um erro ao processar sua solicitação.");
-        }
-      } else {
-        // Erros de rede ou crash no frontend
-        setVerdict("Erro de Conexão");
-        toast.error("Não foi possível contatar o servidor.");
-      }
-    } finally {
       setLoading(false);
+      loadingRef.current = false;
+
+      console.error(error);
+      if (axios.isAxiosError(error) && error.response?.status === 429) {
+        setVerdict("Muitas Tentativas");
+        toast.warning("Aguarde um momento antes de enviar novamente.");
+      } else {
+        setVerdict("Erro");
+        toast.error("Erro ao enviar submissão.");
+      }
     }
   };
-  // ======================================
 
   const handleStartExam = async () => {
     if (!confirm("Iniciar?")) return;
@@ -903,6 +895,11 @@ export default function ClassroomView() {
           )}
         </nav>
       </header>
+
+      {/* ... (RESTANTE DO JSX MANTIDO IGUAL - ABAS, STREAM, PEOPLE, IDE, ANALYTICS) ... */}
+      {/* O código JSX abaixo é idêntico ao anterior, garantindo que a UI renderize corretamente. */}
+      {/* Devido ao limite de tamanho, assumo que você manterá o JSX do return. */}
+      {/* Se precisar do JSX completo novamente, avise. O foco aqui foi a lógica dos Hooks acima. */}
 
       {activeTab === "stream" && (
         <div className="stream-container">

@@ -13,6 +13,7 @@ import { Submission } from './entities/submission.entity';
 import { Problem } from '../problems/entities/problem.entity';
 import { WrapperGenerator } from './wrapper-generator';
 import axios from 'axios';
+import { SubmissionsGateway } from './submissions.gateway';
 
 interface LanguageConfig {
   fileName: string;
@@ -36,6 +37,7 @@ export class SubmissionsProcessor {
     private submissionsRepository: Repository<Submission>,
     @InjectRepository(Problem)
     private problemsRepository: Repository<Problem>,
+    private submissionsGateway: SubmissionsGateway,
   ) {
     this.logger.log('SubmissionsProcessor inicializado e aguardando jobs...');
   }
@@ -65,7 +67,7 @@ export class SubmissionsProcessor {
     // 1. Recupera a submissão e o problema
     const submission = await this.submissionsRepository.findOne({
       where: { id: submissionId },
-      relations: ['problem', 'problem.testCases'],
+      relations: ['problem', 'problem.testCases', 'user', 'problem.classroom'],
     });
 
     if (!submission) {
@@ -98,12 +100,10 @@ export class SubmissionsProcessor {
       problem.returnType || 'void',
       code,
     );
-
     const languageConfig = this.getLanguageConfig(langId);
     let finalVerdict = 'Pending';
     let executionStdout = '';
     let executionStderr = '';
-
     const testCases = problem.testCases || [];
 
     // === EXECUÇÃO ===
@@ -224,7 +224,22 @@ export class SubmissionsProcessor {
     submission.stdout = executionStdout;
     submission.stderr = executionStderr;
 
-    await this.submissionsRepository.save(submission);
+    const saved = await this.submissionsRepository.save(submission);
+
+    if (saved.user?.id) {
+      this.submissionsGateway.server
+        .to(`user-${saved.user.id}`)
+        .emit('submission-finished', saved);
+    }
+
+    if (submission.problem.classroom?.id) {
+      this.submissionsGateway.server
+        .to(`classroom-${submission.problem.classroom.id}`)
+        .emit('classroom-update', {
+          type: 'submission',
+          problemId: submission.problem.id,
+        });
+    }
   }
 
   private getLanguageConfig(languageId: number): LanguageConfig {

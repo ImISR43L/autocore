@@ -63,9 +63,6 @@ services:
   go-judge:
     image: go-judge-custom
     build: ./judge
-    # REMOVIDO: ports (O isolamento exige que não expenhamos a porta ao host)
-    # ports:
-    #   - "5050:5050"
 
     networks:
       - secure_sandbox # Apenas rede interna, sem internet

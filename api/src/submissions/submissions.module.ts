@@ -4,8 +4,9 @@ import { SubmissionsService } from './submissions.service';
 import { SubmissionsController } from './submissions.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Submission } from './entities/submission.entity';
-import { SubmissionsProcessor } from './submissions.processor'; // <--- Importe
 import { Problem } from '../problems/entities/problem.entity';
+import { SubmissionsProcessor } from './submissions.processor';
+import { SubmissionsGateway } from './submissions.gateway';
 
 @Module({
   imports: [
@@ -15,6 +16,6 @@ import { Problem } from '../problems/entities/problem.entity';
     }),
   ],
   controllers: [SubmissionsController],
-  providers: [SubmissionsService, SubmissionsProcessor],
+  providers: [SubmissionsService, SubmissionsProcessor, SubmissionsGateway],
 })
 export class SubmissionsModule {}
