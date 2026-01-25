@@ -285,6 +285,22 @@ export default function CreateProblem() {
     setCurrentIsHidden(false);
   };
 
+  const sanitizeTestCase = (tc: any) => {
+    // Retorna um novo objeto APENAS com os campos permitidos pelo DTO
+    return {
+      input: tc.input,
+      expectedOutput: tc.expectedOutput,
+      isHidden: tc.isHidden,
+    };
+  };
+
+  const sanitizeParameters = (p: any) => {
+    return {
+      name: p.name,
+      type: p.type,
+    };
+  };
+
   const handleCreate = async () => {
     if (!mainTitle || !mainSlug)
       return toast.warning("Preencha o título e slug da atividade.");
@@ -293,9 +309,12 @@ export default function CreateProblem() {
     if (!confirm(`Tem certeza que deseja ${actionName} esta atividade?`)) {
       return;
     }
+
     setLoading(true);
 
     let finalQuestions = questions;
+
+    // Sincroniza o estado atual da questão visual com a lista
     if (type === "EXAM") {
       const currentQ: Question = {
         title: qTitle,
@@ -306,6 +325,7 @@ export default function CreateProblem() {
         testCases,
       };
       if (activeQuestionIndex < questions.length) {
+        finalQuestions = [...questions]; // Cópia segura
         finalQuestions[activeQuestionIndex] = currentQ;
       } else {
         finalQuestions = [...questions, currentQ];
@@ -319,7 +339,6 @@ export default function CreateProblem() {
     try {
       const token = localStorage.getItem("token");
 
-      // --- CORREÇÃO DE LÓGICA DO PAYLOAD e TIPAGEM ---
       const payload: ProblemPayload = {
         title: mainTitle,
         description: mainDescription || "...",
@@ -339,14 +358,25 @@ export default function CreateProblem() {
       };
 
       if (type === "EXAM") {
-        payload.questions = finalQuestions;
+        // === SANITIZAÇÃO PARA PROVA (Questions) ===
+        // Remove IDs e limpa objetos aninhados das questões
+        payload.questions = finalQuestions.map((q) => ({
+          title: q.title,
+          description: q.description,
+          slug: q.slug,
+          returnType: q.returnType,
+          parameters: q.parameters.map(sanitizeParameters),
+          testCases: q.testCases.map(sanitizeTestCase), // Remove IDs aqui
+        }));
       } else {
+        // === SANITIZAÇÃO PARA EXERCÍCIO ===
         payload.title = qTitle || mainTitle;
         payload.description = qDesc || mainDescription;
         payload.slug = qSlug || mainSlug;
-        payload.parameters = parameters;
+        payload.parameters = parameters.map(sanitizeParameters);
         payload.returnType = returnType;
-        payload.testCases = testCases;
+        // Remove IDs dos casos de teste do exercício único
+        payload.testCases = testCases.map(sanitizeTestCase);
       }
 
       if (location.state?.problemToEdit) {
@@ -367,7 +397,11 @@ export default function CreateProblem() {
     } catch (e: unknown) {
       console.error(e);
       if (axios.isAxiosError(e)) {
-        toast.error(e.response?.data?.message || "Erro ao salvar.");
+        // Exibe mensagem de erro detalhada do Backend se disponível
+        const msg = Array.isArray(e.response?.data?.message)
+          ? e.response?.data?.message.join(", ")
+          : e.response?.data?.message;
+        toast.error(msg || "Erro ao salvar.");
       } else {
         toast.error("Erro desconhecido ao salvar.");
       }

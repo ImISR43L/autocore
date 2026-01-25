@@ -186,6 +186,8 @@ export default function ClassroomView() {
   >("WAITING");
   const [activeChildIndex, setActiveChildIndex] = useState(0);
 
+  const POLLING_INTERVAL = 5000; // 5 segundos
+
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
     if (!token) return null;
@@ -459,6 +461,39 @@ export default function ClassroomView() {
     }, 1000);
     return () => clearInterval(interval);
   }, [currentProblem]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Fetch silencioso (sem loading spinner global se possível)
+      fetchClassroomData();
+    }, 10000); // 10s para dados estruturais (menos críticos)
+
+    return () => clearInterval(interval);
+  }, [fetchClassroomData]);
+
+  // Atualiza gráficos e histórico se estiver na aba de atividades
+  useEffect(() => {
+    if (activeTab !== "classwork" || !displayProblem) return;
+
+    const interval = setInterval(() => {
+      fetchSubmissions(displayProblem.id);
+      if (isOwner) {
+        fetchProblemStats(displayProblem.id);
+      }
+    }, POLLING_INTERVAL); // 5s para dados dinâmicos (submissões)
+
+    return () => clearInterval(interval);
+  }, [activeTab, displayProblem, isOwner, fetchSubmissions, fetchProblemStats]);
+
+  useEffect(() => {
+    if (activeTab !== "analytics" || !isOwner || !id) return;
+
+    const interval = setInterval(() => {
+      fetchStats();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [activeTab, isOwner, id, fetchStats]);
 
   const handleCodeChange = (value: string | undefined) => {
     const val = value || "";

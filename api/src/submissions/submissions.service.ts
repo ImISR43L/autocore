@@ -103,6 +103,12 @@ export class SubmissionsService {
 
       if (!problem) throw new NotFoundException('Problema não encontrado');
 
+      if (problem.classroom && problem.classroom.owner.id === userId) {
+        throw new ForbiddenException(
+          'Professores não podem realizar submissões em suas próprias atividades.',
+        );
+      }
+
       const parameters = problem.parameters || [];
       const fullCode = WrapperGenerator.generate(
         langId,
@@ -240,7 +246,36 @@ export class SubmissionsService {
   }
 
   async getClassroomStats(classroomId: number, userId: number) {
-    return [];
+    // 1. Busca todos os problemas vinculados à turma
+    const problems = await this.problemsRepository.find({
+      where: { classroom: { id: classroomId } },
+      select: ['id', 'title'],
+    });
+
+    const stats: { name: string; Accepted: number; Error: number }[] = [];
+
+    // 2. Itera sobre cada problema para contar submissões
+    for (const p of problems) {
+      const subs = await this.submissionsRepository.find({
+        where: { problem: { id: p.id } },
+        select: ['status'],
+      });
+
+      let acc = 0;
+      let err = 0;
+
+      subs.forEach((s) => {
+        if (s.status === 'Accepted') acc++;
+        else err++;
+      });
+
+      // Apenas adiciona ao gráfico se houver submissões
+      if (subs.length > 0) {
+        stats.push({ name: p.title, Accepted: acc, Error: err });
+      }
+    }
+
+    return stats;
   }
 
   private getLanguageConfig(languageId: number): LanguageConfig {
