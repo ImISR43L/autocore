@@ -9,7 +9,14 @@ services:
       db:
         condition: service_healthy
       go-judge:
-        condition: service_started # Mudamos a dependência
+        condition: service_started
+      redis:
+        condition: service_started
+
+    # CONECTA A API ÀS DUAS REDES
+    networks:
+      - default # Acesso à Internet, DB e Web
+      - secure_sandbox # Acesso exclusivo ao Juiz
 
     develop:
       watch:
@@ -23,8 +30,6 @@ services:
       - /app/node_modules
 
     command: sh -c "npm install && npm run start:dev"
-    extra_hosts:
-      - "go-judge:host-gateway"
 
   db:
     image: postgres:13
@@ -55,6 +60,22 @@ services:
       timeout: 3s
       retries: 5
 
+  go-judge:
+    image: go-judge-custom
+    build: ./judge
+    # REMOVIDO: ports (O isolamento exige que não expenhamos a porta ao host)
+    # ports:
+    #   - "5050:5050"
+
+    networks:
+      - secure_sandbox # Apenas rede interna, sem internet
+
+    # Configurações de Segurança/Performance (Mantidas das correções anteriores)
+    privileged: true
+    shm_size: "512mb"
+    security_opt:
+      - seccomp:unconfined
+
   web:
     build: ./web
     ports:
@@ -68,16 +89,18 @@ services:
         - action: sync
           path: ./web/src
           target: /app/src
+        - action: sync
+          path: ./web/public
+          target: /app/public
+        - action: rebuild
+          path: ./web/package.json
 
-  go-judge:
-    build: ./judge
-    ports:
-      - "5050:5050"
-    restart: always
-    privileged: true
-    shm_size: "512mb" # Essencial para Java/Node/Python
-    security_opt:
-      - seccomp:unconfined
+# DEFINIÇÃO DAS REDES
+networks:
+  default:
+    driver: bridge
+  secure_sandbox:
+    internal: true # Bloqueia acesso externo (Internet)
 
 volumes:
   postgres_data:
