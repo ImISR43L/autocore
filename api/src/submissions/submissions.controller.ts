@@ -12,6 +12,7 @@ import { SubmissionsService } from './submissions.service';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Throttle } from '@nestjs/throttler';
 
 interface RequestWithUser {
   user: {
@@ -27,11 +28,18 @@ export class SubmissionsController {
 
   @UseGuards(JwtAuthGuard)
   @Post()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   create(
     @Body() createSubmissionDto: CreateSubmissionDto,
     @Request() req: RequestWithUser,
   ) {
     return this.submissionsService.create(createSubmissionDto, req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id')
+  async findOne(@Param('id') id: string) {
+    return this.submissionsService.findOne(id);
   }
 
   @UseGuards(JwtAuthGuard)

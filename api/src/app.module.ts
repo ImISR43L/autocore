@@ -5,6 +5,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
+import { BullModule } from '@nestjs/bull'; // <--- IMPORTANTE
+
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { ClassroomsModule } from './classrooms/classrooms.module';
@@ -14,8 +16,16 @@ import { AnnouncementsModule } from './announcements/announcements.module';
 
 @Module({
   imports: [
-    // Carrega o .env automaticamente
     ConfigModule.forRoot({ isGlobal: true }),
+
+    // === ADICIONE ESTE BLOCO ===
+    BullModule.forRoot({
+      redis: {
+        host: process.env.REDIS_HOST || 'redis', // Nome do serviço no docker-compose
+        port: Number(process.env.REDIS_PORT) || 6379,
+      },
+    }),
+    // ===========================
 
     ThrottlerModule.forRoot([
       {
@@ -28,9 +38,9 @@ import { AnnouncementsModule } from './announcements/announcements.module';
       type: 'postgres',
       host: process.env.DB_HOST,
       port: parseInt(process.env.DB_PORT || '5432'),
-      username: process.env.DB_USER, // <--- GARANTA QUE ESTÁ DB_USER
+      username: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME, // <--- DB_NAME ou DB_DATABASE, verifique seu .env
+      database: process.env.DB_NAME,
       autoLoadEntities: true,
       synchronize: true,
     }),

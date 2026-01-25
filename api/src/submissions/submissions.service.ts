@@ -2,15 +2,16 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { InjectQueue } from '@nestjs/bull'; // <--- Importe
+import type { Queue } from 'bull';
 import { Repository } from 'typeorm';
-import axios from 'axios';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
 import { Submission } from './entities/submission.entity';
-import { Problem } from '../problems/entities/problem.entity';
-import { WrapperGenerator } from './wrapper-generator';
+import { Problem, ProblemType } from '../problems/entities/problem.entity';
 
 interface LanguageConfig {
   fileName: string;
@@ -19,11 +20,13 @@ interface LanguageConfig {
 
 @Injectable()
 export class SubmissionsService {
+  private readonly logger = new Logger(SubmissionsService.name);
   constructor(
     @InjectRepository(Submission)
     private submissionsRepository: Repository<Submission>,
     @InjectRepository(Problem)
     private problemsRepository: Repository<Problem>,
+    @InjectQueue('submissions') private submissionsQueue: Queue,
   ) {}
 
   async getProblemStats(problemId: string) {
@@ -91,146 +94,89 @@ export class SubmissionsService {
   }
 
   async create(createSubmissionDto: CreateSubmissionDto, userId: number) {
-    console.log('[DEBUG] === NOVA SUBMISSÃO (TIMEOUT PROTECTION) ===');
     const { code, language_id, problem_id } = createSubmissionDto;
-    const langId = Number(language_id);
 
-    try {
-      const problem = await this.problemsRepository.findOne({
-        where: { id: String(problem_id) },
-        relations: ['testCases', 'classroom', 'classroom.owner'],
-      });
+    const problem = await this.problemsRepository.findOne({
+      where: { id: String(problem_id) },
+      relations: ['classroom', 'classroom.owner'],
+    });
 
-      if (!problem) throw new NotFoundException('Problema não encontrado');
+    if (!problem) throw new NotFoundException('Problema não encontrado');
 
-      if (problem.classroom && problem.classroom.owner.id === userId) {
-        throw new ForbiddenException(
-          'Professores não podem realizar submissões em suas próprias atividades.',
-        );
-      }
-
-      const parameters = problem.parameters || [];
-      const fullCode = WrapperGenerator.generate(
-        langId,
-        parameters,
-        problem.returnType || 'void',
-        code,
+    if (problem.classroom && problem.classroom.owner.id === userId) {
+      throw new ForbiddenException(
+        'Professores não podem realizar submissões.',
       );
+    }
 
-      const languageConfig: LanguageConfig = this.getLanguageConfig(langId);
-      const mockJudgeUrl = 'http://go-judge:5050';
-      const testCases = problem.testCases || [];
-
-      let finalVerdict = 'Pending';
-      let executionStdout = '';
-      let executionStderr = '';
-
-      const casesToRun =
-        testCases.length > 0
-          ? testCases
-          : [{ input: '', expectedOutput: '', isHidden: false }];
-      console.log(`[DEBUG] Executando ${casesToRun.length} casos.`);
-
-      for (const [index, tc] of casesToRun.entries()) {
-        const payload = {
-          cmd: [
-            {
-              args: languageConfig.runCommand,
-              env: ['PATH=/usr/bin:/bin:/usr/local/bin'],
-              files: [
-                { content: tc.input || '' },
-                { name: 'stdout', max: 10240 },
-                { name: 'stderr', max: 10240 },
-              ],
-              cpuLimit: 10000000000, // 10 Segundos (Dê folga para o startup)
-              memoryLimit: 1024 * 1024 * 1024, // 1 GB (Previne o OOM Killer do Host)
-              procLimit: 100,
-
-              copyIn: {
-                [languageConfig.fileName]: { content: fullCode },
-              },
-            },
-          ],
-        };
-
-        try {
-          // ADICIONADO: Timeout de 10 segundos para evitar travamento eterno (Pending)
-          const res = await axios.post(`${mockJudgeUrl}/run`, payload, {
-            timeout: 10000,
-          });
-          const result = res.data[0];
-
-          if (result.status !== 'Accepted') {
-            console.error(
-              `[DEBUG] FALHA CASO ${index + 1}:`,
-              JSON.stringify(result),
-            );
-          }
-
-          if (result.status !== 'Accepted' || result.exitStatus !== 0) {
-            finalVerdict =
-              result.status === 'Accepted' ? 'Runtime Error' : result.status;
-            executionStderr = result.files['stderr'] || '';
-
-            if (!executionStderr && (result as any).error) {
-              executionStderr = `System Error: ${(result as any).error}`;
-            }
-            break;
-          }
-
-          if (testCases.length > 0) {
-            const actual = (result.files['stdout'] || '').trim();
-            const expected = (tc.expectedOutput || '').trim();
-            if (actual !== expected) {
-              finalVerdict = 'Wrong Answer';
-              if (tc.isHidden) {
-                executionStdout = 'Caso de teste oculto falhou.';
-                // Opcional: Se quiser ser ainda mais restrito, deixe vazio ou use uma mensagem genérica
-              } else {
-                executionStdout = `Esperado: ${expected}\nObtido: ${actual}`;
-              }
-              // === FIM DA CORREÇÃO ===
-
-              break;
-            }
-          } else {
-            finalVerdict = 'Accepted';
-            executionStdout = result.files['stdout'] || '';
-          }
-        } catch (axiosError: any) {
-          console.error('[DEBUG] ERRO AXIOS:', axiosError.message);
-          if (axiosError.code === 'ECONNABORTED') {
-            finalVerdict = 'Time Limit Exceeded (System)';
-            executionStderr = 'O tempo limite de conexão com o Juiz expirou.';
-          } else {
-            finalVerdict = 'System Error';
-            executionStderr = axiosError.message;
-          }
-          break;
+    // Validações de Prova... (mantidas)
+    if (problem.type === ProblemType.EXAM) {
+      const now = new Date();
+      if (
+        problem.startedAt &&
+        problem.timeLimit &&
+        now.getTime() - problem.startedAt.getTime() >
+          problem.timeLimit * 60 * 1000
+      ) {
+        throw new ForbiddenException('Tempo de prova esgotado.');
+      }
+      if (problem.maxAttempts) {
+        const count = await this.submissionsRepository.count({
+          where: { problem: { id: String(problem.id) }, user: { id: userId } },
+        });
+        if (count >= problem.maxAttempts) {
+          throw new ForbiddenException('Limite de tentativas excedido.');
         }
       }
-
-      if (finalVerdict === 'Pending') {
-        finalVerdict = 'Accepted';
-      }
-
-      console.log(`[DEBUG] Veredito Final: ${finalVerdict}`);
-
-      const sub = this.submissionsRepository.create({
-        code,
-        language_id: langId,
-        status: finalVerdict,
-        stdout: executionStdout,
-        stderr: executionStderr,
-        problem,
-        user: { id: userId },
-      });
-
-      return this.submissionsRepository.save(sub);
-    } catch (error) {
-      console.error('[DEBUG] ERRO CRÍTICO NA API:', error);
-      throw error;
     }
+    if (problem.deadline && new Date() > problem.deadline) {
+      if (problem.classroom.owner.id !== userId) {
+        throw new ForbiddenException('O prazo de entrega já encerrou.');
+      }
+    }
+
+    // Criação
+    const submission = this.submissionsRepository.create({
+      code,
+      language_id: Number(language_id),
+      status: 'Queued',
+      stdout: '',
+      stderr: '',
+      problem,
+      user: { id: userId },
+    });
+
+    const savedSubmission = await this.submissionsRepository.save(submission);
+
+    // LOG DE DEBUG
+    this.logger.log(
+      `Submissão ${savedSubmission.id} criada. Enviando para fila Redis...`,
+    );
+
+    try {
+      await this.submissionsQueue.add('execute-code', {
+        submissionId: savedSubmission.id,
+      });
+      this.logger.log(
+        `Submissão ${savedSubmission.id} enviada para fila com sucesso.`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `FALHA ao enviar submissão ${savedSubmission.id} para fila: ${error.message}`,
+      );
+      // Opcional: Reverter status para 'Error' se não conseguir enfileirar
+    }
+
+    return savedSubmission;
+  }
+
+  async findOne(id: string) {
+    const submission = await this.submissionsRepository.findOne({
+      where: { id },
+      relations: ['problem', 'user'],
+    });
+    if (!submission) throw new NotFoundException('Submissão não encontrada');
+    return submission;
   }
 
   async findAllByProblem(problemId: string) {

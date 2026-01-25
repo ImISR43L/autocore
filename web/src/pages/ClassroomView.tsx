@@ -134,6 +134,9 @@ const LANGUAGE_MAP: Record<number, string> = {
   60: "go",
 };
 
+// Intervalo de polling para atualização de dados (5 segundos)
+const POLLING_INTERVAL = 5000;
+
 export default function ClassroomView() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const { id } = useParams();
@@ -186,8 +189,6 @@ export default function ClassroomView() {
   >("WAITING");
   const [activeChildIndex, setActiveChildIndex] = useState(0);
 
-  const POLLING_INTERVAL = 5000; // 5 segundos
-
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
     if (!token) return null;
@@ -207,7 +208,6 @@ export default function ClassroomView() {
       ? currentProblem.children[activeChildIndex]
       : currentProblem;
 
-  // Envolvido em useCallback para ser usado em dependências de useEffect
   const getStorageKey = useCallback(
     (probId: string, langId: number) => {
       if (!myUserId) return null;
@@ -294,7 +294,6 @@ export default function ClassroomView() {
     localStorage.setItem(`languageId`, String(languageId));
   }, [languageId]);
 
-  // Funções de Fetch movidas para cima (antes dos useEffects que as usam) para evitar hoisting issues
   const fetchClassroomData = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
@@ -378,6 +377,29 @@ export default function ClassroomView() {
     fetchClassroomData();
   }, [fetchClassroomData]);
 
+  // === POLLING DE DADOS DA TURMA (Atualização automática de novos exercícios) ===
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Fetch silencioso para atualizar lista de problemas/avisos
+      fetchClassroomData();
+    }, 10000); // 10s
+    return () => clearInterval(interval);
+  }, [fetchClassroomData]);
+
+  // === POLLING DE SUBMISSÕES E ESTATÍSTICAS ===
+  useEffect(() => {
+    if (activeTab !== "classwork" || !displayProblem) return;
+
+    const interval = setInterval(() => {
+      fetchSubmissions(displayProblem.id);
+      if (isOwner) {
+        fetchProblemStats(displayProblem.id);
+      }
+    }, POLLING_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [activeTab, displayProblem, isOwner, fetchSubmissions, fetchProblemStats]);
+
   useEffect(() => {
     if (!selectedProblemId) return;
     const fetchProblemDetails = async () => {
@@ -422,6 +444,9 @@ export default function ClassroomView() {
   useEffect(() => {
     if (activeTab === "analytics" && isOwner && id) {
       fetchStats();
+      // Polling para estatísticas gerais
+      const interval = setInterval(fetchStats, 10000);
+      return () => clearInterval(interval);
     }
   }, [activeTab, isOwner, id, fetchStats]);
 
@@ -461,39 +486,6 @@ export default function ClassroomView() {
     }, 1000);
     return () => clearInterval(interval);
   }, [currentProblem]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Fetch silencioso (sem loading spinner global se possível)
-      fetchClassroomData();
-    }, 10000); // 10s para dados estruturais (menos críticos)
-
-    return () => clearInterval(interval);
-  }, [fetchClassroomData]);
-
-  // Atualiza gráficos e histórico se estiver na aba de atividades
-  useEffect(() => {
-    if (activeTab !== "classwork" || !displayProblem) return;
-
-    const interval = setInterval(() => {
-      fetchSubmissions(displayProblem.id);
-      if (isOwner) {
-        fetchProblemStats(displayProblem.id);
-      }
-    }, POLLING_INTERVAL); // 5s para dados dinâmicos (submissões)
-
-    return () => clearInterval(interval);
-  }, [activeTab, displayProblem, isOwner, fetchSubmissions, fetchProblemStats]);
-
-  useEffect(() => {
-    if (activeTab !== "analytics" || !isOwner || !id) return;
-
-    const interval = setInterval(() => {
-      fetchStats();
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, [activeTab, isOwner, id, fetchStats]);
 
   const handleCodeChange = (value: string | undefined) => {
     const val = value || "";
@@ -667,45 +659,130 @@ export default function ClassroomView() {
     }
   };
 
+  // === FUNÇÃO DE SUBMISSÃO CORRIGIDA ===
+  // ... imports e código anterior
+
   const submitSolution = async () => {
     if (!displayProblem) return toast.warning("Selecione um exercício!");
     setLoading(true);
     setVerdict(null);
     setExecutionOutput(null);
     setExecutionError(null);
+
     try {
       const token = localStorage.getItem("token");
+      const headers = { Authorization: `Bearer ${token}` };
+
+      // 1. POST: Cria submissão
       const res = await axios.post(
         `${API_URL}/submissions`,
         { code, language_id: languageId, problem_id: displayProblem.id },
-        { headers: { Authorization: `Bearer ${token}` } },
+        { headers },
       );
-      const data = res.data;
-      setVerdict(data.status);
-      setExecutionOutput(data.stdout);
-      setExecutionError(data.stderr);
-      if (data.status === "Accepted") toast.success("Solução Aceite!");
-      else toast.error("Erro/Incorreto");
+
+      let submission = res.data;
+      const submissionId = submission.id;
+
+      // 2. POLLING OTIMIZADO
+      const pendingStatuses = ["Queued", "Processing", "Pending"];
+      let attempts = 0;
+      const maxAttempts = 40; // 40 * 1s = 40 segundos de tolerância
+
+      while (
+        pendingStatuses.includes(submission.status) &&
+        attempts < maxAttempts
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // Espera 1s
+
+        try {
+          // Cache-buster (?t=...) força o navegador a buscar dados novos
+          const pollRes = await axios.get(
+            `${API_URL}/submissions/${submissionId}?t=${Date.now()}`,
+            { headers },
+          );
+          submission = pollRes.data;
+
+          // Debug no console do navegador para acompanhar
+          console.log(`Polling [${attempts}]: ${submission.status}`);
+        } catch (e) {
+          console.error("Erro de conexão no polling", e);
+        }
+        attempts++;
+      }
+
+      // 3. ATUALIZAÇÃO FINAL DA UI
+      setVerdict(submission.status);
+      setExecutionOutput(submission.stdout);
+      setExecutionError(submission.stderr);
+
+      switch (submission.status) {
+        case "Accepted":
+          toast.success("Solução Aceita! Parabéns! 🚀");
+          break;
+        case "Wrong Answer":
+          toast.error("Resposta Incorreta. Verifique os casos de teste.");
+          break;
+        case "Runtime Error":
+          toast.error("Erro de Execução (Crash).");
+          break;
+        case "Compilation Error":
+          toast.error("Erro de Compilação.");
+          break;
+        case "Memory Limit Exceeded":
+          toast.error("Limite de Memória Excedido.");
+          break;
+        case "Time Limit Exceeded":
+          toast.error("Tempo Limite Excedido.");
+          break;
+        default:
+          if (pendingStatuses.includes(submission.status)) {
+            toast.warning("O servidor está demorando para responder.");
+          } else {
+            toast.error(`Erro: ${submission.status}`);
+          }
+      }
+
+      // Atualiza listas em background
       fetchSubmissions(displayProblem.id);
       if (isOwner) fetchProblemStats(displayProblem.id);
-    } catch (error: unknown) {
+    } catch (error: any) {
+      console.error("Erro na submissão:", error);
+
       if (axios.isAxiosError(error) && error.response) {
-        if (error.response.status === 403) {
+        const status = error.response.status;
+        const msg = error.response.data?.message;
+
+        if (status === 403) {
           setVerdict("Bloqueado");
-          setExecutionError(error.response.data.message);
-          toast.error(error.response.data.message);
-        } else {
-          setVerdict("Erro");
-          toast.error("Falha na submissão");
+          setExecutionError(msg || "Ação proibida.");
+          toast.error(msg || "Você não tem permissão para realizar esta ação.");
+        }
+        // TRATAMENTO DE RATE LIMIT (429)
+        else if (status === 429) {
+          setVerdict("Muitas Tentativas");
+          setExecutionError(
+            "Você enviou muitas submissões em pouco tempo.\nO sistema limita a 10 envios por minuto para garantir estabilidade.",
+          );
+          toast.warning("Limite de envios excedido. Aguarde 1 minuto.");
+        }
+        // OUTROS ERROS DE API
+        else {
+          setVerdict("Erro de Servidor");
+          setExecutionError(
+            typeof msg === "string" ? msg : JSON.stringify(msg),
+          );
+          toast.error("Ocorreu um erro ao processar sua solicitação.");
         }
       } else {
-        setVerdict("Erro");
-        toast.error("Erro inesperado");
+        // Erros de rede ou crash no frontend
+        setVerdict("Erro de Conexão");
+        toast.error("Não foi possível contatar o servidor.");
       }
     } finally {
       setLoading(false);
     }
   };
+  // ======================================
 
   const handleStartExam = async () => {
     if (!confirm("Iniciar?")) return;
@@ -1356,7 +1433,11 @@ export default function ClassroomView() {
               {verdict && (
                 <div
                   className={`ide-feedback-box ${
-                    verdict === "Accepted" ? "success" : "error"
+                    verdict === "Accepted"
+                      ? "success"
+                      : ["Queued", "Processing"].includes(verdict)
+                        ? "warning"
+                        : "error"
                   }`}
                 >
                   <div className="feedback-header">
