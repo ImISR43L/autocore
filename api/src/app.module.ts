@@ -6,7 +6,7 @@ import { AppService } from './app.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull'; // <--- IMPORTANTE
-
+import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { ClassroomsModule } from './classrooms/classrooms.module';
@@ -50,6 +50,7 @@ import { AnnouncementsModule } from './announcements/announcements.module';
     ProblemsModule,
     SubmissionsModule,
     AnnouncementsModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [

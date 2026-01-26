@@ -599,14 +599,14 @@ export default function ClassroomView() {
   const handleStartInspection = async (targetSubmission: Submission) => {
     setInspectingUser(targetSubmission.user);
     // Limpa a seleção anterior
-    setStudentSubmissions({}); 
-    
+    setStudentSubmissions({});
+
     // Recupera o ID do problema da submissão clicada (agora virá do backend)
     // Forçamos string para garantir comparação correta
-    const targetProblemId = targetSubmission.problem?.id 
-      ? String(targetSubmission.problem.id) 
-      : targetSubmission.problemId 
-        ? String(targetSubmission.problemId) 
+    const targetProblemId = targetSubmission.problem?.id
+      ? String(targetSubmission.problem.id)
+      : targetSubmission.problemId
+        ? String(targetSubmission.problemId)
         : null;
 
     if (currentProblem) {
@@ -614,7 +614,7 @@ export default function ClassroomView() {
         currentProblem.children && currentProblem.children.length > 0
           ? currentProblem.children
           : [currentProblem];
-      
+
       const token = localStorage.getItem("token");
       const loadedSubs: Record<string, Submission> = {};
       let foundIndex = 0; // Índice da aba para abrir
@@ -627,7 +627,7 @@ export default function ClassroomView() {
         if (targetProblemId === pIdString) {
           loadedSubs[p.id] = targetSubmission;
           foundIndex = i; // Marcamos esta aba para abrir
-          continue; 
+          continue;
         }
 
         // Para as outras questões, buscamos a última versão
@@ -881,6 +881,34 @@ export default function ClassroomView() {
   const activeSubmission = activeInspectionProblem
     ? studentSubmissions[activeInspectionProblem.id]
     : null;
+
+  const handleExportGrades = async () => {
+    if (!classroom) return;
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.get(
+        `${API_URL}/reports/classroom/${classroom.id}/csv`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          responseType: "blob", // Importante: Trata a resposta como arquivo binário
+        },
+      );
+
+      // Cria um link temporário para forçar o download no navegador
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      // Tenta extrair o nome do arquivo do header ou usa um padrão
+      link.setAttribute("download", `Relatorio_Turma_${classroom.code}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("Relatório gerado com sucesso! 📊");
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao gerar relatório.");
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -1170,6 +1198,13 @@ export default function ClassroomView() {
                 📊 {isOwner ? "Turma" : "Histórico"}
               </button>
             )}
+
+            <button
+              onClick={handleExportGrades}
+              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded transition-colors"
+            >
+              📊 Exportar Notas
+            </button>
 
             <div
               style={{

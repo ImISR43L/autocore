@@ -4,6 +4,8 @@ import {
   PrimaryGeneratedColumn,
   OneToMany,
   ManyToMany,
+  UpdateDateColumn,
+  CreateDateColumn,
 } from 'typeorm';
 import { Classroom } from '../../classrooms/entities/classroom.entity';
 import { Submission } from '../../submissions/entities/submission.entity';
@@ -16,8 +18,17 @@ export class User {
   @Column({ unique: true })
   email: string;
 
-  @Column()
+  @Column({ nullable: true })
+  name: string;
+
+  @Column({ select: false })
   password: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 
   // Turmas que sou dono (Professor)
   @OneToMany(() => Classroom, (classroom) => classroom.owner)

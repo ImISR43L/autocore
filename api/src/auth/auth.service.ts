@@ -18,14 +18,19 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  // 1. Tipagem correta do retorno (Remove 'any')
   async validateUser(
     email: string,
     pass: string,
   ): Promise<Omit<User, 'password'> | null> {
-    const user = await this.usersRepository.findOne({ where: { email } });
+    // CORREÇÃO: Usamos createQueryBuilder para incluir o campo 'password'
+    // que agora está oculto por padrão (select: false).
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password') // <--- Traz a senha apenas aqui
+      .where('user.email = :email', { email })
+      .getOne();
+
     if (user && (await bcrypt.compare(pass, user.password))) {
-      // 2. Ignora o erro de variável não usada para a desestruturação da password
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password, ...result } = user;
       return result;
@@ -38,11 +43,13 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
-    // Agora 'user' é tipado, então .email e .id são seguros
+
     const payload = { email: user.email, sub: user.id, userId: user.id };
+
     return {
       access_token: this.jwtService.sign(payload),
-      user: { id: user.id, email: user.email },
+      // Retornamos o nome também para o frontend usar
+      user: { id: user.id, email: user.email, name: user.name },
     };
   }
 
@@ -53,6 +60,7 @@ export class AuthService {
       const user = this.usersRepository.create({
         email: loginDto.email,
         password: hashedPassword,
+        // O nome começa null na criação simples, mas já preparamos o campo
       });
 
       const savedUser = await this.usersRepository.save(user);
@@ -62,12 +70,16 @@ export class AuthService {
         sub: savedUser.id,
         userId: savedUser.id,
       };
+
       return {
         access_token: this.jwtService.sign(payload),
-        user: { id: savedUser.id, email: savedUser.email },
+        user: {
+          id: savedUser.id,
+          email: savedUser.email,
+          name: savedUser.name,
+        },
       };
     } catch (error: unknown) {
-      // 3. Tratamento seguro de erro (sem 'any')
       if (
         error &&
         typeof error === 'object' &&
