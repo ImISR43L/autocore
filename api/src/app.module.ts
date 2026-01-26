@@ -4,8 +4,10 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { WinstonModule } from 'nest-winston';
+import { winstonConfig } from './logger/winston.config';
 import { ConfigModule } from '@nestjs/config';
-import { BullModule } from '@nestjs/bull'; // <--- IMPORTANTE
+import { BullModule } from '@nestjs/bull';
 import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
@@ -13,9 +15,11 @@ import { ClassroomsModule } from './classrooms/classrooms.module';
 import { ProblemsModule } from './problems/problems.module';
 import { SubmissionsModule } from './submissions/submissions.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
+    WinstonModule.forRoot(winstonConfig),
     ConfigModule.forRoot({ isGlobal: true }),
 
     // === ADICIONE ESTE BLOCO ===
@@ -51,6 +55,7 @@ import { AnnouncementsModule } from './announcements/announcements.module';
     SubmissionsModule,
     AnnouncementsModule,
     ReportsModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [
