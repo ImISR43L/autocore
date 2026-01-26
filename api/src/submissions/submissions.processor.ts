@@ -2,7 +2,6 @@ import {
   Process,
   Processor,
   OnQueueActive,
-  OnQueueFailed,
   OnQueueCompleted,
 } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
@@ -42,45 +41,31 @@ export class SubmissionsProcessor {
     this.logger.log('SubmissionsProcessor inicializado e aguardando jobs...');
   }
 
+  // --- Função Auxiliar para limpar o Output ---
+  // O Postgres rejeita bytes nulos (\0), então precisamos removê-los
+  private cleanOutput(text: string | undefined): string {
+    if (!text) return '';
+    // Remove bytes nulos (\u0000) que quebram o banco de dados
+    return text.replace(/\u0000/g, '');
+  }
+
   @OnQueueActive()
   onActive(job: Job) {
-    this.logger.debug(
-      `[Job ${job.id}] Iniciado. Dados: ${JSON.stringify(job.data)}`,
-    );
-  }
-
-  @OnQueueCompleted()
-  onCompleted(job: Job) {
-    this.logger.debug(`[Job ${job.id}] Concluído com sucesso.`);
-  }
-
-  @OnQueueFailed()
-  onFailed(job: Job, error: any) {
-    this.logger.error(`[Job ${job.id}] FALHOU: ${error.message}`, error.stack);
+    this.logger.debug(`[Job ${job.id}] Iniciado.`);
   }
 
   @Process('execute-code')
   async handleExecution(job: Job<{ submissionId: string }>) {
     const { submissionId } = job.data;
-    this.logger.debug(`[Job ${job.id}] Buscando submissão ID: ${submissionId}`);
 
-    // 1. Recupera a submissão e o problema
     const submission = await this.submissionsRepository.findOne({
       where: { id: submissionId },
       relations: ['problem', 'problem.testCases', 'user', 'problem.classroom'],
     });
 
-    if (!submission) {
-      this.logger.error(`[Job ${job.id}] Submissão não encontrada no banco.`);
-      return;
-    }
-    if (!submission.problem) {
-      this.logger.error(`[Job ${job.id}] Problema associado não encontrado.`);
-      return;
-    }
+    if (!submission || !submission.problem) return;
 
-    // Atualiza status para Processing
-    this.logger.debug(`[Job ${job.id}] Atualizando status para Processing...`);
+    // Atualiza status inicial
     submission.status = 'Processing';
     await this.submissionsRepository.save(submission);
 
@@ -88,11 +73,7 @@ export class SubmissionsProcessor {
     const langId = Number(language_id);
     const mockJudgeUrl = 'http://go-judge:5050';
 
-    this.logger.debug(
-      `[Job ${job.id}] Gerando Wrapper para linguagem ${langId}...`,
-    );
-
-    // 2. Gera o código final com Wrapper
+    // Gerar Wrapper
     const parameters = problem.parameters || [];
     const fullCode = WrapperGenerator.generate(
       langId,
@@ -100,15 +81,18 @@ export class SubmissionsProcessor {
       problem.returnType || 'void',
       code,
     );
+
     const languageConfig = this.getLanguageConfig(langId);
     let finalVerdict = 'Pending';
     let executionStdout = '';
     let executionStderr = '';
+
     const testCases = problem.testCases || [];
 
     // === EXECUÇÃO ===
     try {
       if (testCases.length === 0) {
+        // --- MODO SEM TESTES (Simples Execução) ---
         this.logger.debug(
           `[Job ${job.id}] Executando sem casos de teste (Modo Simples)...`,
         );
@@ -139,18 +123,15 @@ export class SubmissionsProcessor {
         );
         const result = res.data[0];
 
-        this.logger.debug(
-          `[Job ${job.id}] Resposta do Go-Judge (Simples): ExitStatus ${result.exitStatus}`,
-        );
-
         if (result.exitStatus === 0) {
-          finalVerdict = 'Accepted';
+          finalVerdict = 'No Tests'; // Aviso: Código rodou mas não foi testado
           executionStdout = result.files['stdout'] || '';
         } else {
           finalVerdict = 'Runtime Error';
           executionStderr = result.files['stderr'] || 'Erro desconhecido';
         }
       } else {
+        // --- MODO COM TESTES (Juiz Online) ---
         this.logger.debug(
           `[Job ${job.id}] Executando ${testCases.length} casos de teste...`,
         );
@@ -177,25 +158,26 @@ export class SubmissionsProcessor {
             ],
           };
 
-          this.logger.verbose(`[Job ${job.id}] Enviando Caso ${index + 1}...`);
           const res = await axios.post<ExecutorResponse[]>(
             `${mockJudgeUrl}/run`,
             payload,
           );
           const result = res.data[0];
 
+          // Verifica limites
           if (result.status === 'Memory Limit Exceeded') {
             finalVerdict = 'Memory Limit Exceeded';
             executionStderr = 'Limite de memória excedido';
             break;
           }
-
+          // Verifica Crash
           if (result.exitStatus !== 0) {
             finalVerdict = 'Runtime Error';
             executionStderr = result.files['stderr'] || '';
             break;
           }
 
+          // Verifica Resultado
           const actual = (result.files['stdout'] || '').trim();
           const expected = tc.expectedOutput.trim();
 
@@ -206,7 +188,7 @@ export class SubmissionsProcessor {
             } else {
               executionStdout = `Esperado: ${expected}\nObtido: ${actual}`;
             }
-            break;
+            break; // Para no primeiro erro
           }
         }
       }
@@ -218,20 +200,26 @@ export class SubmissionsProcessor {
       executionStderr = 'Falha ao contatar o Juiz.';
     }
 
-    // 3. Salva o resultado final
+    // === SALVAMENTO FINAL ===
     this.logger.log(`[Job ${job.id}] Veredito Final: ${finalVerdict}`);
+    
     submission.status = finalVerdict;
-    submission.stdout = executionStdout;
-    submission.stderr = executionStderr;
+    // IMPORTANTE: Limpar o output antes de salvar no Postgres
+    submission.stdout = this.cleanOutput(executionStdout);
+    submission.stderr = this.cleanOutput(executionStderr);
 
     const saved = await this.submissionsRepository.save(submission);
 
+    // === NOTIFICAÇÕES VIA SOCKET ===
+    
+    // 1. Notifica o Aluno
     if (saved.user?.id) {
       this.submissionsGateway.server
         .to(`user-${saved.user.id}`)
         .emit('submission-finished', saved);
     }
 
+    // 2. Notifica a Turma (Dashboard do Professor)
     if (submission.problem.classroom?.id) {
       this.submissionsGateway.server
         .to(`classroom-${submission.problem.classroom.id}`)

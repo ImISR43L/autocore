@@ -7,31 +7,43 @@ export class WrapperGenerator {
     returnType: string,
     userCode: string,
   ): string {
+    // Sanitização de Input (Segurança)
+    const safeCode = this.sanitize(userCode);
+
     switch (languageId) {
       case 71:
-        return this.python(params, userCode);
+        return this.python(params, safeCode);
       case 63:
-        return this.javascript(params, userCode);
+        return this.javascript(params, safeCode);
       case 62:
-        return this.java(params, returnType, userCode);
+        return this.java(params, returnType, safeCode);
       case 54:
-        return this.cpp(params, returnType, userCode);
-      // Adicionar outros conforme necessário
+        return this.cpp(params, returnType, safeCode);
       default:
-        return userCode;
+        return safeCode;
     }
   }
 
-  // --- PYTHON: Usa json.loads para ler qualquer estrutura ---
+  // --- Método de Sanitização ---
+  private static sanitize(code: string): string {
+    if (!code) return '';
+    return code
+      .replace(/\0/g, '') // Remove Null Bytes
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // Remove controles ASCII
+      .replace(/\u3164/g, ''); // Remove Hangul Filler
+  }
+
+  // --- PYTHON CORRIGIDO ---
   private static python(
     params: ParameterDefinition[],
     userCode: string,
   ): string {
     const args = params.map((p, i) => `arg${i}`).join(', ');
 
-    // CORREÇÃO: Aumentado para 8 espaços para alinhar dentro do segundo 'if'
+    // CORREÇÃO DE INDENTAÇÃO: Agora usamos 12 espaços para alinhar
+    // corretamente dentro do bloco 'try' -> 'if'
     const readers = params
-      .map((p, i) => `        arg${i} = json.loads(lines[${i}])`)
+      .map((p, i) => `            arg${i} = json.loads(lines[${i}])`)
       .join('\n');
 
     return `
@@ -41,18 +53,21 @@ import json
 ${userCode}
 
 if __name__ == "__main__":
-    lines = sys.stdin.read().splitlines()
-    # Filtra linhas vazias que podem vir do final do input
-    lines = [l for l in lines if l.strip() != ""]
-    
-    if len(lines) >= ${params.length}:
+    try:
+        lines = sys.stdin.read().splitlines()
+        lines = [l for l in lines if l.strip() != ""]
+        
+        if len(lines) >= ${params.length}:
 ${readers}
-        result = solve(${args})
-        print(json.dumps(result) if not isinstance(result, str) else result)
+            result = solve(${args})
+            print(json.dumps(result) if not isinstance(result, str) else result)
+    except Exception as e:
+        print(f"Wrapper Error: {e}", file=sys.stderr)
+        exit(1)
 `;
   }
 
-  // --- JAVASCRIPT: Usa JSON.parse ---
+  // --- JAVASCRIPT ---
   private static javascript(
     params: ParameterDefinition[],
     userCode: string,
@@ -76,11 +91,14 @@ ${readers}
     
     const result = solve(${args});
     console.log(typeof result === 'object' ? JSON.stringify(result) : result);
-} catch(e) { console.error(e); }
+} catch(e) { 
+    console.error(e); 
+    process.exit(1);
+}
 `;
   }
 
-  // --- C++: Parser manual simples para vetores [1,2,3] ---
+  // --- C++ ---
   private static cpp(
     params: ParameterDefinition[],
     returnType: string,
@@ -95,7 +113,6 @@ ${readers}
       'string[]': 'std::vector<std::string>',
     };
 
-    // Gera as variáveis e leituras
     let readers = '';
     let callArgs = '';
 
@@ -104,7 +121,6 @@ ${readers}
       callArgs += (i > 0 ? ', ' : '') + `arg${i}`;
 
       if (p.type.endsWith('[]')) {
-        // Lógica simples para ler vetor formato "[1,2,3]"
         readers += `
     ${cppType} arg${i};
     std::string line${i};
@@ -112,7 +128,6 @@ ${readers}
     arg${i} = parseVector<${p.type === 'int[]' ? 'int' : 'std::string'}>(line${i});
             `;
       } else {
-        // Tipos primitivos
         readers += `
     ${cppType} arg${i};
     if (std::cin.peek() == '\\n') std::cin.ignore(); 
@@ -132,7 +147,6 @@ ${readers}
 #include <sstream>
 #include <algorithm>
 
-// Helper para parsear "[1,2,3]"
 template <typename T>
 std::vector<T> parseVector(std::string s) {
     std::vector<T> res;
@@ -152,15 +166,19 @@ std::vector<T> parseVector(std::string s) {
 ${userCode}
 
 int main() {
+    try {
 ${readers}
-    auto result = solve(${callArgs});
-    ${printResult}
+        auto result = solve(${callArgs});
+        ${printResult}
+    } catch (...) {
+        return 1;
+    }
     return 0;
 }
 `;
   }
 
-  // --- JAVA: Scanner + Parse manual ---
+  // --- JAVA ---
   private static java(
     params: ParameterDefinition[],
     returnType: string,
@@ -175,10 +193,6 @@ ${readers}
       'string[]': 'String[]',
     };
 
-    // Precisamos envelopar o código do usuário (Solution class) dentro do Main ou vice-versa
-    // Estratégia: O usuário escreve 'class Solution { ... }'
-    // Nós criamos 'public class Main { ... }' que chama Solution.
-
     let readers = '';
     let callArgs = '';
 
@@ -192,7 +206,6 @@ ${readers}
             ${javaType} arg${i} = parseArray${p.type === 'int[]' ? 'Int' : 'Str'}(line${i});
              `;
       } else {
-        // Leituras primitivas
         let nextMethod = 'next()';
         if (p.type === 'int') nextMethod = 'nextInt()';
         if (p.type === 'float') nextMethod = 'nextFloat()';
@@ -200,7 +213,7 @@ ${readers}
 
         readers += `
             ${javaType} arg${i} = scanner.${nextMethod};
-            if (scanner.hasNextLine()) scanner.nextLine(); // consume newline
+            if (scanner.hasNextLine()) scanner.nextLine(); 
              `;
       }
     });
@@ -211,7 +224,6 @@ import java.util.*;
 ${userCode}
 
 public class Main {
-    // Helpers para parsear "[1,2,3]"
     private static int[] parseArrayInt(String s) {
         s = s.replace("[", "").replace("]", "");
         if (s.trim().isEmpty()) return new int[0];
@@ -229,7 +241,7 @@ public class Main {
             Solution sol = new Solution();
             System.out.println(sol.solve(${callArgs}));
         } catch(Exception e) {
-            // e.printStackTrace();
+            System.exit(1);
         }
         scanner.close();
     }
