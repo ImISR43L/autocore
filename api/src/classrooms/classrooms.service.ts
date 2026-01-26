@@ -35,15 +35,12 @@ export class ClassroomsService {
 
     const savedClassroom = await this.classroomsRepository.save(classroom);
 
-    // CORREÇÃO: Adicionamos manualmente a propriedade isOwner: true
-    // para que o frontend reconheça que quem criou é o professor.
     return {
       ...savedClassroom,
       isOwner: true,
     };
   }
 
-  // --- RENOMEADO DE join PARA joinClassroom ---
   async joinClassroom(code: string, userId: number) {
     const classroom = await this.classroomsRepository.findOne({
       where: { code },
@@ -70,7 +67,6 @@ export class ClassroomsService {
     return this.classroomsRepository.save(classroom);
   }
 
-  // --- RENOMEADO DE findMyClassrooms PARA findAll ---
   async findAll(userId: number) {
     const teaching = await this.classroomsRepository.find({
       where: { owner: { id: userId } },
@@ -116,7 +112,15 @@ export class ClassroomsService {
       if (classroom.problems) {
         classroom.problems = classroom.problems.filter((p) => {
           if (p.parent) return false;
+
+          // === CORREÇÃO: PRIORIDADE PARA INÍCIO MANUAL ===
+          // Se a prova JÁ COMEÇOU (tem startedAt), ela deve aparecer,
+          // ignorando completamente a data de agendamento (startDate).
+          if (p.startedAt) return true;
+
+          // Se AINDA NÃO começou, aí sim respeitamos o agendamento futuro.
           if (p.startDate && new Date(p.startDate) > now) return false;
+          
           return true;
         });
 

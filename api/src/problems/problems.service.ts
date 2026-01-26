@@ -23,7 +23,6 @@ export class ProblemsService {
     private testCasesRepository: Repository<TestCase>,
   ) {}
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async create(createProblemDto: CreateProblemDto, _userId: number) {
     const {
       testCases,
@@ -43,7 +42,6 @@ export class ProblemsService {
       deadline: deadline ? new Date(deadline) : undefined,
       startDate: startDate ? new Date(startDate) : undefined,
       timeLimit: timeLimit,
-      // CORREÇÃO: Cast explícito para satisfazer a tipagem estrita da Entidade
       parameters: parameters as any,
       classroom: { id: classroomId },
     });
@@ -54,7 +52,6 @@ export class ProblemsService {
           ...q,
           type: problem.type,
           classroom: { id: classroomId },
-          // CORREÇÃO: Cast explícito
           parameters: q.parameters as any,
           testCases: q.testCases.map((tc) =>
             this.testCasesRepository.create({ ...tc }),
@@ -88,26 +85,41 @@ export class ProblemsService {
 
     if (!problem) throw new NotFoundException('Problema não encontrado');
 
-    // Se o usuário NÃO é o dono da turma (é Aluno ou outro Professor), aplicamos restrições.
+    // === CORREÇÃO 1: AUTO-START (Garante liberação no horário agendado) ===
+    // Se a data agendada (startDate) já passou, mas startedAt está vazio,
+    // iniciamos automaticamente usando o horário agendado.
+    if (
+      problem.type === ProblemType.EXAM &&
+      !problem.startedAt &&
+      problem.startDate &&
+      problem.startDate <= new Date()
+    ) {
+      console.log(`[AutoStart] Iniciando prova ${problem.id} automaticamente.`);
+      problem.startedAt = problem.startDate;
+      await this.problemsRepository.save(problem);
+    }
+
+    // Se o usuário NÃO é o dono da turma (é Aluno ou outro Professor)
     if (problem.classroom && problem.classroom.owner.id !== userId) {
-      // 1. LÓGICA ESPECÍFICA DE PROVA (Bloqueio de Acesso)
       if (problem.type === ProblemType.EXAM) {
-        // Se a prova não tem data de início ou a data é futura -> Bloqueia
-        if (!problem.startedAt || problem.startedAt > new Date()) {
+        
+        // Debug: Ajuda a entender por que está bloqueando
+        const now = new Date();
+        if (!problem.startedAt || problem.startedAt > now) {
+          console.log(`[Bloqueio] Prova: ${problem.title}`);
+          console.log(`- StartedAt: ${problem.startedAt}`);
+          console.log(`- Agora (Server): ${now}`);
+          
           throw new ForbiddenException(
-            'Esta prova ainda não foi iniciada pelo professor. Aguarde o início.',
+            'Esta prova ainda não foi iniciada pelo professor.',
           );
         }
       }
 
-      // Aplica-se a TODOS os tipos (Exercícios e Provas)
-
-      // Filtra os casos de teste do problema principal (se houver)
+      // Filtros de segurança (Ocultar casos de teste)
       if (problem.testCases) {
         problem.testCases = problem.testCases.filter((tc) => !tc.isHidden);
       }
-
-      // Filtra os casos de teste das questões filhas (importante para Provas com múltiplas questões)
       if (problem.children && problem.children.length > 0) {
         problem.children.forEach((child) => {
           if (child.testCases) {
@@ -132,7 +144,10 @@ export class ProblemsService {
     if (problem.type !== ProblemType.EXAM)
       throw new ForbiddenException('Apenas provas podem ser iniciadas.');
 
+    // Início Manual: Define para AGORA
     problem.startedAt = new Date();
+    console.log(`[ManualStart] Prova ${problem.id} iniciada em ${problem.startedAt}`);
+    
     return this.problemsRepository.save(problem);
   }
 
@@ -143,7 +158,6 @@ export class ProblemsService {
     });
     if (!problem) throw new NotFoundException('Problema não encontrado');
 
-    // 1. Uso do userId para validação de segurança
     if (problem.classroom && problem.classroom.owner.id !== userId) {
       throw new ForbiddenException('Apenas o dono da turma pode editar.');
     }
@@ -153,18 +167,21 @@ export class ProblemsService {
       testCases,
       parameters,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      classroomId: _classroomId, // Removido da lógica, mas extraído para não ir para o assign
+      classroomId: _classroomId,
       deadline,
       startDate,
       ...dataToUpdate
     } = updateProblemDto;
 
-    // Atualização de Questões (Prova)
+    // === CORREÇÃO 2: PROTEÇÃO CONTRA RESET ===
+    // Remove startedAt do payload para garantir que ele nunca seja setado como null
+    // por uma edição acidental do professor.
+    delete (dataToUpdate as any).startedAt;
+
     if (questions) {
       if (problem.children.length > 0) {
         await this.problemsRepository.remove(problem.children);
       }
-
       problem.children = questions.map((q) =>
         this.problemsRepository.create({
           ...q,
@@ -178,7 +195,6 @@ export class ProblemsService {
       );
     }
 
-    // 3. Atualização de TestCases (Exercício Simples) - AGORA IMPLEMENTADO
     if (testCases) {
       if (problem.testCases && problem.testCases.length > 0) {
         await this.testCasesRepository.remove(problem.testCases);
