@@ -17,6 +17,7 @@ import {
   Cell,
 } from "recharts";
 import { io } from "socket.io-client";
+import { DiffViewer } from "../components/DiffViewer";
 
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
@@ -188,6 +189,32 @@ export default function ClassroomView() {
     "WAITING" | "RUNNING" | "FINISHED"
   >("WAITING");
   const [activeChildIndex, setActiveChildIndex] = useState(0);
+
+  const parseOutput = (stdout: string) => {
+    if (!stdout) return { expected: "", actual: "", isDiffable: false };
+
+    // Normaliza quebras de linha (\r\n viram \n)
+    const normalized = stdout.replace(/\r\n/g, "\n");
+
+    // 1. ^Esperado:\s? -> Começa com "Esperado:" (opcionalmente um espaço)
+    // 2. ([\s\S]*?)    -> Captura TUDO (incluindo quebras de linha) de forma não-gulosa
+    // 3. \nObtido:\s?  -> Até encontrar "\nObtido:" (com espaço opcional)
+    // 4. ([\s\S]*)     -> Captura o resto como "Actual"
+    const regex = /Esperado:\s?([\s\S]*?)\nObtido:\s?([\s\S]*)/;
+
+    const match = normalized.match(regex);
+
+    if (match) {
+      return {
+        expected: match[1], // O conteúdo do Grupo 1
+        actual: match[2], // O conteúdo do Grupo 2
+        isDiffable: true,
+      };
+    }
+
+    // Se falhar o regex, retorna false para mostrar o texto padrão
+    return { expected: "", actual: "", isDiffable: false };
+  };
 
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
@@ -854,6 +881,13 @@ export default function ClassroomView() {
       .slice(0, 3);
   }, [classroom]);
 
+  const lastSubmission = useMemo(() => {
+    if (!submissions || submissions.length === 0) return null;
+    // Busca a primeira submissão que pertence ao usuário logado
+    // (Assumindo que a API retorna ordenado por data decrescente)
+    return submissions.find((s) => s.user?.id === myUserId) || null;
+  }, [submissions, myUserId]);
+
   if (!classroom) return <div className="container">Carregando...</div>;
 
   const isExam = currentProblem?.type === "EXAM";
@@ -1509,7 +1543,79 @@ export default function ClassroomView() {
                   }`}
                 >
                   <div className="feedback-header">
-                    <strong>Resultado:</strong> {verdict}
+                    {lastSubmission && (
+                      <div
+                        className={`mt-4 p-4 rounded-lg border ${
+                          lastSubmission.status === "Accepted"
+                            ? "border-green-500 bg-green-900/20"
+                            : lastSubmission.status === "Processing"
+                              ? "border-yellow-500 bg-yellow-900/20"
+                              : "border-red-500 bg-red-900/20"
+                        }`}
+                      >
+                        <h3 className="font-bold mb-2 flex items-center gap-2">
+                          Resultado:{" "}
+                          <span
+                            className={
+                              lastSubmission.status === "Accepted"
+                                ? "text-green-400"
+                                : "text-red-400"
+                            }
+                          >
+                            {lastSubmission.status}
+                          </span>
+                        </h3>
+
+                        {/* LOGICA DE VISUALIZAÇÃO DO DIFF */}
+                        {lastSubmission.status === "Wrong Answer" &&
+                        lastSubmission.stdout ? (
+                          (() => {
+                            const { expected, actual, isDiffable } =
+                              parseOutput(lastSubmission.stdout);
+
+                            if (isDiffable) {
+                              return (
+                                <DiffViewer
+                                  expected={expected}
+                                  actual={actual}
+                                />
+                              );
+                            }
+
+                            // Fallback caso não consiga parsear (ex: caso de teste oculto)
+                            return (
+                              <pre className="font-mono text-sm whitespace-pre-wrap text-gray-300">
+                                {lastSubmission.stdout}
+                              </pre>
+                            );
+                          })()
+                        ) : (
+                          // Exibição padrão para outros status (Accepted, Runtime Error, etc)
+                          <>
+                            {lastSubmission.stdout && (
+                              <div className="mb-2">
+                                <span className="text-xs font-bold text-gray-500 uppercase">
+                                  Saída Padrão (Stdout):
+                                </span>
+                                <pre className="font-mono text-sm whitespace-pre-wrap text-gray-300 bg-black/30 p-2 rounded mt-1">
+                                  {lastSubmission.stdout}
+                                </pre>
+                              </div>
+                            )}
+                            {lastSubmission.stderr && (
+                              <div>
+                                <span className="text-xs font-bold text-red-500 uppercase">
+                                  Erro (Stderr):
+                                </span>
+                                <pre className="font-mono text-sm whitespace-pre-wrap text-red-300 bg-red-900/10 p-2 rounded mt-1 border border-red-900/30">
+                                  {lastSubmission.stderr}
+                                </pre>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {executionError && (
                     <pre
