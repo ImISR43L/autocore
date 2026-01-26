@@ -182,7 +182,8 @@ export class SubmissionsService {
   async findAllByProblem(problemId: string) {
     return this.submissionsRepository.find({
       where: { problem: { id: problemId } },
-      relations: ['user'],
+      // ADICIONADO 'problem' AQUI
+      relations: ['user', 'problem'], 
       order: { createdAt: 'DESC' },
     });
   }

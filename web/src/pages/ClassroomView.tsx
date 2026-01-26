@@ -562,6 +562,14 @@ export default function ClassroomView() {
     return () => clearInterval(interval);
   }, [currentProblem]);
 
+  useEffect(() => {
+    setVerdict(null);
+    setExecutionOutput(null);
+    setExecutionError(null);
+    setLoading(false); // Garante que o loading pare se trocar rápido
+    loadingRef.current = false;
+  }, [displayProblem?.id]); // Dispara sempre que o ID do problema mudar
+
   const handleCodeChange = (value: string | undefined) => {
     const val = value || "";
     setCode(val);
@@ -588,36 +596,64 @@ export default function ClassroomView() {
     toast.success("Restaurado.");
   };
 
-  const handleStartInspection = async (user: { id: number; email: string }) => {
-    setInspectingUser(user);
-    setActiveInspectionIndex(0);
-    setStudentSubmissions({});
+  const handleStartInspection = async (targetSubmission: Submission) => {
+    setInspectingUser(targetSubmission.user);
+    // Limpa a seleção anterior
+    setStudentSubmissions({}); 
+    
+    // Recupera o ID do problema da submissão clicada (agora virá do backend)
+    // Forçamos string para garantir comparação correta
+    const targetProblemId = targetSubmission.problem?.id 
+      ? String(targetSubmission.problem.id) 
+      : targetSubmission.problemId 
+        ? String(targetSubmission.problemId) 
+        : null;
+
     if (currentProblem) {
       const problemsToFetch =
         currentProblem.children && currentProblem.children.length > 0
           ? currentProblem.children
           : [currentProblem];
+      
       const token = localStorage.getItem("token");
       const loadedSubs: Record<string, Submission> = {};
-      for (const p of problemsToFetch) {
+      let foundIndex = 0; // Índice da aba para abrir
+
+      for (let i = 0; i < problemsToFetch.length; i++) {
+        const p = problemsToFetch[i];
+        const pIdString = String(p.id);
+
+        // Se a submissão clicada é desta questão, usamos ela!
+        if (targetProblemId === pIdString) {
+          loadedSubs[p.id] = targetSubmission;
+          foundIndex = i; // Marcamos esta aba para abrir
+          continue; 
+        }
+
+        // Para as outras questões, buscamos a última versão
         try {
           const res = await axios.get(
             `${API_URL}/submissions/problem/${p.id}`,
             { headers: { Authorization: `Bearer ${token}` } },
           );
           const userSub = res.data.find(
-            (s: Submission) => s.user.id === user.id,
+            (s: Submission) => s.user.id === targetSubmission.user.id,
           );
           if (userSub) loadedSubs[p.id] = userSub;
         } catch (e) {
           console.error(e);
         }
       }
+
       setStudentSubmissions(loadedSubs);
-      const firstProbId = problemsToFetch[0].id;
-      if (loadedSubs[firstProbId]) {
-        setGradingGrade(loadedSubs[firstProbId].grade ?? "");
-        setGradingComment(loadedSubs[firstProbId].teacherComment ?? "");
+      // Abre a aba correta onde está o código que o usuário clicou
+      setActiveInspectionIndex(foundIndex);
+
+      // Atualiza os inputs de nota para refletir a questão aberta
+      const activeProbId = problemsToFetch[foundIndex].id;
+      if (loadedSubs[activeProbId]) {
+        setGradingGrade(loadedSubs[activeProbId].grade ?? "");
+        setGradingComment(loadedSubs[activeProbId].teacherComment ?? "");
       } else {
         setGradingGrade("");
         setGradingComment("");
@@ -1503,7 +1539,7 @@ export default function ClassroomView() {
                           <td>
                             <button
                               className="btn btn-sm btn-primary"
-                              onClick={() => handleStartInspection(sub.user)}
+                              onClick={() => handleStartInspection(sub)} // <--- Passa a submissão inteira
                             >
                               Inspecionar
                             </button>
