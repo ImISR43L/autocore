@@ -2,7 +2,7 @@ services:
   api:
     build: ./api
     ports:
-      - "3000:3000"
+      - "3000:3000" # Necessário expor para o Frontend/Browser acessar
     env_file:
       - ./api/.env
     depends_on:
@@ -13,10 +13,10 @@ services:
       redis:
         condition: service_started
 
-    # CONECTA A API ÀS DUAS REDES
+    # [SEGURANÇA] Estratégia de Rede: Ponte entre o mundo seguro e a sandbox
     networks:
-      - default # Acesso à Internet, DB e Web
-      - secure_sandbox # Acesso exclusivo ao Juiz
+      - backend_net # Fala com DB e Redis
+      - secure_sandbox # Fala com o Juiz
 
     develop:
       watch:
@@ -31,74 +31,109 @@ services:
 
     command: sh -c "npm install && npm run start:dev"
 
+    # [SEGURANÇA] Limites de Recursos (Evita que o Node.js consuma toda RAM do host)
+    deploy:
+      resources:
+        limits:
+          cpus: "0.80" # Máximo 80% de 1 núcleo
+          memory: 1G # Máximo 1GB (NestJS em dev consome ~300-600MB)
+        reservations:
+          memory: 256M
+
   db:
     image: postgres:13
     environment:
       POSTGRES_USER: autocore_user
       POSTGRES_PASSWORD: autocore_password
       POSTGRES_DB: autocore_db
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend_net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U autocore_user -d autocore_db"]
       interval: 5s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 10s
+
+    # [SEGURANÇA] Proteção contra travamento do DB
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
 
   redis:
     image: redis:alpine
-    ports:
-      - "6379:6379"
+    # [SEGURANÇA] Portas REMOVIDAS. Acesso apenas interno.
     volumes:
       - redis_data:/data
+    networks:
+      - backend_net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
   go-judge:
     image: go-judge-custom
     build: ./judge
-
     networks:
-      - secure_sandbox # Apenas rede interna, sem internet
+      - secure_sandbox # [SEGURANÇA] Isolado na sandbox, sem acesso ao DB/Redis
 
-    # Configurações de Segurança/Performance (Mantidas das correções anteriores)
+    # [SEGURANÇA] Hardening do Filesystem
+    read_only: true # Impede instalação de malware ou persistência de dados
+    tmpfs:
+      - /tmp:exec,mode=1777 # Permite execução apenas na memória RAM temporária
+      - /run:exec,mode=1777
+
+    # Mantendo suas configs originais necessárias para o judge funcionar
     privileged: true
     shm_size: "512mb"
     security_opt:
       - seccomp:unconfined
 
+    # [SEGURANÇA] O limite mais importante: A BOMBA LÓGICA
+    # Se um aluno fizer `while(true) malloc()`, só este container morre.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0" # Garante 1 CPU inteira para compilar rápido
+          memory: 512M # Teto rígido de memória
+        reservations:
+          memory: 128M
+
   web:
     build: ./web
     ports:
-      - "8080:80"
+      - "8080:80" # Porta pública
     env_file:
       - ./web/.env
     depends_on:
       - api
-    develop:
-      watch:
-        - action: sync
-          path: ./web/src
-          target: /app/src
-        - action: sync
-          path: ./web/public
-          target: /app/public
-        - action: rebuild
-          path: ./web/package.json
+    networks:
+      - backend_net # Precisa falar com a API? Se for SSR/Proxy sim. Se for SPA puro, o browser fala.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
 
-# DEFINIÇÃO DAS REDES
+# Definição das Redes Isoladas
 networks:
-  default:
+  backend_net: # Rede confiável (API + DB + Redis + Web)
     driver: bridge
-  secure_sandbox:
-    internal: true # Bloqueia acesso externo (Internet)
+  secure_sandbox: # Rede hostil (API + Judge) - Judge NÃO vê DB
+    driver: bridge
 
+# Volumes Persistentes
 volumes:
   postgres_data:
   redis_data:

@@ -22,14 +22,12 @@ import { HealthModule } from './health/health.module';
     WinstonModule.forRoot(winstonConfig),
     ConfigModule.forRoot({ isGlobal: true }),
 
-    // === ADICIONE ESTE BLOCO ===
     BullModule.forRoot({
       redis: {
         host: process.env.REDIS_HOST || 'redis', // Nome do serviço no docker-compose
         port: Number(process.env.REDIS_PORT) || 6379,
       },
     }),
-    // ===========================
 
     ThrottlerModule.forRoot([
       {
