@@ -1,5 +1,5 @@
 import { Process, Processor, OnQueueActive } from '@nestjs/bull';
-import { Logger } from '@nestjs/common';
+import { Logger, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { Job } from 'bull';
@@ -8,6 +8,8 @@ import { Problem } from '../problems/entities/problem.entity';
 import { WrapperGenerator } from './wrapper-generator';
 import axios from 'axios';
 import { SubmissionsGateway } from './submissions.gateway';
+import { CACHE_MANAGER } from '@nestjs/cache-manager'; // <--- Token
+import type { Cache } from 'cache-manager'; // <--- Interface
 
 interface LanguageConfig {
   fileName: string;
@@ -22,7 +24,6 @@ interface ExecutorResponse {
   stderr?: string;
 }
 
-// Limite de segurança: 10KB (suficiente para qualquer problema lógico)
 const MAX_OUTPUT_LENGTH = 10000;
 
 @Processor('submission-queue')
@@ -35,24 +36,20 @@ export class SubmissionsProcessor {
     @InjectRepository(Problem)
     private problemsRepository: Repository<Problem>,
     private submissionsGateway: SubmissionsGateway,
+    // INJEÇÃO DO CACHE
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {
-    this.logger.log('SubmissionsProcessor inicializado e aguardando jobs...');
+    this.logger.log('SubmissionsProcessor (com Redis Cache) inicializado.');
   }
 
-  // --- OTIMIZAÇÃO: Limpeza e Truncamento ---
   private cleanOutput(text: string | undefined): string {
     if (!text) return '';
-
-    // 1. Remove bytes nulos (Segurança do Postgres)
     let cleaned = text.replace(/\u0000/g, '');
-
-    // 2. Truncamento (Segurança de Performance)
     if (cleaned.length > MAX_OUTPUT_LENGTH) {
       cleaned =
         cleaned.substring(0, MAX_OUTPUT_LENGTH) +
         '\n... [Output Truncated by System]';
     }
-
     return cleaned;
   }
 
@@ -61,29 +58,68 @@ export class SubmissionsProcessor {
     this.logger.debug(`[Job ${job.id}] Iniciado.`);
   }
 
+  // --- MÉTODO AUXILIAR PARA CACHE DE PROBLEMAS ---
+  private async getCachedProblem(problemId: string): Promise<Problem | null> {
+    const cacheKey = `problem:${problemId}:full`;
+
+    // 1. Tenta pegar do Redis
+    const cached = await this.cacheManager.get<Problem>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    // 2. Se não achar, pega do Banco
+    const problem = await this.problemsRepository.findOne({
+      where: { id: problemId },
+      relations: ['testCases', 'classroom'], // Busca pesada
+    });
+
+    if (problem) {
+      // 3. Salva no Redis por 1 hora (TTL 3600s)
+      await this.cacheManager.set(cacheKey, problem, 3600);
+    }
+
+    return problem;
+  }
+
   @Process({ name: 'execute-code', concurrency: 5 })
   async handleExecution(job: Job<{ submissionId: string }>) {
     const { submissionId } = job.data;
 
+    // OTIMIZAÇÃO: Buscamos apenas a submissão e o ID do problema (query leve)
+    // Não trazemos os testCases aqui para economizar banda do banco
     const submission = await this.submissionsRepository.findOne({
       where: { id: submissionId },
-      relations: ['problem', 'problem.testCases', 'user', 'problem.classroom'],
+      relations: ['user', 'problem'],
     });
 
-    if (!submission || !submission.problem) return;
+    if (!submission || !submission.problem) {
+      this.logger.error(`Submissão ${submissionId} órfã ou sem problema.`);
+      return;
+    }
+
+    // OTIMIZAÇÃO: Buscamos os dados pesados (Test Cases/Wrappers) via Cache
+    const fullProblem = await this.getCachedProblem(submission.problem.id);
+
+    if (!fullProblem) {
+      this.logger.error(`Problema ${submission.problem.id} não encontrado.`);
+      return;
+    }
 
     submission.status = 'Processing';
+    // Nota: salvamos apenas status, não precisamos re-salvar o objeto problem inteiro
     await this.submissionsRepository.save(submission);
 
-    const { problem, code, language_id } = submission;
+    const { code, language_id } = submission;
     const langId = Number(language_id);
     const mockJudgeUrl = 'http://go-judge:5050';
 
-    const parameters = problem.parameters || [];
+    // Gera o código final usando os parâmetros cacheados
+    const parameters = fullProblem.parameters || [];
     const fullCode = WrapperGenerator.generate(
       langId,
       parameters,
-      problem.returnType || 'void',
+      fullProblem.returnType || 'void',
       code,
     );
 
@@ -92,15 +128,10 @@ export class SubmissionsProcessor {
     let executionStdout = '';
     let executionStderr = '';
 
-    const testCases = problem.testCases || [];
+    const testCases = fullProblem.testCases || [];
 
     try {
       if (testCases.length === 0) {
-        // --- MODO SEM TESTES ---
-        this.logger.debug(
-          `[Job ${job.id}] Executando sem casos de teste (Modo Simples)...`,
-        );
-
         const payload = {
           cmd: [
             {
@@ -108,7 +139,7 @@ export class SubmissionsProcessor {
               env: ['PATH=/usr/bin:/bin'],
               files: [
                 { content: '' },
-                { name: 'stdout', max: 10240 }, // Limite no Go-Judge também
+                { name: 'stdout', max: 10240 },
                 { name: 'stderr', max: 10240 },
               ],
               cpuLimit: 10000000000,
@@ -120,13 +151,11 @@ export class SubmissionsProcessor {
             },
           ],
         };
-
         const res = await axios.post<ExecutorResponse[]>(
           `${mockJudgeUrl}/run`,
           payload,
         );
         const result = res.data[0];
-
         if (result.exitStatus === 0) {
           finalVerdict = 'No Tests';
           executionStdout = result.files['stdout'] || '';
@@ -135,13 +164,12 @@ export class SubmissionsProcessor {
           executionStderr = result.files['stderr'] || 'Erro desconhecido';
         }
       } else {
-        // --- MODO COM TESTES ---
         this.logger.debug(
-          `[Job ${job.id}] Executando ${testCases.length} casos de teste...`,
+          `Executando ${testCases.length} testes (Cacheado)...`,
         );
         finalVerdict = 'Accepted';
 
-        for (const [index, tc] of testCases.entries()) {
+        for (const tc of testCases) {
           const payload = {
             cmd: [
               {
@@ -149,7 +177,7 @@ export class SubmissionsProcessor {
                 env: ['PATH=/usr/bin:/bin'],
                 files: [
                   { content: tc.input || '' },
-                  { name: 'stdout', max: 10240 }, // Limite rígido no executor
+                  { name: 'stdout', max: 10240 },
                   { name: 'stderr', max: 10240 },
                 ],
                 cpuLimit: 10000000000,
@@ -187,7 +215,6 @@ export class SubmissionsProcessor {
             if (tc.isHidden) {
               executionStdout = 'Caso de teste oculto falhou.';
             } else {
-              // Aqui também aplicamos o cleanOutput na comparação para não estourar
               executionStdout = `Esperado: ${expected}\nObtido: ${actual}`;
             }
             break;
@@ -195,35 +222,30 @@ export class SubmissionsProcessor {
         }
       }
     } catch (error: any) {
-      this.logger.error(
-        `[Job ${job.id}] Erro de execução (Axios/Sistema): ${error.message}`,
-      );
+      this.logger.error(`Erro Sistema: ${error.message}`);
       finalVerdict = 'System Error';
       executionStderr = 'Falha ao contatar o Juiz.';
     }
 
-    this.logger.log(`[Job ${job.id}] Veredito Final: ${finalVerdict}`);
-
     submission.status = finalVerdict;
-
-    // APLICA O TRUNCAMENTO ANTES DE SALVAR
     submission.stdout = this.cleanOutput(executionStdout);
     submission.stderr = this.cleanOutput(executionStderr);
 
+    // Salva resultado
     const saved = await this.submissionsRepository.save(submission);
 
-    // Notificações (Socket)
+    // Notificações Socket.IO (Usa fullProblem do cache para saber a sala da turma)
     if (saved.user?.id) {
       this.submissionsGateway.server
         .to(`user-${saved.user.id}`)
         .emit('submission-finished', saved);
     }
-    if (submission.problem.classroom?.id) {
+    if (fullProblem.classroom?.id) {
       this.submissionsGateway.server
-        .to(`classroom-${submission.problem.classroom.id}`)
+        .to(`classroom-${fullProblem.classroom.id}`)
         .emit('classroom-update', {
           type: 'submission',
-          problemId: submission.problem.id,
+          problemId: fullProblem.id,
         });
     }
   }

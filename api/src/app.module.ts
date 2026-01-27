@@ -6,7 +6,7 @@ import { AppService } from './app.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { WinstonModule } from 'nest-winston';
 import { winstonConfig } from './logger/winston.config';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config'; // <--- ConfigService
 import { getSecret } from './common/utils/secrets.util';
 import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
@@ -16,11 +16,27 @@ import { ProblemsModule } from './problems/problems.module';
 import { SubmissionsModule } from './submissions/submissions.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { HealthModule } from './health/health.module';
+import { CacheModule } from '@nestjs/cache-manager'; // <--- Importe Cache
+import * as redisStore from 'cache-manager-redis-store'; // <--- Driver Redis
 
 @Module({
   imports: [
     WinstonModule.forRoot(winstonConfig),
     ConfigModule.forRoot({ isGlobal: true }),
+
+    // OTIMIZAÇÃO: Cache Global com Redis
+    // Armazena problemas e testes na memória RAM do Redis
+    CacheModule.registerAsync({
+      isGlobal: true,
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        store: redisStore,
+        host: configService.get('REDIS_HOST') || 'redis',
+        port: parseInt(configService.get('REDIS_PORT') || '6379'),
+        ttl: 3600, // 1 hora de cache padrão
+      }),
+      inject: [ConfigService],
+    }),
 
     TypeOrmModule.forRootAsync({
       useFactory: () => ({
@@ -32,17 +48,13 @@ import { HealthModule } from './health/health.module';
         database: process.env.DB_DATABASE || 'autocore_db',
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         synchronize: process.env.NODE_ENV !== 'production',
-
-        // OTIMIZAÇÃO: Connection Pooling
-        // Permite mais conexões simultâneas durante picos de acesso
         extra: {
-          max: 20, // Aumenta o pool para 20 conexões
+          max: 20,
           connectionTimeoutMillis: 5000,
         },
       }),
     }),
 
-    // Rate Limiting
     ThrottlerModule.forRoot([
       {
         ttl: 60000,
