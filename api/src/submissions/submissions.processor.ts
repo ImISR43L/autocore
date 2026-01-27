@@ -36,11 +36,8 @@ export class SubmissionsProcessor {
     this.logger.log('SubmissionsProcessor inicializado e aguardando jobs...');
   }
 
-  // --- Função Auxiliar para limpar o Output ---
-  // O Postgres rejeita bytes nulos (\0), então precisamos removê-los
   private cleanOutput(text: string | undefined): string {
     if (!text) return '';
-    // Remove bytes nulos (\u0000) que quebram o banco de dados
     return text.replace(/\u0000/g, '');
   }
 
@@ -49,7 +46,9 @@ export class SubmissionsProcessor {
     this.logger.debug(`[Job ${job.id}] Iniciado.`);
   }
 
-  @Process('execute-code')
+  // OTIMIZAÇÃO: Concurrency definido para 5.
+  // Isso permite processar 5 alunos ao mesmo tempo, em vez de 1 por 1 (serial).
+  @Process({ name: 'execute-code', concurrency: 5 })
   async handleExecution(job: Job<{ submissionId: string }>) {
     const { submissionId } = job.data;
 
@@ -60,7 +59,6 @@ export class SubmissionsProcessor {
 
     if (!submission || !submission.problem) return;
 
-    // Atualiza status inicial
     submission.status = 'Processing';
     await this.submissionsRepository.save(submission);
 
@@ -68,7 +66,6 @@ export class SubmissionsProcessor {
     const langId = Number(language_id);
     const mockJudgeUrl = 'http://go-judge:5050';
 
-    // Gerar Wrapper
     const parameters = problem.parameters || [];
     const fullCode = WrapperGenerator.generate(
       langId,
@@ -84,10 +81,9 @@ export class SubmissionsProcessor {
 
     const testCases = problem.testCases || [];
 
-    // === EXECUÇÃO ===
     try {
       if (testCases.length === 0) {
-        // --- MODO SEM TESTES (Simples Execução) ---
+        // --- MODO SEM TESTES ---
         this.logger.debug(
           `[Job ${job.id}] Executando sem casos de teste (Modo Simples)...`,
         );
@@ -119,14 +115,14 @@ export class SubmissionsProcessor {
         const result = res.data[0];
 
         if (result.exitStatus === 0) {
-          finalVerdict = 'No Tests'; // Aviso: Código rodou mas não foi testado
+          finalVerdict = 'No Tests';
           executionStdout = result.files['stdout'] || '';
         } else {
           finalVerdict = 'Runtime Error';
           executionStderr = result.files['stderr'] || 'Erro desconhecido';
         }
       } else {
-        // --- MODO COM TESTES (Juiz Online) ---
+        // --- MODO COM TESTES ---
         this.logger.debug(
           `[Job ${job.id}] Executando ${testCases.length} casos de teste...`,
         );
@@ -159,20 +155,17 @@ export class SubmissionsProcessor {
           );
           const result = res.data[0];
 
-          // Verifica limites
           if (result.status === 'Memory Limit Exceeded') {
             finalVerdict = 'Memory Limit Exceeded';
             executionStderr = 'Limite de memória excedido';
             break;
           }
-          // Verifica Crash
           if (result.exitStatus !== 0) {
             finalVerdict = 'Runtime Error';
             executionStderr = result.files['stderr'] || '';
             break;
           }
 
-          // Verifica Resultado
           const actual = (result.files['stdout'] || '').trim();
           const expected = tc.expectedOutput.trim();
 
@@ -183,7 +176,7 @@ export class SubmissionsProcessor {
             } else {
               executionStdout = `Esperado: ${expected}\nObtido: ${actual}`;
             }
-            break; // Para no primeiro erro
+            break;
           }
         }
       }
@@ -195,26 +188,20 @@ export class SubmissionsProcessor {
       executionStderr = 'Falha ao contatar o Juiz.';
     }
 
-    // === SALVAMENTO FINAL ===
     this.logger.log(`[Job ${job.id}] Veredito Final: ${finalVerdict}`);
 
     submission.status = finalVerdict;
-    // IMPORTANTE: Limpar o output antes de salvar no Postgres
     submission.stdout = this.cleanOutput(executionStdout);
     submission.stderr = this.cleanOutput(executionStderr);
 
     const saved = await this.submissionsRepository.save(submission);
 
-    // === NOTIFICAÇÕES VIA SOCKET ===
-
-    // 1. Notifica o Aluno
+    // Notificações
     if (saved.user?.id) {
       this.submissionsGateway.server
         .to(`user-${saved.user.id}`)
         .emit('submission-finished', saved);
     }
-
-    // 2. Notifica a Turma (Dashboard do Professor)
     if (submission.problem.classroom?.id) {
       this.submissionsGateway.server
         .to(`classroom-${submission.problem.classroom.id}`)
