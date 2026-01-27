@@ -1,17 +1,18 @@
-# web/Dockerfile
-
 # Etapa 1: Build do React
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+# OTIMIZAÇÃO: Build limpo e rápido
+RUN npm ci
 COPY . .
 RUN npm run build
 
 # Etapa 2: Servidor Nginx
 FROM nginx:alpine
+# Copia os arquivos estáticos gerados
 COPY --from=builder /app/dist /usr/share/nginx/html
-# Configuração para SPA (React Router) funcionar no Nginx
+
+# Configuração inline do Nginx para SPA (Single Page Application)
 RUN echo 'server { \
     listen 80; \
     location / { \

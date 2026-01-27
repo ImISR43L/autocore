@@ -1,11 +1,12 @@
-# Usamos Ubuntu para ter compatibilidade fácil com todos os compiladores
-FROM ubuntu:22.04
+# OTIMIZAÇÃO: Debian Slim é muito menor que Ubuntu, mas mantém compatibilidade glibc (necessária para C/C++)
+FROM debian:bookworm-slim
 
-# Evita perguntas durante a instalação
+# Evita interatividade durante instalação
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 1. Instala Python, Node.js, GCC, G++ e ferramentas básicas
-RUN apt-get update && apt-get install -y \
+# 1. Instalação de Compiladores e Runtimes
+# OTIMIZAÇÃO: --no-install-recommends economiza muito espaço em disco
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     nodejs \
@@ -15,16 +16,17 @@ RUN apt-get update && apt-get install -y \
     openjdk-17-jdk-headless \
     wget \
     tar \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Baixa e instala o Go-Judge
+# 2. Instalação do Go-Judge (Binário)
 RUN wget https://github.com/criyle/go-judge/releases/download/v1.8.5/go-judge_1.8.5_linux_amd64.tar.gz \
     && tar -xvf go-judge_1.8.5_linux_amd64.tar.gz \
     && mv go-judge /usr/bin/go-judge \
     && chmod +x /usr/bin/go-judge \
     && rm go-judge_1.8.5_linux_amd64.tar.gz
 
-# 3. Configura a porta e o comando de entrada
+# Porta do Executor
 EXPOSE 5050
 
 CMD ["/usr/bin/go-judge", "-http-addr", ":5050", "-enable-debug"]

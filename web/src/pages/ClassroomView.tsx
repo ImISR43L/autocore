@@ -16,13 +16,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import {
-  FileSpreadsheet,
-  FileText,
-  RefreshCw,
-  ChevronDown,
-  Download,
-} from "lucide-react";
+import { FileSpreadsheet, FileText, ChevronDown, Download } from "lucide-react";
 import { io } from "socket.io-client";
 import { DiffViewer } from "../components/DiffViewer";
 import { LogViewer } from "../components/LogViewer";
@@ -807,7 +801,8 @@ export default function ClassroomView() {
     }
   };
 
-  const submitSolution = async () => {
+  const submitSolution = async (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
     if (!displayProblem) return toast.warning("Selecione um exercício!");
 
     setLoading(true);
@@ -946,14 +941,6 @@ export default function ClassroomView() {
       toast.error("Erro ao gerar relatório.", { id: toastId });
     }
   };
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-zinc-950 text-white">
-        <RefreshCw className="animate-spin w-8 h-8 text-emerald-500" />
-      </div>
-    );
-  }
 
   if (!classroom) return <div className="container">Carregando...</div>;
 
@@ -1462,7 +1449,8 @@ export default function ClassroomView() {
                 ))}
               </select>
               <button
-                onClick={submitSolution}
+                type="button"
+                onClick={(e) => submitSolution(e)}
                 disabled={loading || !selectedProblemId || isBlocked}
                 className="btn btn-primary"
                 style={isBlocked ? { opacity: 0.5, cursor: "not-allowed" } : {}}
