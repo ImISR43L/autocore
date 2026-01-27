@@ -5,6 +5,7 @@ import {
   ManyToOne,
   OneToMany,
   CreateDateColumn,
+  Index,
 } from 'typeorm';
 import { Classroom } from '../../classrooms/entities/classroom.entity';
 import { TestCase } from './test-case.entity';
@@ -21,6 +22,7 @@ export interface ParameterDefinition {
 }
 
 @Entity()
+@Index(['classroom']) // OTIMIZAÇÃO: Acelera listagem de problemas da turma
 export class Problem {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -73,7 +75,6 @@ export class Problem {
   @OneToMany(() => Submission, (submission) => submission.problem)
   submissions: Submission[];
 
-  // --- NOVAS RELAÇÕES PARA MÚLTIPLAS QUESTÕES ---
   @ManyToOne(() => Problem, (problem) => problem.children, {
     onDelete: 'CASCADE',
     nullable: true,
@@ -82,7 +83,6 @@ export class Problem {
 
   @OneToMany(() => Problem, (problem) => problem.parent, { cascade: true })
   children: Problem[];
-  // ---------------------------------------------
 
   @Column({ type: 'timestamp', nullable: true })
   startDate: Date;

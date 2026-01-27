@@ -32,6 +32,13 @@ import { HealthModule } from './health/health.module';
         database: process.env.DB_DATABASE || 'autocore_db',
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         synchronize: process.env.NODE_ENV !== 'production',
+
+        // OTIMIZAÇÃO: Connection Pooling
+        // Permite mais conexões simultâneas durante picos de acesso
+        extra: {
+          max: 20, // Aumenta o pool para 20 conexões
+          connectionTimeoutMillis: 5000,
+        },
       }),
     }),
 

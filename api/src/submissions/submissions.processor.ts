@@ -22,6 +22,9 @@ interface ExecutorResponse {
   stderr?: string;
 }
 
+// Limite de segurança: 10KB (suficiente para qualquer problema lógico)
+const MAX_OUTPUT_LENGTH = 10000;
+
 @Processor('submission-queue')
 export class SubmissionsProcessor {
   private readonly logger = new Logger(SubmissionsProcessor.name);
@@ -36,9 +39,21 @@ export class SubmissionsProcessor {
     this.logger.log('SubmissionsProcessor inicializado e aguardando jobs...');
   }
 
+  // --- OTIMIZAÇÃO: Limpeza e Truncamento ---
   private cleanOutput(text: string | undefined): string {
     if (!text) return '';
-    return text.replace(/\u0000/g, '');
+
+    // 1. Remove bytes nulos (Segurança do Postgres)
+    let cleaned = text.replace(/\u0000/g, '');
+
+    // 2. Truncamento (Segurança de Performance)
+    if (cleaned.length > MAX_OUTPUT_LENGTH) {
+      cleaned =
+        cleaned.substring(0, MAX_OUTPUT_LENGTH) +
+        '\n... [Output Truncated by System]';
+    }
+
+    return cleaned;
   }
 
   @OnQueueActive()
@@ -46,8 +61,6 @@ export class SubmissionsProcessor {
     this.logger.debug(`[Job ${job.id}] Iniciado.`);
   }
 
-  // OTIMIZAÇÃO: Concurrency definido para 5.
-  // Isso permite processar 5 alunos ao mesmo tempo, em vez de 1 por 1 (serial).
   @Process({ name: 'execute-code', concurrency: 5 })
   async handleExecution(job: Job<{ submissionId: string }>) {
     const { submissionId } = job.data;
@@ -95,7 +108,7 @@ export class SubmissionsProcessor {
               env: ['PATH=/usr/bin:/bin'],
               files: [
                 { content: '' },
-                { name: 'stdout', max: 10240 },
+                { name: 'stdout', max: 10240 }, // Limite no Go-Judge também
                 { name: 'stderr', max: 10240 },
               ],
               cpuLimit: 10000000000,
@@ -136,7 +149,7 @@ export class SubmissionsProcessor {
                 env: ['PATH=/usr/bin:/bin'],
                 files: [
                   { content: tc.input || '' },
-                  { name: 'stdout', max: 10240 },
+                  { name: 'stdout', max: 10240 }, // Limite rígido no executor
                   { name: 'stderr', max: 10240 },
                 ],
                 cpuLimit: 10000000000,
@@ -174,6 +187,7 @@ export class SubmissionsProcessor {
             if (tc.isHidden) {
               executionStdout = 'Caso de teste oculto falhou.';
             } else {
+              // Aqui também aplicamos o cleanOutput na comparação para não estourar
               executionStdout = `Esperado: ${expected}\nObtido: ${actual}`;
             }
             break;
@@ -191,12 +205,14 @@ export class SubmissionsProcessor {
     this.logger.log(`[Job ${job.id}] Veredito Final: ${finalVerdict}`);
 
     submission.status = finalVerdict;
+
+    // APLICA O TRUNCAMENTO ANTES DE SALVAR
     submission.stdout = this.cleanOutput(executionStdout);
     submission.stderr = this.cleanOutput(executionStderr);
 
     const saved = await this.submissionsRepository.save(submission);
 
-    // Notificações
+    // Notificações (Socket)
     if (saved.user?.id) {
       this.submissionsGateway.server
         .to(`user-${saved.user.id}`)

@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import { io } from "socket.io-client";
 import { DiffViewer } from "../components/DiffViewer";
+import { LogViewer } from "../components/LogViewer";
 
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
@@ -1618,20 +1619,28 @@ export default function ClassroomView() {
                     )}
                   </div>
                   {executionError && (
-                    <pre
-                      className="feedback-code error"
-                      style={{ whiteSpace: "pre-wrap" }}
-                    >
-                      {executionError}
-                    </pre>
+                    <div className="mt-2">
+                      <span className="text-xs font-bold text-red-500 uppercase mb-1 block">
+                        Erro (Stderr):
+                      </span>
+                      <LogViewer
+                        content={executionError}
+                        type="error"
+                        height={200}
+                      />
+                    </div>
                   )}
                   {executionOutput && verdict !== "Accepted" && (
-                    <pre
-                      className="feedback-code"
-                      style={{ whiteSpace: "pre-wrap" }}
-                    >
-                      {executionOutput}
-                    </pre>
+                    <div className="mt-2">
+                      <span className="text-xs font-bold text-gray-500 uppercase mb-1 block">
+                        Saída (Stdout):
+                      </span>
+                      <LogViewer
+                        content={executionOutput}
+                        type="info"
+                        height={200}
+                      />
+                    </div>
                   )}
                 </div>
               )}
@@ -1870,29 +1879,36 @@ export default function ClassroomView() {
                                 wordBreak: "break-word",
                               }}
                             >
-                              {activeSubmission.stdout || (
-                                <span
-                                  style={{ color: "#666", fontStyle: "italic" }}
-                                >
-                                  Sem output (vazio)
-                                </span>
-                              )}
+                              <div
+                                style={{ height: "200px", marginTop: "10px" }}
+                              >
+                                {activeSubmission.stdout ? (
+                                  <LogViewer
+                                    content={activeSubmission.stdout}
+                                    type="info"
+                                    height="100%"
+                                  />
+                                ) : (
+                                  <span
+                                    style={{
+                                      color: "#666",
+                                      fontStyle: "italic",
+                                    }}
+                                  >
+                                    Sem output (vazio)
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             {activeSubmission.stderr && (
                               <div
-                                style={{
-                                  marginTop: "10px",
-                                  fontFamily: "monospace",
-                                  fontSize: "0.9rem",
-                                  background: "#3e1e1e",
-                                  color: "#ff8a80",
-                                  padding: "10px",
-                                  borderRadius: "4px",
-                                  whiteSpace: "pre-wrap",
-                                  wordBreak: "break-word",
-                                }}
+                                style={{ height: "150px", marginTop: "10px" }}
                               >
-                                {activeSubmission.stderr}
+                                <LogViewer
+                                  content={activeSubmission.stderr}
+                                  type="error"
+                                  height="100%"
+                                />
                               </div>
                             )}
                           </div>
