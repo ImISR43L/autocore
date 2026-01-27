@@ -16,6 +16,13 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
+import {
+  FileSpreadsheet,
+  FileText,
+  RefreshCw,
+  ChevronDown,
+  Download,
+} from "lucide-react";
 import { io } from "socket.io-client";
 import { DiffViewer } from "../components/DiffViewer";
 import { LogViewer } from "../components/LogViewer";
@@ -190,6 +197,8 @@ export default function ClassroomView() {
     "WAITING" | "RUNNING" | "FINISHED"
   >("WAITING");
   const [activeChildIndex, setActiveChildIndex] = useState(0);
+
+  const [showReportMenu, setShowReportMenu] = useState(false);
 
   const parseOutput = (stdout: string) => {
     if (!stdout) return { expected: "", actual: "", isDiffable: false };
@@ -889,6 +898,63 @@ export default function ClassroomView() {
     return submissions.find((s) => s.user?.id === myUserId) || null;
   }, [submissions, myUserId]);
 
+  const handleExport = async (format: "csv" | "xlsx") => {
+    if (!classroom) return;
+
+    // Fecha o menu após o clique
+    setShowReportMenu(false);
+
+    // Feedback de carregamento (opcional, usando toast ou estado)
+    const toastId = toast.loading("Gerando relatório...");
+
+    try {
+      const token = localStorage.getItem("token");
+
+      // Faz a requisição para a rota correta baseada no formato
+      const response = await axios.get(
+        `${API_URL}/reports/classroom/${classroom.id}/${format}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          responseType: "blob", // Crítico: resposta binária
+        },
+      );
+
+      // Cria link de download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+
+      // Define extensão correta
+      const extension = format === "csv" ? "csv" : "xlsx";
+      link.setAttribute(
+        "download",
+        `Relatorio_Turma_${classroom.code}.${extension}`,
+      );
+
+      document.body.appendChild(link);
+      link.click();
+
+      // Limpeza
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`Relatório ${format.toUpperCase()} gerado!`, {
+        id: toastId,
+      });
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao gerar relatório.", { id: toastId });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-zinc-950 text-white">
+        <RefreshCw className="animate-spin w-8 h-8 text-emerald-500" />
+      </div>
+    );
+  }
+
   if (!classroom) return <div className="container">Carregando...</div>;
 
   const isExam = currentProblem?.type === "EXAM";
@@ -916,34 +982,6 @@ export default function ClassroomView() {
   const activeSubmission = activeInspectionProblem
     ? studentSubmissions[activeInspectionProblem.id]
     : null;
-
-  const handleExportGrades = async () => {
-    if (!classroom) return;
-    try {
-      const token = localStorage.getItem("token");
-      const response = await axios.get(
-        `${API_URL}/reports/classroom/${classroom.id}/csv`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          responseType: "blob", // Importante: Trata a resposta como arquivo binário
-        },
-      );
-
-      // Cria um link temporário para forçar o download no navegador
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      // Tenta extrair o nome do arquivo do header ou usa um padrão
-      link.setAttribute("download", `Relatorio_Turma_${classroom.code}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      toast.success("Relatório gerado com sucesso! 📊");
-    } catch (error) {
-      console.error(error);
-      toast.error("Erro ao gerar relatório.");
-    }
-  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -1234,12 +1272,122 @@ export default function ClassroomView() {
               </button>
             )}
 
-            <button
-              onClick={handleExportGrades}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded transition-colors"
-            >
-              📊 Exportar Notas
-            </button>
+            {isOwner && (
+              <div
+                style={{
+                  position: "relative",
+                  display: "inline-block",
+                  marginLeft: "10px",
+                }}
+              >
+                <button
+                  onClick={() => setShowReportMenu(!showReportMenu)}
+                  className="btn"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    backgroundColor: "#2e7d32",
+                    color: "white",
+                    padding: "8px 16px",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    fontWeight: 500,
+                  }}
+                >
+                  <Download size={16} />
+                  Gerar Relatório
+                  <ChevronDown size={16} />
+                </button>
+
+                {showReportMenu && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      right: 0,
+                      marginTop: "5px",
+                      backgroundColor: "#1e1e1e",
+                      border: "1px solid #444",
+                      borderRadius: "6px",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+                      zIndex: 1000,
+                      minWidth: "160px",
+                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    <button
+                      onClick={() => handleExport("xlsx")}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        padding: "12px 16px",
+                        background: "transparent",
+                        border: "none",
+                        color: "#e0e0e0",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        borderBottom: "1px solid #333",
+                        fontSize: "0.9rem",
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = "#2d2d30")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
+                    >
+                      <FileSpreadsheet size={16} className="text-green-500" />
+                      Excel (.xlsx)
+                    </button>
+
+                    <button
+                      onClick={() => handleExport("csv")}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        padding: "12px 16px",
+                        background: "transparent",
+                        border: "none",
+                        color: "#e0e0e0",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        fontSize: "0.9rem",
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = "#2d2d30")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
+                    >
+                      <FileText size={16} className="text-gray-400" />
+                      CSV (.csv)
+                    </button>
+                  </div>
+                )}
+
+                {/* Overlay para fechar */}
+                {showReportMenu && (
+                  <div
+                    style={{
+                      position: "fixed",
+                      top: 0,
+                      left: 0,
+                      width: "100vw",
+                      height: "100vh",
+                      zIndex: 999,
+                    }}
+                    onClick={() => setShowReportMenu(false)}
+                  />
+                )}
+              </div>
+            )}
 
             <div
               style={{
