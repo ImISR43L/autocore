@@ -26,7 +26,7 @@ export class SubmissionsService {
     private submissionsRepository: Repository<Submission>,
     @InjectRepository(Problem)
     private problemsRepository: Repository<Problem>,
-    @InjectQueue('submissions') private submissionsQueue: Queue,
+    @InjectQueue('submission-queue') private submissionsQueue: Queue,
   ) {}
 
   async getProblemStats(problemId: string) {
@@ -183,7 +183,7 @@ export class SubmissionsService {
     return this.submissionsRepository.find({
       where: { problem: { id: problemId } },
       // ADICIONADO 'problem' AQUI
-      relations: ['user', 'problem'], 
+      relations: ['user', 'problem'],
       order: { createdAt: 'DESC' },
     });
   }

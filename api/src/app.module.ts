@@ -7,7 +7,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { WinstonModule } from 'nest-winston';
 import { winstonConfig } from './logger/winston.config';
 import { ConfigModule } from '@nestjs/config';
-import { BullModule } from '@nestjs/bull';
+import { getSecret } from './common/utils/secrets.util';
 import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
@@ -22,13 +22,20 @@ import { HealthModule } from './health/health.module';
     WinstonModule.forRoot(winstonConfig),
     ConfigModule.forRoot({ isGlobal: true }),
 
-    BullModule.forRoot({
-      redis: {
-        host: process.env.REDIS_HOST || 'redis', // Nome do serviço no docker-compose
-        port: Number(process.env.REDIS_PORT) || 6379,
-      },
+    TypeOrmModule.forRootAsync({
+      useFactory: () => ({
+        type: 'postgres',
+        host: process.env.DB_HOST || 'db',
+        port: parseInt(process.env.DB_PORT || '5432'),
+        username: process.env.DB_USERNAME || 'autocore_user',
+        password: getSecret('DB_PASSWORD', 'db_password'),
+        database: process.env.DB_DATABASE || 'autocore_db',
+        entities: [__dirname + '/**/*.entity{.ts,.js}'],
+        synchronize: process.env.NODE_ENV !== 'production',
+      }),
     }),
 
+    // Rate Limiting
     ThrottlerModule.forRoot([
       {
         ttl: 60000,
@@ -36,23 +43,13 @@ import { HealthModule } from './health/health.module';
       },
     ]),
 
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: process.env.DB_HOST,
-      port: parseInt(process.env.DB_PORT || '5432'),
-      username: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
-      autoLoadEntities: true,
-      synchronize: true,
-    }),
     UsersModule,
     AuthModule,
     ClassroomsModule,
     ProblemsModule,
     SubmissionsModule,
-    AnnouncementsModule,
     ReportsModule,
+    AnnouncementsModule,
     HealthModule,
   ],
   controllers: [AppController],

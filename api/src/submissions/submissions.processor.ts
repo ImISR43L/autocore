@@ -1,9 +1,4 @@
-import {
-  Process,
-  Processor,
-  OnQueueActive,
-  OnQueueCompleted,
-} from '@nestjs/bull';
+import { Process, Processor, OnQueueActive } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -27,7 +22,7 @@ interface ExecutorResponse {
   stderr?: string;
 }
 
-@Processor('submissions')
+@Processor('submission-queue')
 export class SubmissionsProcessor {
   private readonly logger = new Logger(SubmissionsProcessor.name);
 
@@ -202,7 +197,7 @@ export class SubmissionsProcessor {
 
     // === SALVAMENTO FINAL ===
     this.logger.log(`[Job ${job.id}] Veredito Final: ${finalVerdict}`);
-    
+
     submission.status = finalVerdict;
     // IMPORTANTE: Limpar o output antes de salvar no Postgres
     submission.stdout = this.cleanOutput(executionStdout);
@@ -211,7 +206,7 @@ export class SubmissionsProcessor {
     const saved = await this.submissionsRepository.save(submission);
 
     // === NOTIFICAÇÕES VIA SOCKET ===
-    
+
     // 1. Notifica o Aluno
     if (saved.user?.id) {
       this.submissionsGateway.server

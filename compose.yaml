@@ -2,9 +2,16 @@ services:
   api:
     build: ./api
     ports:
-      - "3000:3000" # Necessário expor para o Frontend/Browser acessar
+      - "3000:3000"
     env_file:
       - ./api/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    secrets:
+      - db_password
+      - redis_password
+      - jwt_secret
     depends_on:
       db:
         condition: service_healthy
@@ -12,40 +19,23 @@ services:
         condition: service_started
       redis:
         condition: service_started
-
-    # [SEGURANÇA] Estratégia de Rede: Ponte entre o mundo seguro e a sandbox
     networks:
-      - backend_net # Fala com DB e Redis
-      - secure_sandbox # Fala com o Juiz
-
-    develop:
-      watch:
-        - action: sync
-          path: ./api/src
-          target: /app/src
-        - action: rebuild
-          path: ./api/package.json
-    volumes:
-      - ./api:/app
-      - /app/node_modules
-
-    command: sh -c "npm install && npm run start:dev"
-
-    # [SEGURANÇA] Limites de Recursos (Evita que o Node.js consuma toda RAM do host)
+      - backend_net
+      - secure_sandbox
     deploy:
       resources:
         limits:
-          cpus: "0.80" # Máximo 80% de 1 núcleo
-          memory: 1G # Máximo 1GB (NestJS em dev consome ~300-600MB)
-        reservations:
-          memory: 256M
+          cpus: "0.80"
+          memory: 1G
 
   db:
     image: postgres:13
     environment:
       POSTGRES_USER: autocore_user
-      POSTGRES_PASSWORD: autocore_password
       POSTGRES_DB: autocore_db
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -55,27 +45,17 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-      start_period: 10s
-
-    # [SEGURANÇA] Proteção contra travamento do DB
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 512M
 
   redis:
     image: redis:alpine
-    # [SEGURANÇA] Portas REMOVIDAS. Acesso apenas interno.
+    command: >
+      sh -c "redis-server --requirepass $(cat /run/secrets/redis_password)"
+    secrets:
+      - redis_password
     volumes:
       - redis_data:/data
     networks:
       - backend_net
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
     deploy:
       resources:
         limits:
@@ -86,54 +66,45 @@ services:
     image: go-judge-custom
     build: ./judge
     networks:
-      - secure_sandbox # [SEGURANÇA] Isolado na sandbox, sem acesso ao DB/Redis
-
-    # [SEGURANÇA] Hardening do Filesystem
-    read_only: true # Impede instalação de malware ou persistência de dados
+      - secure_sandbox
+    read_only: true
     tmpfs:
-      - /tmp:exec,mode=1777 # Permite execução apenas na memória RAM temporária
+      - /tmp:exec,mode=1777
       - /run:exec,mode=1777
-
-    # Mantendo suas configs originais necessárias para o judge funcionar
     privileged: true
     shm_size: "512mb"
     security_opt:
       - seccomp:unconfined
-
-    # [SEGURANÇA] O limite mais importante: A BOMBA LÓGICA
-    # Se um aluno fizer `while(true) malloc()`, só este container morre.
     deploy:
       resources:
         limits:
-          cpus: "1.0" # Garante 1 CPU inteira para compilar rápido
-          memory: 512M # Teto rígido de memória
-        reservations:
-          memory: 128M
+          cpus: "1.0"
+          memory: 512M
 
   web:
     build: ./web
     ports:
-      - "8080:80" # Porta pública
+      - "8080:80"
     env_file:
       - ./web/.env
-    depends_on:
-      - api
     networks:
-      - backend_net # Precisa falar com a API? Se for SSR/Proxy sim. Se for SPA puro, o browser fala.
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 512M
+      - backend_net
 
-# Definição das Redes Isoladas
+# Definição dos Segredos (Aponta para os arquivos criados no Passo 1)
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  redis_password:
+    file: ./secrets/redis_password.txt
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+
 networks:
-  backend_net: # Rede confiável (API + DB + Redis + Web)
+  backend_net:
     driver: bridge
-  secure_sandbox: # Rede hostil (API + Judge) - Judge NÃO vê DB
+  secure_sandbox:
     driver: bridge
 
-# Volumes Persistentes
 volumes:
   postgres_data:
   redis_data:

@@ -2,6 +2,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { getSecret } from '../common/utils/secrets.util';
 
 // 1. Interface para tipar o payload do token
 interface JwtPayload {
@@ -16,8 +17,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey:
-        configService.get<string>('JWT_SECRET') || 'SEGREDO_SUPER_SECRETO',
+      secretOrKey: getSecret('JWT_SECRET', 'jwt_secret'),
     });
   }
 

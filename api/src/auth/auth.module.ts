@@ -5,22 +5,24 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { User } from '../users/entities/user.entity';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from './jwt.strategy';
+import { getSecret } from '../common/utils/secrets.util';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User]),
     PassportModule,
     JwtModule.registerAsync({
-      imports: [ConfigModule],
-      // REMOVIDO: 'async' antes de (configService)
-      useFactory: (configService: ConfigService) => ({
-        secret:
-          configService.get<string>('JWT_SECRET') || 'SEGREDO_SUPER_SECRETO',
-        signOptions: { expiresIn: '1d' },
-      }),
-      inject: [ConfigService],
+      useFactory: () => {
+        const secret = getSecret('JWT_SECRET', 'jwt_secret');
+        if (!secret) {
+          console.warn('ALERTA: JWT_SECRET não encontrado. Tokens falharão.');
+        }
+        return {
+          secret: secret,
+          signOptions: { expiresIn: '1d' },
+        };
+      },
     }),
   ],
   controllers: [AuthController],
