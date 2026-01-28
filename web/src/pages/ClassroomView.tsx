@@ -26,6 +26,11 @@ import {
   Download,
   FileCode,
   Trash,
+  CheckCircle,
+  XCircle,
+  Clock,
+  User,
+  Search,
 } from "lucide-react";
 import { io } from "socket.io-client";
 import { DiffViewer } from "../components/DiffViewer";
@@ -74,7 +79,7 @@ interface Problem {
   startedAt?: string;
   children?: Problem[];
   parent?: { id: string };
-  starterCode?: FileEntry[]; // <--- NOVO: Template de arquivos
+  starterCode?: FileEntry[];
 }
 
 interface Classroom {
@@ -90,7 +95,7 @@ interface Classroom {
 interface Submission {
   id: string;
   status: string;
-  files: FileEntry[]; // <--- ALTERADO: De 'code' para 'files'
+  files: FileEntry[];
   stdout?: string;
   stderr?: string;
   createdAt: string;
@@ -179,18 +184,24 @@ export default function ClassroomView() {
   );
   const [currentProblem, setCurrentProblem] = useState<Problem | null>(null);
 
-  // --- NOVA ESTRUTURA DE ESTADO (MÚLTIPLOS ARQUIVOS) ---
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
   const [newFileName, setNewFileName] = useState("");
 
   // UI & Execução
   const [verdict, setVerdict] = useState<string | null>(null);
+  const [executionOutput, setExecutionOutput] = useState<string | null>(null);
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const loadingRef = useRef(false);
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+
+  // --- FILTRO DE SUBMISSÕES (NOVO) ---
+  const [selectedStudentFilter, setSelectedStudentFilter] = useState<
+    number | null
+  >(null);
+  const [studentSearch, setStudentSearch] = useState("");
 
   // INSPEÇÃO
   const [inspectingUser, setInspectingUser] = useState<{
@@ -201,7 +212,7 @@ export default function ClassroomView() {
     Record<string, Submission>
   >({});
   const [activeInspectionIndex, setActiveInspectionIndex] = useState(0);
-  const [inspectFileIndex, setInspectFileIndex] = useState(0); // Para navegar nos arquivos do aluno
+  const [inspectFileIndex, setInspectFileIndex] = useState(0);
 
   const [gradingGrade, setGradingGrade] = useState<string | number>("");
   const [gradingComment, setGradingComment] = useState("");
@@ -211,7 +222,6 @@ export default function ClassroomView() {
   const [stats, setStats] = useState<StatData[]>([]);
   const [problemStats, setProblemStats] = useState<ProblemStat[]>([]);
 
-  // Timer & Navegação
   const [timeLeft, setTimeLeft] = useState<string | null>(null);
   const [examStatus, setExamStatus] = useState<
     "WAITING" | "RUNNING" | "FINISHED"
@@ -220,7 +230,6 @@ export default function ClassroomView() {
 
   const [showReportMenu, setShowReportMenu] = useState(false);
 
-  // --- UTILS ---
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
     if (!token) return null;
@@ -230,12 +239,6 @@ export default function ClassroomView() {
     } catch {
       return null;
     }
-  };
-
-  const extractExpectedValue = (stderr: string = ""): string | null => {
-    // Tenta capturar o texto entre "Esperado:" e a próxima quebra de linha ou "Obtido:"
-    const match = stderr.match(/Esperado:\s*([\s\S]*?)(?:\nObtido:|$)/);
-    return match ? match[1].trim() : null;
   };
 
   const myUserId = getMyUserId();
@@ -387,72 +390,42 @@ export default function ClassroomView() {
 
     newSocket.on("submission-finished", (submission: Submission) => {
       const currentProb = displayProblemRef.current;
-
       if (
         currentProb &&
         ((submission.problem?.id && submission.problem.id === currentProb.id) ||
           submission.problemId === currentProb.id)
       ) {
         setVerdict(submission.status);
+        setExecutionOutput(submission.stdout || "");
         setExecutionError(submission.stderr || "");
+        setLoading(false);
+        loadingRef.current = false;
 
-        // --- ALTERAÇÃO: Tratamento correto de status intermediário ---
-        const isProcessing = ["Queued", "Processing"].includes(
-          submission.status,
-        );
-
-        if (isProcessing) {
-          // Mantém o estado de Loading e NÃO exibe Toast
-          setLoading(true);
-          loadingRef.current = true;
-        } else {
-          // Status Final: Remove Loading e exibe o resultado
-          setLoading(false);
-          loadingRef.current = false;
-
-          if (submission.status === "Accepted")
-            toast.success("Solução Aceita! 🚀");
-          else if (submission.status === "Wrong Answer")
-            toast.error("Resposta Incorreta.");
-          else toast.error(`Erro: ${submission.status}`);
-        }
-        // ------------------------------------------------------------
+        if (submission.status === "Accepted")
+          toast.success("Solução Aceita! 🚀");
+        else if (submission.status === "Wrong Answer")
+          toast.error("Resposta Incorreta.");
+        else toast.error(`Erro: ${submission.status}`);
 
         fetchSubmissions(currentProb.id);
         if (isOwnerRef.current) fetchProblemStats(currentProb.id);
       }
-
       if (isOwnerRef.current) fetchStats();
     });
 
     newSocket.on(
       "classroom-update",
-      (data: { type: string; problemId?: string }) => {
-        console.log("Evento recebido:", data);
-
-        // 1. ATUALIZAÇÃO ESTRUTURAL (CRUCIAL PARA NOVOS EXERCÍCIOS)
-        // Sempre recarrega os dados da turma (lista de problemas, avisos)
-        // quando qualquer evento de atualização da turma ocorrer.
+      (data: { type: string; problemId: string }) => {
         fetchClassroomData();
-
         const currentTab = activeTabRef.current;
         const currentProb = displayProblemRef.current;
         const owner = isOwnerRef.current;
-
-        // 2. Atualização de Analytics
         if (currentTab === "analytics" && owner) {
           fetchStats();
         }
-
-        // 3. Atualização de Submissões em Tempo Real
-        // Só recarrega as submissões se estivermos vendo O MESMO problema que foi atualizado
-        if (
-          currentTab === "classwork" &&
-          currentProb &&
-          data.problemId === currentProb.id
-        ) {
-          fetchSubmissions(currentProb.id);
-          if (owner) fetchProblemStats(currentProb.id);
+        if (currentTab === "classwork" && currentProb?.id === data.problemId) {
+          fetchSubmissions(data.problemId);
+          if (owner) fetchProblemStats(data.problemId);
         }
       },
     );
@@ -488,14 +461,11 @@ export default function ClassroomView() {
     fetchProblemDetails();
   }, [selectedProblemId, API_URL]);
 
-  // --- EFEITO PRINCIPAL DE CARREGAMENTO DE ARQUIVOS ---
   useEffect(() => {
     const lang = LANGUAGES.find((l) => l.id === languageId);
     if (!lang || !displayProblem) return;
 
     const storageKey = getStorageKey(displayProblem.id, languageId);
-
-    // 1. Tenta carregar do LocalStorage (Autosave)
     const savedFilesJson = storageKey ? localStorage.getItem(storageKey) : null;
 
     if (savedFilesJson) {
@@ -511,14 +481,12 @@ export default function ClassroomView() {
       }
     }
 
-    // 2. Se não houver autosave, usa o Starter Code do Professor
     if (displayProblem.starterCode && displayProblem.starterCode.length > 0) {
       setFiles(displayProblem.starterCode);
       setActiveFileIndex(0);
       return;
     }
 
-    // 3. Fallback: Cria arquivo padrão para a linguagem
     const defaultFile = {
       name: lang.fileName,
       content: lang.defaultCode,
@@ -581,16 +549,14 @@ export default function ClassroomView() {
 
   useEffect(() => {
     setVerdict(null);
+    setExecutionOutput(null);
     setExecutionError(null);
     setLoading(false);
     loadingRef.current = false;
   }, [displayProblem?.id]);
 
-  // --- MANIPULAÇÃO DE ARQUIVOS (IDE) ---
   const handleCodeChange = (value: string | undefined) => {
     const val = value || "";
-
-    // Atualiza o arquivo ativo no estado
     const newFiles = [...files];
     if (newFiles[activeFileIndex]) {
       newFiles[activeFileIndex] = {
@@ -598,8 +564,6 @@ export default function ClassroomView() {
         content: val,
       };
       setFiles(newFiles);
-
-      // Salva no LocalStorage
       if (displayProblem) {
         const key = getStorageKey(displayProblem.id, languageId);
         if (key) localStorage.setItem(key, JSON.stringify(newFiles));
@@ -611,7 +575,6 @@ export default function ClassroomView() {
     if (!newFileName.trim()) return toast.warning("Nome vazio");
     if (files.some((f) => f.name === newFileName))
       return toast.warning("Já existe");
-
     const updated = [...files, { name: newFileName, content: "" }];
     setFiles(updated);
     setNewFileName("");
@@ -628,12 +591,9 @@ export default function ClassroomView() {
 
   const handleResetCode = () => {
     if (!confirm("Isso apagará todas as alterações. Continuar?")) return;
-
     if (displayProblem) {
       const key = getStorageKey(displayProblem.id, languageId);
       if (key) localStorage.removeItem(key);
-
-      // Recarrega do Starter Code ou Default
       if (displayProblem.starterCode && displayProblem.starterCode.length > 0) {
         setFiles(displayProblem.starterCode);
       } else {
@@ -653,7 +613,7 @@ export default function ClassroomView() {
   const handleStartInspection = async (targetSubmission: Submission) => {
     setInspectingUser(targetSubmission.user);
     setStudentSubmissions({});
-    setInspectFileIndex(0); // Reset da aba de arquivo
+    setInspectFileIndex(0);
 
     const targetProblemId = targetSubmission.problem?.id
       ? String(targetSubmission.problem.id)
@@ -708,7 +668,7 @@ export default function ClassroomView() {
 
   const handleInspectionTabChange = (index: number) => {
     setActiveInspectionIndex(index);
-    setInspectFileIndex(0); // Reset ao trocar de questão
+    setInspectFileIndex(0);
     if (!currentProblem || !inspectingUser) return;
     const targetProb =
       currentProblem.children && currentProblem.children.length > 0
@@ -816,7 +776,6 @@ export default function ClassroomView() {
     }
   };
 
-  // --- SUBMISSÃO DE MÚLTIPLOS ARQUIVOS ---
   const submitSolution = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     if (!displayProblem) return toast.warning("Selecione um exercício!");
@@ -825,17 +784,17 @@ export default function ClassroomView() {
     loadingRef.current = true;
 
     setVerdict("Processando...");
+    setExecutionOutput(null);
     setExecutionError(null);
 
     try {
       const token = localStorage.getItem("token");
       const headers = { Authorization: `Bearer ${token}` };
 
-      // Payload atualizado: envia 'files' array em vez de 'code' string
       await axios.post(
         `${API_URL}/submissions`,
         {
-          files, // <--- Aqui está a mudança chave
+          files,
           language_id: languageId,
           problem_id: displayProblem.id,
         },
@@ -967,6 +926,11 @@ export default function ClassroomView() {
   const activeSubmission = activeInspectionProblem
     ? studentSubmissions[activeInspectionProblem.id]
     : null;
+
+  // --- FILTRO DE ESTUDANTES (PARA O MODAL) ---
+  const filteredStudents = (classroom.students || []).filter((student) =>
+    student.email.toLowerCase().includes(studentSearch.toLowerCase()),
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -1179,11 +1143,15 @@ export default function ClassroomView() {
                 }}
               >
                 <span>
-                  {examStatus === "WAITING"
-                    ? "⏳ Aguardando"
-                    : examStatus === "FINISHED"
-                      ? "🛑 Encerrado"
-                      : "⏱️ Tempo Restante:"}
+                  {examStatus === "WAITING" ? (
+                    "⏳ Aguardando"
+                  ) : examStatus === "FINISHED" ? (
+                    "🛑 Encerrado"
+                  ) : (
+                    <>
+                      <Clock size={16} /> Tempo Restante:
+                    </>
+                  )}
                 </span>
                 {examStatus !== "WAITING" && (
                   <span style={{ fontFamily: "monospace", fontSize: "1.1rem" }}>
@@ -1243,7 +1211,10 @@ export default function ClassroomView() {
             )}
             {selectedProblemId && (
               <button
-                onClick={() => setShowSubmissions(true)}
+                onClick={() => {
+                  setShowSubmissions(true);
+                  setSelectedStudentFilter(null); // Reset filter on open
+                }}
                 className="btn btn-secondary"
                 style={{ marginLeft: "10px", backgroundColor: "#444" }}
                 title={
@@ -1452,6 +1423,7 @@ export default function ClassroomView() {
                     : { display: "flex", alignItems: "center", gap: "8px" }
                 }
               >
+                {/* Ícone de Loading Animado */}
                 {loading && <RefreshCw className="animate-spin" size={16} />}
                 {loading ? "Processando..." : isBlocked ? "🔒" : "▶ Enviar"}
               </button>
@@ -1463,6 +1435,7 @@ export default function ClassroomView() {
               className="ide-editor-panel"
               style={{ display: "flex", flexDirection: "column" }}
             >
+              {/* --- ABAS DE ARQUIVOS (ATUALIZADO) --- */}
               <div
                 style={{
                   display: "flex",
@@ -1540,9 +1513,8 @@ export default function ClassroomView() {
 
               <div style={{ flex: 1 }}>
                 <Editor
-                  key={`${languageId}-${displayProblem?.id || "empty"}-${activeFileIndex}`} // Força refresh ao trocar arquivo
+                  key={`${languageId}-${displayProblem?.id || "empty"}-${activeFileIndex}`}
                   height="100%"
-                  // Tenta detectar linguagem pela extensão
                   language={
                     files[activeFileIndex]?.name.endsWith(".js")
                       ? "javascript"
@@ -1779,8 +1751,7 @@ export default function ClassroomView() {
                         className={`mt-4 p-4 rounded-lg border ${
                           lastSubmission.status === "Accepted"
                             ? "border-green-500 bg-green-900/20"
-                            : lastSubmission.status === "Processing" ||
-                                lastSubmission.status === "Queued"
+                            : lastSubmission.status === "Processing"
                               ? "border-yellow-500 bg-yellow-900/20"
                               : "border-red-500 bg-red-900/20"
                         }`}
@@ -1798,80 +1769,32 @@ export default function ClassroomView() {
                           </span>
                         </h3>
 
-                        {/* --- LÓGICA DE EXIBIÇÃO COM COMPONENTES VISUAIS --- */}
-
-                        {/* CASO 1: Resposta Incorreta (Tenta usar o DiffViewer) */}
-                        {lastSubmission.status === "Wrong Answer" ? (
-                          <>
-                            {/* Tenta extrair o esperado do stderr para montar o Diff */}
-                            {(() => {
-                              const expectedVal = extractExpectedValue(
-                                lastSubmission.stderr,
-                              );
-
-                              if (expectedVal && lastSubmission.stdout) {
-                                return (
-                                  <DiffViewer
-                                    expected={expectedVal}
-                                    actual={lastSubmission.stdout}
-                                  />
-                                );
-                              }
-
-                              // Fallback se não conseguir extrair (usa LogViewer simples)
-                              return (
-                                <>
-                                  <span className="text-xs font-bold text-gray-500 uppercase mt-2 block">
-                                    Seu Resultado (Stdout):
-                                  </span>
-                                  <LogViewer
-                                    content={lastSubmission.stdout || ""}
-                                    height={150}
-                                  />
-                                </>
-                              );
-                            })()}
-
-                            {/* Detalhes técnicos do erro (mostra qual caso falhou) */}
-                            {lastSubmission.stderr && (
-                              <div className="mt-4">
-                                <span className="text-xs font-bold text-red-500 uppercase mb-1 block">
-                                  Detalhes da Falha (Stderr):
-                                </span>
-                                <LogViewer
-                                  content={lastSubmission.stderr}
-                                  type="error"
-                                  height="auto" // Altura ajustável ao conteúdo
-                                />
-                              </div>
-                            )}
-                          </>
+                        {lastSubmission.status === "Wrong Answer" &&
+                        lastSubmission.stdout ? (
+                          <DiffViewer
+                            expected="Esperado..."
+                            actual={lastSubmission.stdout}
+                          /> // Simplificado
                         ) : (
-                          /* CASO 2: Outros Status (Accepted, Runtime Error, etc) */
                           <>
                             {lastSubmission.stdout && (
                               <div className="mb-2">
-                                <span className="text-xs font-bold text-gray-500 uppercase mb-1 block">
+                                <span className="text-xs font-bold text-gray-500 uppercase">
                                   Saída Padrão (Stdout):
                                 </span>
-                                <LogViewer
-                                  content={lastSubmission.stdout}
-                                  type="info"
-                                  height={200}
-                                />
+                                <pre className="font-mono text-sm whitespace-pre-wrap text-gray-300 bg-black/30 p-2 rounded mt-1">
+                                  {lastSubmission.stdout}
+                                </pre>
                               </div>
                             )}
-
                             {lastSubmission.stderr && (
-                              <div className="mt-2">
-                                <span className="text-xs font-bold text-red-500 uppercase mb-1 block">
-                                  Logs de Erro (Stderr):
+                              <div>
+                                <span className="text-xs font-bold text-red-500 uppercase">
+                                  Erro (Stderr):
                                 </span>
-                                <LogViewer
-                                  content={lastSubmission.stderr}
-                                  type="error"
-                                  height={200}
-                                />
+                                <pre className="font-mono text-sm whitespace-pre-wrap text-red-300 bg-red-900/10 p-2 rounded mt-1 border border-red-900/30">
+                                  {lastSubmission.stderr}
+                                </pre>
                               </div>
                             )}
                           </>
@@ -1879,16 +1802,26 @@ export default function ClassroomView() {
                       </div>
                     )}
                   </div>
-
-                  {/* Exibição de Erros Globais de Execução (se houver fora da submissão) */}
-                  {executionError && !lastSubmission && (
+                  {executionError && (
                     <div className="mt-2">
                       <span className="text-xs font-bold text-red-500 uppercase mb-1 block">
-                        Erro de Execução:
+                        Erro (Stderr):
                       </span>
                       <LogViewer
                         content={executionError}
                         type="error"
+                        height={200}
+                      />
+                    </div>
+                  )}
+                  {executionOutput && verdict !== "Accepted" && (
+                    <div className="mt-2">
+                      <span className="text-xs font-bold text-gray-500 uppercase mb-1 block">
+                        Saída (Stdout):
+                      </span>
+                      <LogViewer
+                        content={executionOutput}
+                        type="info"
                         height={200}
                       />
                     </div>
@@ -1898,12 +1831,29 @@ export default function ClassroomView() {
             </div>
           </div>
 
-          {/* --- MODAIS DE INSPEÇÃO (ATUALIZADOS) --- */}
+          {/* --- MODAIS DE INSPEÇÃO E LISTAGEM --- */}
           {showSubmissions && (
             <div className="modal-overlay">
-              <div className="modal-content large">
-                <div className="modal-header">
-                  <h2>{isOwner ? "Submissões da Turma" : "Meu Histórico"}</h2>
+              <div
+                className="modal-content large"
+                style={{
+                  height: "80vh",
+                  display: "flex",
+                  flexDirection: "column",
+                  padding: 0,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  className="modal-header"
+                  style={{
+                    padding: "15px 20px",
+                    borderBottom: "1px solid #333",
+                  }}
+                >
+                  <h2>
+                    {isOwner ? "Correção e Acompanhamento" : "Meu Histórico"}
+                  </h2>
                   <button
                     onClick={() => setShowSubmissions(false)}
                     className="btn btn-secondary"
@@ -1911,48 +1861,335 @@ export default function ClassroomView() {
                     Fechar
                   </button>
                 </div>
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>Aluno</th>
-                      <th>Status</th>
-                      <th>Nota</th>
-                      <th>Data</th>
-                      <th>Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {submissions
-                      .filter((sub) => isOwner || sub.user?.id === myUserId)
-                      .map((sub) => (
-                        <tr key={sub.id}>
-                          <td>{sub.user?.email}</td>
-                          <td>
-                            <span
-                              className={`status-badge ${
-                                sub.status === "Accepted" ? "success" : "error"
-                              }`}
+
+                {isOwner ? (
+                  /* --- VISÃO DO PROFESSOR: SPLIT VIEW (LISTA DE ALUNOS | DETALHES) --- */
+                  <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+                    {/* COLUNA DA ESQUERDA: LISTA DE ALUNOS */}
+                    <div
+                      style={{
+                        width: "300px",
+                        borderRight: "1px solid #333",
+                        background: "#1e1e1e",
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: "10px",
+                          borderBottom: "1px solid #333",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            background: "#333",
+                            padding: "5px 10px",
+                            borderRadius: "4px",
+                          }}
+                        >
+                          <Search size={16} color="#888" />
+                          <input
+                            placeholder="Buscar aluno..."
+                            value={studentSearch}
+                            onChange={(e) => setStudentSearch(e.target.value)}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: "white",
+                              width: "100%",
+                              outline: "none",
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ flex: 1, overflowY: "auto" }}>
+                        {filteredStudents.map((student) => {
+                          // Analisa submissões deste aluno
+                          const studentSubs = submissions.filter(
+                            (s) => s.user.id === student.id,
+                          );
+                          const hasAccepted = studentSubs.some(
+                            (s) => s.status === "Accepted",
+                          );
+                          const hasError =
+                            studentSubs.length > 0 && !hasAccepted;
+                          const hasNone = studentSubs.length === 0;
+
+                          return (
+                            <div
+                              key={student.id}
+                              onClick={() =>
+                                setSelectedStudentFilter(student.id)
+                              }
+                              style={{
+                                padding: "12px 15px",
+                                cursor: "pointer",
+                                background:
+                                  selectedStudentFilter === student.id
+                                    ? "#2d2d30"
+                                    : "transparent",
+                                borderLeft:
+                                  selectedStudentFilter === student.id
+                                    ? "3px solid #4caf50"
+                                    : "3px solid transparent",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                transition: "background 0.2s",
+                              }}
+                              className="hover:bg-white/5"
                             >
-                              {sub.status}
-                            </span>
-                          </td>
-                          <td>{sub.grade ?? "-"}</td>
-                          <td>{new Date(sub.createdAt).toLocaleString()}</td>
-                          <td>
-                            <button
-                              className="btn btn-sm btn-primary"
-                              onClick={() => handleStartInspection(sub)}
-                            >
-                              Inspecionar
-                            </button>
-                          </td>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                  overflow: "hidden",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: "30px",
+                                    height: "30px",
+                                    borderRadius: "50%",
+                                    background: "#444",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: "0.8rem",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {student.email.charAt(0).toUpperCase()}
+                                </div>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    overflow: "hidden",
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontSize: "0.9rem",
+                                      color: "#fff",
+                                      whiteSpace: "nowrap",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                    }}
+                                  >
+                                    {student.email.split("@")[0]}
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: "0.75rem",
+                                      color: "#888",
+                                    }}
+                                  >
+                                    {studentSubs.length} envios
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Ícone de Status */}
+                              {hasAccepted ? (
+                                <CheckCircle
+                                  size={18}
+                                  className="text-green-500"
+                                />
+                              ) : hasError ? (
+                                <XCircle size={18} className="text-red-500" />
+                              ) : hasNone ? (
+                                <div
+                                  style={{
+                                    width: "8px",
+                                    height: "8px",
+                                    borderRadius: "50%",
+                                    background: "#444",
+                                  }}
+                                  title="Nenhum envio"
+                                />
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                        {filteredStudents.length === 0 && (
+                          <div
+                            style={{
+                              padding: "20px",
+                              textAlign: "center",
+                              color: "#666",
+                              fontSize: "0.9rem",
+                            }}
+                          >
+                            Nenhum aluno encontrado.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* COLUNA DA DIREITA: DETALHES DAS SUBMISSÕES */}
+                    <div
+                      style={{ flex: 1, overflowY: "auto", background: "#111" }}
+                    >
+                      {selectedStudentFilter ? (
+                        <div style={{ padding: "20px" }}>
+                          <h3
+                            style={{
+                              marginTop: 0,
+                              marginBottom: "20px",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "10px",
+                            }}
+                          >
+                            <User size={20} />
+                            Submissões de{" "}
+                            {
+                              classroom.students.find(
+                                (s) => s.id === selectedStudentFilter,
+                              )?.email
+                            }
+                          </h3>
+                          <table className="custom-table">
+                            <thead>
+                              <tr>
+                                <th>Status</th>
+                                <th>Nota</th>
+                                <th>Data</th>
+                                <th>Ação</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {submissions
+                                .filter(
+                                  (s) => s.user.id === selectedStudentFilter,
+                                )
+                                .map((sub) => (
+                                  <tr key={sub.id}>
+                                    <td>
+                                      <span
+                                        className={`status-badge ${
+                                          sub.status === "Accepted"
+                                            ? "success"
+                                            : "error"
+                                        }`}
+                                      >
+                                        {sub.status}
+                                      </span>
+                                    </td>
+                                    <td>{sub.grade ?? "-"}</td>
+                                    <td>
+                                      {new Date(sub.createdAt).toLocaleString()}
+                                    </td>
+                                    <td>
+                                      <button
+                                        className="btn btn-sm btn-primary"
+                                        onClick={() =>
+                                          handleStartInspection(sub)
+                                        }
+                                      >
+                                        Inspecionar
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              {submissions.filter(
+                                (s) => s.user.id === selectedStudentFilter,
+                              ).length === 0 && (
+                                <tr>
+                                  <td
+                                    colSpan={4}
+                                    style={{
+                                      textAlign: "center",
+                                      padding: "20px",
+                                      color: "#666",
+                                    }}
+                                  >
+                                    Este aluno ainda não realizou submissões.
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            height: "100%",
+                            color: "#444",
+                          }}
+                        >
+                          <User
+                            size={48}
+                            style={{ marginBottom: "15px", opacity: 0.5 }}
+                          />
+                          <p>
+                            Selecione um aluno na lista ao lado para ver o
+                            histórico.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  /* --- VISÃO DO ALUNO: TABELA SIMPLES (MANTIDA) --- */
+                  <div style={{ padding: "20px", overflowY: "auto" }}>
+                    <table className="custom-table">
+                      <thead>
+                        <tr>
+                          <th>Status</th>
+                          <th>Nota</th>
+                          <th>Data</th>
+                          <th>Ação</th>
                         </tr>
-                      ))}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {submissions
+                          .filter((sub) => sub.user?.id === myUserId)
+                          .map((sub) => (
+                            <tr key={sub.id}>
+                              <td>
+                                <span
+                                  className={`status-badge ${
+                                    sub.status === "Accepted"
+                                      ? "success"
+                                      : "error"
+                                  }`}
+                                >
+                                  {sub.status}
+                                </span>
+                              </td>
+                              <td>{sub.grade ?? "-"}</td>
+                              <td>
+                                {new Date(sub.createdAt).toLocaleString()}
+                              </td>
+                              <td>
+                                <button
+                                  className="btn btn-sm btn-primary"
+                                  onClick={() => handleStartInspection(sub)}
+                                >
+                                  Ver Código
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
+
           {inspectingUser && (
             <div className="modal-overlay" style={{ zIndex: 1100 }}>
               <div
@@ -2002,32 +2239,28 @@ export default function ClassroomView() {
                           overflowY: "auto",
                         }}
                       >
-                        {currentProblem.children.map((child, index) => {
-                          return (
-                            <div
-                              key={child.id}
-                              onClick={() => handleInspectionTabChange(index)}
-                              style={{
-                                padding: "12px 15px",
-                                cursor: "pointer",
-                                background:
-                                  activeInspectionIndex === index
-                                    ? "#2d2d30"
-                                    : "transparent",
-                                borderLeft:
-                                  activeInspectionIndex === index
-                                    ? "3px solid #4caf50"
-                                    : "3px solid transparent",
-                              }}
-                            >
-                              <div
-                                style={{ fontSize: "0.9rem", color: "#fff" }}
-                              >
-                                Q{index + 1}: {child.title}
-                              </div>
+                        {currentProblem.children.map((child, index) => (
+                          <div
+                            key={child.id}
+                            onClick={() => handleInspectionTabChange(index)}
+                            style={{
+                              padding: "12px 15px",
+                              cursor: "pointer",
+                              background:
+                                activeInspectionIndex === index
+                                  ? "#2d2d30"
+                                  : "transparent",
+                              borderLeft:
+                                activeInspectionIndex === index
+                                  ? "3px solid #4caf50"
+                                  : "3px solid transparent",
+                            }}
+                          >
+                            <div style={{ fontSize: "0.9rem", color: "#fff" }}>
+                              Q{index + 1}: {child.title}
                             </div>
-                          );
-                        })}
+                          </div>
+                        ))}
                       </div>
                     )}
                   <div
