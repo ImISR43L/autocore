@@ -5,13 +5,14 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { InjectQueue } from '@nestjs/bull'; // <--- Importe
+import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import { Repository } from 'typeorm';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
 import { Submission } from './entities/submission.entity';
 import { Problem, ProblemType } from '../problems/entities/problem.entity';
+// Removido: import { WrapperGenerator } ...
 
 interface LanguageConfig {
   fileName: string;
@@ -29,20 +30,18 @@ export class SubmissionsService {
     @InjectQueue('submission-queue') private submissionsQueue: Queue,
   ) {}
 
+  // ... (getProblemStats, getTeacherStats, grade mantidos iguais) ...
   async getProblemStats(problemId: string) {
     const submissions = await this.submissionsRepository.find({
       where: { problem: { id: problemId } },
       select: ['status'],
     });
-
     let accepted = 0;
     let error = 0;
-
     submissions.forEach((sub) => {
       if (sub.status === 'Accepted') accepted++;
       else error++;
     });
-
     return [
       { name: 'Acertos', value: accepted, fill: '#4caf50' },
       { name: 'Erros', value: error, fill: '#f44336' },
@@ -54,9 +53,7 @@ export class SubmissionsService {
       where: { classroom: { owner: { id: userId } } },
       select: ['id', 'title'],
     });
-
     const stats: { name: string; Accepted: number; Error: number }[] = [];
-
     for (const p of problems) {
       const subs = await this.submissionsRepository.find({
         where: { problem: { id: p.id } },
@@ -80,19 +77,16 @@ export class SubmissionsService {
       where: { id },
       relations: ['problem', 'problem.classroom', 'problem.classroom.owner'],
     });
-
     if (!submission) throw new NotFoundException('Submissão não encontrada');
-
     if (submission.problem?.classroom?.owner?.id !== userId) {
       throw new ForbiddenException('Apenas o professor pode avaliar.');
     }
-
     submission.grade = gradeDto.grade ?? null;
     submission.teacherComment = gradeDto.teacherComment ?? null;
-
     return this.submissionsRepository.save(submission);
   }
 
+  // --- ALTERAÇÃO NO CREATE: REMOVIDA APLICAÇÃO DO WRAPPER ---
   async create(createSubmissionDto: CreateSubmissionDto, userId: number) {
     const { files, language_id, problem_id } = createSubmissionDto;
 
@@ -109,7 +103,6 @@ export class SubmissionsService {
       );
     }
 
-    // Validações de Prova... (mantidas)
     if (problem.type === ProblemType.EXAM) {
       const now = new Date();
       if (
@@ -135,7 +128,7 @@ export class SubmissionsService {
       }
     }
 
-    // Criação
+    // CRIAÇÃO COM ARQUIVOS ORIGINAIS (SEM WRAPPER)
     const submission = this.submissionsRepository.create({
       files,
       language_id: Number(language_id),
@@ -148,7 +141,6 @@ export class SubmissionsService {
 
     const savedSubmission = await this.submissionsRepository.save(submission);
 
-    // LOG DE DEBUG
     this.logger.log(
       `Submissão ${savedSubmission.id} criada. Enviando para fila Redis...`,
     );
@@ -164,7 +156,6 @@ export class SubmissionsService {
       this.logger.error(
         `FALHA ao enviar submissão ${savedSubmission.id} para fila: ${error.message}`,
       );
-      // Opcional: Reverter status para 'Error' se não conseguir enfileirar
     }
 
     return savedSubmission;
@@ -182,7 +173,6 @@ export class SubmissionsService {
   async findAllByProblem(problemId: string) {
     return this.submissionsRepository.find({
       where: { problem: { id: problemId } },
-      // ADICIONADO 'problem' AQUI
       relations: ['user', 'problem'],
       order: { createdAt: 'DESC' },
     });
@@ -193,84 +183,26 @@ export class SubmissionsService {
   }
 
   async getClassroomStats(classroomId: number, userId: number) {
-    // 1. Busca todos os problemas vinculados à turma
     const problems = await this.problemsRepository.find({
       where: { classroom: { id: classroomId } },
       select: ['id', 'title'],
     });
-
     const stats: { name: string; Accepted: number; Error: number }[] = [];
-
-    // 2. Itera sobre cada problema para contar submissões
     for (const p of problems) {
       const subs = await this.submissionsRepository.find({
         where: { problem: { id: p.id } },
         select: ['status'],
       });
-
       let acc = 0;
       let err = 0;
-
       subs.forEach((s) => {
         if (s.status === 'Accepted') acc++;
         else err++;
       });
-
-      // Apenas adiciona ao gráfico se houver submissões
       if (subs.length > 0) {
         stats.push({ name: p.title, Accepted: acc, Error: err });
       }
     }
-
     return stats;
-  }
-
-  private getLanguageConfig(languageId: number): LanguageConfig {
-    switch (languageId) {
-      case 71: // Python
-        return {
-          fileName: 'main.py',
-          runCommand: ['python3', 'main.py'],
-        };
-
-      case 63: // JavaScript (Node)
-        return {
-          fileName: 'index.js',
-          runCommand: ['node', 'index.js'],
-        };
-
-      case 62: // Java
-        return {
-          fileName: 'Main.java',
-          runCommand: ['java', 'Main.java'],
-        };
-
-      case 60: // Go
-      case 95:
-        return {
-          fileName: 'main.go',
-          runCommand: ['go', 'run', 'main.go'],
-        };
-
-      case 50: // C
-      case 48:
-        return {
-          fileName: 'main.c',
-          runCommand: ['gcc main.c -o main && ./main'],
-        };
-
-      case 54: // C++
-      case 52:
-        return {
-          fileName: 'main.cpp',
-          runCommand: ['g++ main.cpp -o main && ./main'],
-        };
-
-      default:
-        return {
-          fileName: 'main.py',
-          runCommand: ['python3', 'main.py'],
-        };
-    }
   }
 }

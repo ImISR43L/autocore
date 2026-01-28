@@ -1,250 +1,210 @@
-import { ParameterDefinition } from '../problems/entities/problem.entity';
+import { Logger } from '@nestjs/common';
+import { Problem } from '../problems/entities/problem.entity';
 
 export class WrapperGenerator {
-  static generate(
-    languageId: number,
-    params: ParameterDefinition[],
-    returnType: string,
-    userCode: string,
-  ): string {
-    // Sanitização de Input (Segurança)
-    const safeCode = this.sanitize(userCode);
+  private static readonly logger = new Logger(WrapperGenerator.name);
+
+  // Regex de segurança
+  private static readonly UNSAFE_CHARS_REGEX =
+    /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u3164]/g;
+
+  // Configuração de Extensão e Nome Padrão
+  private static readonly LANGUAGE_CONFIG: Record<
+    number,
+    { ext: string; standardName: string }
+  > = {
+    71: { ext: '.py', standardName: 'main.py' }, // Python
+    63: { ext: '.js', standardName: 'index.js' }, // Node.js
+    54: { ext: '.cpp', standardName: 'main.cpp' }, // C++
+  };
+
+  static apply(files: any[], problem: Problem, languageId: number): any[] {
+    this.logger.log(`[log] Iniciando Wrapper para LangID: ${languageId}`);
+    this.logger.log(
+      `[log] Arquivos recebidos: ${files.map((f) => f.name).join(', ')}`,
+    );
+
+    // 1. Sanitização
+    const sanitizedFiles = files.map((file) => ({
+      ...file,
+      content: this.sanitize(file.content || ''),
+    }));
+
+    // 2. Identificação do Entry File
+    const entryFileIndex = this.findEntryFileIndex(sanitizedFiles, languageId);
+
+    if (entryFileIndex === -1) {
+      this.logger.warn(
+        `[WRAPPER-FAIL] Nenhum arquivo de entrada compatível encontrado para LangID ${languageId}`,
+      );
+      return sanitizedFiles;
+    }
+
+    const entryFile = sanitizedFiles[entryFileIndex];
+    this.logger.log(
+      `[log] Arquivo de entrada identificado: ${entryFile.name} (Original)`,
+    );
+
+    let wrapperCode = '';
+
+    // 3. Renomeação e Injeção
+    const config = this.LANGUAGE_CONFIG[languageId];
+    if (config) {
+      this.logger.log(
+        `[log] Renomeando ${entryFile.name} para ${config.standardName}`,
+      );
+      entryFile.name = config.standardName;
+    }
 
     switch (languageId) {
-      case 71:
-        return this.python(params, safeCode);
-      case 63:
-        return this.javascript(params, safeCode);
-      case 62:
-        return this.java(params, returnType, safeCode);
-      case 54:
-        return this.cpp(params, returnType, safeCode);
+      case 71: // Python
+        wrapperCode = this.generatePythonWrapper(problem);
+        entryFile.content = `${entryFile.content}\n\n${wrapperCode}`;
+        break;
+
+      case 63: // JavaScript
+        wrapperCode = this.generateJsWrapper(problem);
+        entryFile.content = `${entryFile.content}\n\n${wrapperCode}`;
+        break;
+
+      case 54: // C++
+        if (!entryFile.content.includes('int main')) {
+          wrapperCode = this.generateCppWrapper(problem);
+          entryFile.content = `${entryFile.content}\n\n${wrapperCode}`;
+        } else {
+          this.logger.warn(
+            `[WRAPPER-SKIP] 'int main' detectado no código do aluno. Wrapper C++ ignorado.`,
+          );
+        }
+        break;
+
       default:
-        return safeCode;
+        this.logger.warn(
+          `[WRAPPER-FAIL] Sem gerador para LangID ${languageId}`,
+        );
     }
+
+    if (wrapperCode) {
+      this.logger.log(`[log] Wrapper injetado com sucesso.`);
+      this.logger.log(`[log] Tamanho do Wrapper: ${wrapperCode.length} chars`);
+      this.logger.log(
+        `[log] Final do arquivo:\n${entryFile.content.slice(-200)}`,
+      );
+    }
+
+    sanitizedFiles[entryFileIndex] = entryFile;
+    return sanitizedFiles;
   }
 
-  // --- Método de Sanitização ---
-  private static sanitize(code: string): string {
-    if (!code) return '';
-    return code
-      .replace(/\0/g, '') // Remove Null Bytes
-      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // Remove controles ASCII
-      .replace(/\u3164/g, ''); // Remove Hangul Filler
+  private static sanitize(content: string): string {
+    return content.replace(this.UNSAFE_CHARS_REGEX, '');
   }
 
-  // --- PYTHON CORRIGIDO ---
-  private static python(
-    params: ParameterDefinition[],
-    userCode: string,
-  ): string {
-    const args = params.map((p, i) => `arg${i}`).join(', ');
+  private static findEntryFileIndex(files: any[], langId: number): number {
+    const config = this.LANGUAGE_CONFIG[langId];
+    if (!config) return -1;
+    // Busca flexível pela extensão
+    return files.findIndex((f) => f.name.endsWith(config.ext));
+  }
 
-    // CORREÇÃO DE INDENTAÇÃO: Agora usamos 12 espaços para alinhar
-    // corretamente dentro do bloco 'try' -> 'if'
-    const readers = params
-      .map((p, i) => `            arg${i} = json.loads(lines[${i}])`)
-      .join('\n');
+  private static generatePythonWrapper(problem: Problem): string {
+    const params = problem.parameters || [];
+    const argsParsing = params.map((p, index) => {
+      if (p.type === 'int') return `int(parts[${index}])`;
+      if (p.type === 'float') return `float(parts[${index}])`;
+      if (p.type === 'boolean') return `parts[${index}].lower() == "true"`;
+      return `parts[${index}]`;
+    });
 
     return `
 import sys
-import json
 
-${userCode}
-
-if __name__ == "__main__":
+# --- Wrapper Injetado pelo Autocore ---
+if __name__ == '__main__':
     try:
-        lines = sys.stdin.read().splitlines()
-        lines = [l for l in lines if l.strip() != ""]
-        
-        if len(lines) >= ${params.length}:
-${readers}
-            result = solve(${args})
-            print(json.dumps(result) if not isinstance(result, str) else result)
+        input_data = sys.stdin.read().strip()
+        if input_data:
+            parts = input_data.replace(',', ' ').split()
+            if len(parts) >= ${params.length}:
+                result = solve(${argsParsing.join(', ')})
+                print(result)
+            else:
+                print(f"Erro: Esperado ${params.length} argumentos, recebido {len(parts)}", file=sys.stderr)
+                sys.exit(1) # <--- ADICIONE ISTO
+        else:
+             print("Aviso: Nenhuma entrada recebida no stdin", file=sys.stderr)
+             # Opcional: sys.exit(1) aqui também se entrada for obrigatória
     except Exception as e:
-        print(f"Wrapper Error: {e}", file=sys.stderr)
-        exit(1)
+        print(f"Erro de Execução no Wrapper: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1) # <--- ADICIONE ISTO (CRUCIAL)
 `;
   }
 
-  // --- JAVASCRIPT ---
-  private static javascript(
-    params: ParameterDefinition[],
-    userCode: string,
-  ): string {
-    const args = params.map((p, i) => `arg${i}`).join(', ');
-    const readers = params
-      .map((p, i) => `    const arg${i} = JSON.parse(lines[${i}]);`)
-      .join('\n');
+  private static generateJsWrapper(problem: Problem): string {
+    const params = problem.parameters || [];
+    const argsParsing = params.map((p, index) => {
+      if (p.type === 'int') return `parseInt(parts[${index}])`;
+      if (p.type === 'float') return `parseFloat(parts[${index}])`;
+      if (p.type === 'boolean')
+        return `(parts[${index}].toLowerCase() === "true")`;
+      return `parts[${index}]`;
+    });
 
+    // ALTERAÇÃO: Uso de 'import' e 'readFileSync' (ESM) em vez de 'require'
     return `
-const fs = require('fs');
-
-${userCode}
+// --- Wrapper Injetado pelo Autocore ---
+import { readFileSync } from 'fs';
 
 try {
-    const input = fs.readFileSync(0, 'utf-8').trim();
-    if(!input) return;
-    const lines = input.split('\\n');
-    
-${readers}
-    
-    const result = solve(${args});
-    console.log(typeof result === 'object' ? JSON.stringify(result) : result);
-} catch(e) { 
-    console.error(e); 
-    process.exit(1);
+    const input = readFileSync(0, 'utf8').trim();
+    if (input) {
+        const parts = input.replace(/,/g, ' ').split(/\\s+/);
+        if (parts.length >= ${params.length}) {
+            const result = solve(${argsParsing.join(', ')});
+            console.log(result);
+        }
+    }
+} catch (e) {
+    console.error("Erro de Execução:", e);
 }
 `;
   }
 
-  // --- C++ ---
-  private static cpp(
-    params: ParameterDefinition[],
-    returnType: string,
-    userCode: string,
-  ): string {
-    const typeMap = {
-      int: 'int',
-      float: 'float',
-      string: 'std::string',
-      boolean: 'bool',
-      'int[]': 'std::vector<int>',
-      'string[]': 'std::vector<std::string>',
-    };
+  private static generateCppWrapper(problem: Problem): string {
+    const params = problem.parameters || [];
 
-    let readers = '';
-    let callArgs = '';
+    const decls = params
+      .map((p, i) => {
+        const typeMap: Record<string, string> = {
+          int: 'int',
+          float: 'float',
+          string: 'string',
+          boolean: 'bool',
+        };
+        return `${typeMap[p.type] || 'string'} p${i};`;
+      })
+      .join('\n    ');
 
-    params.forEach((p, i) => {
-      const cppType = typeMap[p.type] || 'int';
-      callArgs += (i > 0 ? ', ' : '') + `arg${i}`;
-
-      if (p.type.endsWith('[]')) {
-        readers += `
-    ${cppType} arg${i};
-    std::string line${i};
-    std::getline(std::cin, line${i});
-    arg${i} = parseVector<${p.type === 'int[]' ? 'int' : 'std::string'}>(line${i});
-            `;
-      } else {
-        readers += `
-    ${cppType} arg${i};
-    if (std::cin.peek() == '\\n') std::cin.ignore(); 
-    std::cin >> arg${i};
-            `;
-      }
-    });
-
-    const printResult = returnType.endsWith('[]')
-      ? `for(size_t i=0; i<result.size(); ++i) std::cout << (i==0?"[":",") << result[i]; std::cout << "]";`
-      : `std::cout << result;`;
+    const reads = params.map((_, i) => `cin >> p${i};`).join('\n    ');
+    const callArgs = params.map((_, i) => `p${i}`).join(', ');
 
     return `
 #include <iostream>
-#include <vector>
 #include <string>
+#include <vector>
 #include <sstream>
-#include <algorithm>
 
-template <typename T>
-std::vector<T> parseVector(std::string s) {
-    std::vector<T> res;
-    s.erase(remove(s.begin(), s.end(), '['), s.end());
-    s.erase(remove(s.begin(), s.end(), ']'), s.end());
-    std::stringstream ss(s);
-    std::string item;
-    while (std::getline(ss, item, ',')) {
-        if(item.empty()) continue;
-        std::stringstream conv(item);
-        T val; conv >> val;
-        res.push_back(val);
-    }
-    return res;
-}
+using namespace std;
 
-${userCode}
-
+// --- Wrapper Injetado pelo Autocore ---
 int main() {
-    try {
-${readers}
-        auto result = solve(${callArgs});
-        ${printResult}
-    } catch (...) {
-        return 1;
+    ${decls}
+    if (${reads}) {
+        cout << solve(${callArgs}) << endl;
     }
     return 0;
-}
-`;
-  }
-
-  // --- JAVA ---
-  private static java(
-    params: ParameterDefinition[],
-    returnType: string,
-    userCode: string,
-  ): string {
-    const typeMap = {
-      int: 'int',
-      float: 'float',
-      string: 'String',
-      boolean: 'boolean',
-      'int[]': 'int[]',
-      'string[]': 'String[]',
-    };
-
-    let readers = '';
-    let callArgs = '';
-
-    params.forEach((p, i) => {
-      const javaType = typeMap[p.type] || 'int';
-      callArgs += (i > 0 ? ', ' : '') + `arg${i}`;
-
-      if (p.type.endsWith('[]')) {
-        readers += `
-            String line${i} = scanner.nextLine();
-            ${javaType} arg${i} = parseArray${p.type === 'int[]' ? 'Int' : 'Str'}(line${i});
-             `;
-      } else {
-        let nextMethod = 'next()';
-        if (p.type === 'int') nextMethod = 'nextInt()';
-        if (p.type === 'float') nextMethod = 'nextFloat()';
-        if (p.type === 'boolean') nextMethod = 'nextBoolean()';
-
-        readers += `
-            ${javaType} arg${i} = scanner.${nextMethod};
-            if (scanner.hasNextLine()) scanner.nextLine(); 
-             `;
-      }
-    });
-
-    return `
-import java.util.*;
-
-${userCode}
-
-public class Main {
-    private static int[] parseArrayInt(String s) {
-        s = s.replace("[", "").replace("]", "");
-        if (s.trim().isEmpty()) return new int[0];
-        String[] parts = s.split(",");
-        int[] res = new int[parts.length];
-        for(int i=0; i<parts.length; i++) res[i] = Integer.parseInt(parts[i].trim());
-        return res;
-    }
-
-    public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-        try {
-            ${readers}
-            
-            Solution sol = new Solution();
-            System.out.println(sol.solve(${callArgs}));
-        } catch(Exception e) {
-            System.exit(1);
-        }
-        scanner.close();
-    }
 }
 `;
   }

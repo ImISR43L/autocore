@@ -1,6 +1,8 @@
 services:
   api:
-    build: ./api
+    build:
+      context: ./api
+      target: builder # <--- ISSO É CRUCIAL: Usa a etapa da imagem que tem o 'nest' instalado
     ports:
       - "3000:3000"
     env_file:
@@ -8,6 +10,8 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - EXECUTOR_URL=http://go-judge:5050/run
+      - NODE_ENV=development
     secrets:
       - db_password
       - redis_password
@@ -19,6 +23,10 @@ services:
         condition: service_started
       redis:
         condition: service_started
+    volumes:
+      - ./api:/app # Garante que seus logs no código apareçam no container
+      - /app/node_modules # Preserva os módulos do container
+    command: npm run start:dev
     networks:
       - backend_net
       - secure_sandbox
@@ -79,7 +87,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 512M
+          memory: 768M
 
   web:
     build: ./web

@@ -186,7 +186,6 @@ export default function ClassroomView() {
 
   // UI & Execução
   const [verdict, setVerdict] = useState<string | null>(null);
-  const [executionOutput, setExecutionOutput] = useState<string | null>(null);
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const loadingRef = useRef(false);
@@ -231,6 +230,12 @@ export default function ClassroomView() {
     } catch {
       return null;
     }
+  };
+
+  const extractExpectedValue = (stderr: string = ""): string | null => {
+    // Tenta capturar o texto entre "Esperado:" e a próxima quebra de linha ou "Obtido:"
+    const match = stderr.match(/Esperado:\s*([\s\S]*?)(?:\nObtido:|$)/);
+    return match ? match[1].trim() : null;
   };
 
   const myUserId = getMyUserId();
@@ -383,29 +388,40 @@ export default function ClassroomView() {
     newSocket.on("submission-finished", (submission: Submission) => {
       const currentProb = displayProblemRef.current;
 
-      // Verifica se a submissão pertence ao problema que está sendo visualizado agora
       if (
         currentProb &&
         ((submission.problem?.id && submission.problem.id === currentProb.id) ||
           submission.problemId === currentProb.id)
       ) {
         setVerdict(submission.status);
-        setExecutionOutput(submission.stdout || "");
         setExecutionError(submission.stderr || "");
-        setLoading(false);
-        loadingRef.current = false;
 
-        if (submission.status === "Accepted")
-          toast.success("Solução Aceita! 🚀");
-        else if (submission.status === "Wrong Answer")
-          toast.error("Resposta Incorreta.");
-        else toast.error(`Erro: ${submission.status}`);
+        // --- ALTERAÇÃO: Tratamento correto de status intermediário ---
+        const isProcessing = ["Queued", "Processing"].includes(
+          submission.status,
+        );
+
+        if (isProcessing) {
+          // Mantém o estado de Loading e NÃO exibe Toast
+          setLoading(true);
+          loadingRef.current = true;
+        } else {
+          // Status Final: Remove Loading e exibe o resultado
+          setLoading(false);
+          loadingRef.current = false;
+
+          if (submission.status === "Accepted")
+            toast.success("Solução Aceita! 🚀");
+          else if (submission.status === "Wrong Answer")
+            toast.error("Resposta Incorreta.");
+          else toast.error(`Erro: ${submission.status}`);
+        }
+        // ------------------------------------------------------------
 
         fetchSubmissions(currentProb.id);
         if (isOwnerRef.current) fetchProblemStats(currentProb.id);
       }
 
-      // Sempre atualiza estatísticas gerais se for dono
       if (isOwnerRef.current) fetchStats();
     });
 
@@ -565,7 +581,6 @@ export default function ClassroomView() {
 
   useEffect(() => {
     setVerdict(null);
-    setExecutionOutput(null);
     setExecutionError(null);
     setLoading(false);
     loadingRef.current = false;
@@ -810,7 +825,6 @@ export default function ClassroomView() {
     loadingRef.current = true;
 
     setVerdict("Processando...");
-    setExecutionOutput(null);
     setExecutionError(null);
 
     try {
@@ -1765,7 +1779,8 @@ export default function ClassroomView() {
                         className={`mt-4 p-4 rounded-lg border ${
                           lastSubmission.status === "Accepted"
                             ? "border-green-500 bg-green-900/20"
-                            : lastSubmission.status === "Processing"
+                            : lastSubmission.status === "Processing" ||
+                                lastSubmission.status === "Queued"
                               ? "border-yellow-500 bg-yellow-900/20"
                               : "border-red-500 bg-red-900/20"
                         }`}
@@ -1783,32 +1798,80 @@ export default function ClassroomView() {
                           </span>
                         </h3>
 
-                        {lastSubmission.status === "Wrong Answer" &&
-                        lastSubmission.stdout ? (
-                          <DiffViewer
-                            expected="Esperado..."
-                            actual={lastSubmission.stdout}
-                          /> // Simplificado
+                        {/* --- LÓGICA DE EXIBIÇÃO COM COMPONENTES VISUAIS --- */}
+
+                        {/* CASO 1: Resposta Incorreta (Tenta usar o DiffViewer) */}
+                        {lastSubmission.status === "Wrong Answer" ? (
+                          <>
+                            {/* Tenta extrair o esperado do stderr para montar o Diff */}
+                            {(() => {
+                              const expectedVal = extractExpectedValue(
+                                lastSubmission.stderr,
+                              );
+
+                              if (expectedVal && lastSubmission.stdout) {
+                                return (
+                                  <DiffViewer
+                                    expected={expectedVal}
+                                    actual={lastSubmission.stdout}
+                                  />
+                                );
+                              }
+
+                              // Fallback se não conseguir extrair (usa LogViewer simples)
+                              return (
+                                <>
+                                  <span className="text-xs font-bold text-gray-500 uppercase mt-2 block">
+                                    Seu Resultado (Stdout):
+                                  </span>
+                                  <LogViewer
+                                    content={lastSubmission.stdout || ""}
+                                    height={150}
+                                  />
+                                </>
+                              );
+                            })()}
+
+                            {/* Detalhes técnicos do erro (mostra qual caso falhou) */}
+                            {lastSubmission.stderr && (
+                              <div className="mt-4">
+                                <span className="text-xs font-bold text-red-500 uppercase mb-1 block">
+                                  Detalhes da Falha (Stderr):
+                                </span>
+                                <LogViewer
+                                  content={lastSubmission.stderr}
+                                  type="error"
+                                  height="auto" // Altura ajustável ao conteúdo
+                                />
+                              </div>
+                            )}
+                          </>
                         ) : (
+                          /* CASO 2: Outros Status (Accepted, Runtime Error, etc) */
                           <>
                             {lastSubmission.stdout && (
                               <div className="mb-2">
-                                <span className="text-xs font-bold text-gray-500 uppercase">
+                                <span className="text-xs font-bold text-gray-500 uppercase mb-1 block">
                                   Saída Padrão (Stdout):
                                 </span>
-                                <pre className="font-mono text-sm whitespace-pre-wrap text-gray-300 bg-black/30 p-2 rounded mt-1">
-                                  {lastSubmission.stdout}
-                                </pre>
+                                <LogViewer
+                                  content={lastSubmission.stdout}
+                                  type="info"
+                                  height={200}
+                                />
                               </div>
                             )}
+
                             {lastSubmission.stderr && (
-                              <div>
-                                <span className="text-xs font-bold text-red-500 uppercase">
-                                  Erro (Stderr):
+                              <div className="mt-2">
+                                <span className="text-xs font-bold text-red-500 uppercase mb-1 block">
+                                  Logs de Erro (Stderr):
                                 </span>
-                                <pre className="font-mono text-sm whitespace-pre-wrap text-red-300 bg-red-900/10 p-2 rounded mt-1 border border-red-900/30">
-                                  {lastSubmission.stderr}
-                                </pre>
+                                <LogViewer
+                                  content={lastSubmission.stderr}
+                                  type="error"
+                                  height={200}
+                                />
                               </div>
                             )}
                           </>
@@ -1816,26 +1879,16 @@ export default function ClassroomView() {
                       </div>
                     )}
                   </div>
-                  {executionError && (
+
+                  {/* Exibição de Erros Globais de Execução (se houver fora da submissão) */}
+                  {executionError && !lastSubmission && (
                     <div className="mt-2">
                       <span className="text-xs font-bold text-red-500 uppercase mb-1 block">
-                        Erro (Stderr):
+                        Erro de Execução:
                       </span>
                       <LogViewer
                         content={executionError}
                         type="error"
-                        height={200}
-                      />
-                    </div>
-                  )}
-                  {executionOutput && verdict !== "Accepted" && (
-                    <div className="mt-2">
-                      <span className="text-xs font-bold text-gray-500 uppercase mb-1 block">
-                        Saída (Stdout):
-                      </span>
-                      <LogViewer
-                        content={executionOutput}
-                        type="info"
                         height={200}
                       />
                     </div>
