@@ -3,13 +3,13 @@ import { Logger, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { Job } from 'bull';
-import { Submission } from './entities/submission.entity';
+import { Submission, FileEntry } from './entities/submission.entity';
 import { Problem } from '../problems/entities/problem.entity';
 import { WrapperGenerator } from './wrapper-generator';
 import axios from 'axios';
 import { SubmissionsGateway } from './submissions.gateway';
-import { CACHE_MANAGER } from '@nestjs/cache-manager'; // <--- Token
-import type { Cache } from 'cache-manager'; // <--- Interface
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 
 interface LanguageConfig {
   fileName: string;
@@ -36,10 +36,9 @@ export class SubmissionsProcessor {
     @InjectRepository(Problem)
     private problemsRepository: Repository<Problem>,
     private submissionsGateway: SubmissionsGateway,
-    // INJEÇÃO DO CACHE
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {
-    this.logger.log('SubmissionsProcessor (com Redis Cache) inicializado.');
+    this.logger.log('SubmissionsProcessor (Multi-File) inicializado.');
   }
 
   private cleanOutput(text: string | undefined): string {
@@ -58,27 +57,19 @@ export class SubmissionsProcessor {
     this.logger.debug(`[Job ${job.id}] Iniciado.`);
   }
 
-  // --- MÉTODO AUXILIAR PARA CACHE DE PROBLEMAS ---
   private async getCachedProblem(problemId: string): Promise<Problem | null> {
     const cacheKey = `problem:${problemId}:full`;
-
-    // 1. Tenta pegar do Redis
     const cached = await this.cacheManager.get<Problem>(cacheKey);
-    if (cached) {
-      return cached;
-    }
+    if (cached) return cached;
 
-    // 2. Se não achar, pega do Banco
     const problem = await this.problemsRepository.findOne({
       where: { id: problemId },
-      relations: ['testCases', 'classroom'], // Busca pesada
+      relations: ['testCases', 'classroom'],
     });
 
     if (problem) {
-      // 3. Salva no Redis por 1 hora (TTL 3600s)
       await this.cacheManager.set(cacheKey, problem, 3600);
     }
-
     return problem;
   }
 
@@ -86,52 +77,72 @@ export class SubmissionsProcessor {
   async handleExecution(job: Job<{ submissionId: string }>) {
     const { submissionId } = job.data;
 
-    // OTIMIZAÇÃO: Buscamos apenas a submissão e o ID do problema (query leve)
-    // Não trazemos os testCases aqui para economizar banda do banco
     const submission = await this.submissionsRepository.findOne({
       where: { id: submissionId },
       relations: ['user', 'problem'],
     });
 
     if (!submission || !submission.problem) {
-      this.logger.error(`Submissão ${submissionId} órfã ou sem problema.`);
+      this.logger.error(`Submissão ${submissionId} inválida.`);
       return;
     }
 
-    // OTIMIZAÇÃO: Buscamos os dados pesados (Test Cases/Wrappers) via Cache
     const fullProblem = await this.getCachedProblem(submission.problem.id);
-
-    if (!fullProblem) {
-      this.logger.error(`Problema ${submission.problem.id} não encontrado.`);
-      return;
-    }
+    if (!fullProblem) return;
 
     submission.status = 'Processing';
-    // Nota: salvamos apenas status, não precisamos re-salvar o objeto problem inteiro
     await this.submissionsRepository.save(submission);
 
-    const { code, language_id } = submission;
-    const langId = Number(language_id);
+    // --- NOVA LÓGICA MULTI-ARQUIVO ---
+    const files = submission.files || []; // Agora pegamos a lista de arquivos
+    const langId = Number(submission.language_id);
     const mockJudgeUrl = 'http://go-judge:5050';
+    const languageConfig = this.getLanguageConfig(langId);
 
-    // Gera o código final usando os parâmetros cacheados
+    // 1. Prepara o objeto copyIn (Mapa de Nome -> Conteúdo)
+    const copyIn: Record<string, { content: string }> = {};
+
+    // 2. Identifica o arquivo principal para aplicar o Wrapper
+    // (Geralmente é main.py, index.js, etc., definido no languageConfig)
+    let mainFileContent = '';
+
+    // Procura o arquivo com o nome padrão da linguagem
+    const mainFileEntry = files.find((f) => f.name === languageConfig.fileName);
+
+    if (mainFileEntry) {
+      mainFileContent = mainFileEntry.content;
+    } else if (files.length > 0) {
+      // Fallback: Se não achar "main.py", pega o primeiro arquivo
+      mainFileContent = files[0].content;
+    }
+
+    // 3. Gera o código final com Wrapper (apenas para o arquivo principal)
     const parameters = fullProblem.parameters || [];
-    const fullCode = WrapperGenerator.generate(
+    const wrappedCode = WrapperGenerator.generate(
       langId,
       parameters,
       fullProblem.returnType || 'void',
-      code,
+      mainFileContent,
     );
 
-    const languageConfig = this.getLanguageConfig(langId);
+    // 4. Monta o sistema de arquivos virtual
+    // Primeiro, adiciona todos os arquivos auxiliares (sem wrapper)
+    files.forEach((f) => {
+      copyIn[f.name] = { content: f.content };
+    });
+
+    // Sobrescreve o arquivo principal com a versão "wrappada"
+    copyIn[languageConfig.fileName] = { content: wrappedCode };
+
+    // --- EXECUÇÃO (Copiado da versão otimizada anterior) ---
     let finalVerdict = 'Pending';
     let executionStdout = '';
     let executionStderr = '';
-
     const testCases = fullProblem.testCases || [];
 
     try {
       if (testCases.length === 0) {
+        // Modo Sem Testes
         const payload = {
           cmd: [
             {
@@ -145,9 +156,7 @@ export class SubmissionsProcessor {
               cpuLimit: 10000000000,
               memoryLimit: 512 * 1024 * 1024,
               procLimit: 50,
-              copyIn: {
-                [languageConfig.fileName]: { content: fullCode },
-              },
+              copyIn: copyIn, // <--- Enviamos todos os arquivos aqui
             },
           ],
         };
@@ -156,6 +165,7 @@ export class SubmissionsProcessor {
           payload,
         );
         const result = res.data[0];
+
         if (result.exitStatus === 0) {
           finalVerdict = 'No Tests';
           executionStdout = result.files['stdout'] || '';
@@ -164,11 +174,8 @@ export class SubmissionsProcessor {
           executionStderr = result.files['stderr'] || 'Erro desconhecido';
         }
       } else {
-        this.logger.debug(
-          `Executando ${testCases.length} testes (Cacheado)...`,
-        );
+        // Modo Com Testes
         finalVerdict = 'Accepted';
-
         for (const tc of testCases) {
           const payload = {
             cmd: [
@@ -183,9 +190,7 @@ export class SubmissionsProcessor {
                 cpuLimit: 10000000000,
                 memoryLimit: 512 * 1024 * 1024,
                 procLimit: 50,
-                copyIn: {
-                  [languageConfig.fileName]: { content: fullCode },
-                },
+                copyIn: copyIn, // <--- Enviamos todos os arquivos
               },
             ],
           };
@@ -231,10 +236,8 @@ export class SubmissionsProcessor {
     submission.stdout = this.cleanOutput(executionStdout);
     submission.stderr = this.cleanOutput(executionStderr);
 
-    // Salva resultado
     const saved = await this.submissionsRepository.save(submission);
 
-    // Notificações Socket.IO (Usa fullProblem do cache para saber a sala da turma)
     if (saved.user?.id) {
       this.submissionsGateway.server
         .to(`user-${saved.user.id}`)

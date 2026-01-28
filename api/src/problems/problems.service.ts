@@ -2,6 +2,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -13,56 +14,60 @@ import {
   ProblemType,
 } from './entities/problem.entity';
 import { TestCase } from './entities/test-case.entity';
+import { Classroom } from '../classrooms/entities/classroom.entity';
 
 @Injectable()
 export class ProblemsService {
+  private readonly logger = new Logger(ProblemsService.name);
+
   constructor(
     @InjectRepository(Problem)
     private problemsRepository: Repository<Problem>,
     @InjectRepository(TestCase)
     private testCasesRepository: Repository<TestCase>,
+    @InjectRepository(Classroom)
+    private classroomsRepository: Repository<Classroom>,
   ) {}
 
-  async create(createProblemDto: CreateProblemDto, _userId: number) {
-    const {
-      testCases,
-      classroomId,
-      type,
-      deadline,
-      parameters,
-      timeLimit,
-      questions,
-      startDate,
-      ...problemData
-    } = createProblemDto;
+  async create(createProblemDto: CreateProblemDto) {
+    // 1. Extrair parameters para tratar a tipagem separadamente
+    const { classroomId, questions, parameters, ...problemData } =
+      createProblemDto;
+
+    let classroom: Classroom | undefined = undefined;
+    if (classroomId) {
+      const foundClassroom = await this.classroomsRepository.findOne({
+        where: { id: classroomId },
+      });
+      if (!foundClassroom) throw new NotFoundException('Turma não encontrada');
+      classroom = foundClassroom;
+    }
+
+    let children: Problem[] = [];
+    if (questions && questions.length > 0) {
+      children = questions.map((q) =>
+        this.problemsRepository.create({
+          ...q,
+          type: ProblemType.EXERCISE,
+          classroom: classroom,
+          // Cast explícito para resolver incompatibilidade DTO (string) vs Entidade (Union)
+          parameters: q.parameters as unknown as ParameterDefinition[],
+          testCases: q.testCases
+            ? q.testCases.map((tc) =>
+                this.testCasesRepository.create({ ...tc }),
+              )
+            : [],
+        }),
+      );
+    }
 
     const problem = this.problemsRepository.create({
       ...problemData,
-      type: type as ProblemType,
-      deadline: deadline ? new Date(deadline) : undefined,
-      startDate: startDate ? new Date(startDate) : undefined,
-      timeLimit: timeLimit,
-      parameters: parameters as any,
-      classroom: { id: classroomId },
+      // Cast explícito também para o problema principal
+      parameters: parameters as unknown as ParameterDefinition[],
+      classroom: classroom,
+      children: children.length > 0 ? children : undefined,
     });
-
-    if (questions && questions.length > 0) {
-      problem.children = questions.map((q) =>
-        this.problemsRepository.create({
-          ...q,
-          type: problem.type,
-          classroom: { id: classroomId },
-          parameters: q.parameters as any,
-          testCases: q.testCases.map((tc) =>
-            this.testCasesRepository.create({ ...tc }),
-          ),
-        }),
-      );
-    } else if (testCases && testCases.length > 0) {
-      problem.testCases = testCases.map((tc) =>
-        this.testCasesRepository.create({ ...tc }),
-      );
-    }
 
     return this.problemsRepository.save(problem);
   }
@@ -85,38 +90,29 @@ export class ProblemsService {
 
     if (!problem) throw new NotFoundException('Problema não encontrado');
 
-    // === CORREÇÃO 1: AUTO-START (Garante liberação no horário agendado) ===
-    // Se a data agendada (startDate) já passou, mas startedAt está vazio,
-    // iniciamos automaticamente usando o horário agendado.
     if (
       problem.type === ProblemType.EXAM &&
       !problem.startedAt &&
       problem.startDate &&
       problem.startDate <= new Date()
     ) {
-      console.log(`[AutoStart] Iniciando prova ${problem.id} automaticamente.`);
+      this.logger.log(
+        `[AutoStart] Iniciando prova ${problem.id} automaticamente.`,
+      );
       problem.startedAt = problem.startDate;
       await this.problemsRepository.save(problem);
     }
 
-    // Se o usuário NÃO é o dono da turma (é Aluno ou outro Professor)
     if (problem.classroom && problem.classroom.owner.id !== userId) {
       if (problem.type === ProblemType.EXAM) {
-        
-        // Debug: Ajuda a entender por que está bloqueando
         const now = new Date();
         if (!problem.startedAt || problem.startedAt > now) {
-          console.log(`[Bloqueio] Prova: ${problem.title}`);
-          console.log(`- StartedAt: ${problem.startedAt}`);
-          console.log(`- Agora (Server): ${now}`);
-          
           throw new ForbiddenException(
             'Esta prova ainda não foi iniciada pelo professor.',
           );
         }
       }
 
-      // Filtros de segurança (Ocultar casos de teste)
       if (problem.testCases) {
         problem.testCases = problem.testCases.filter((tc) => !tc.isHidden);
       }
@@ -144,10 +140,7 @@ export class ProblemsService {
     if (problem.type !== ProblemType.EXAM)
       throw new ForbiddenException('Apenas provas podem ser iniciadas.');
 
-    // Início Manual: Define para AGORA
     problem.startedAt = new Date();
-    console.log(`[ManualStart] Prova ${problem.id} iniciada em ${problem.startedAt}`);
-    
     return this.problemsRepository.save(problem);
   }
 
@@ -173,26 +166,28 @@ export class ProblemsService {
       ...dataToUpdate
     } = updateProblemDto;
 
-    // === CORREÇÃO 2: PROTEÇÃO CONTRA RESET ===
-    // Remove startedAt do payload para garantir que ele nunca seja setado como null
-    // por uma edição acidental do professor.
     delete (dataToUpdate as any).startedAt;
 
     if (questions) {
-      if (problem.children.length > 0) {
+      if (problem.children && problem.children.length > 0) {
         await this.problemsRepository.remove(problem.children);
       }
-      problem.children = questions.map((q) =>
-        this.problemsRepository.create({
+
+      // 2. CORREÇÃO: Cast 'as unknown as Problem' para evitar o erro de conversão
+      problem.children = questions.map((q) => {
+        const childParams = q.parameters as unknown as ParameterDefinition[];
+        const childTestCases = q.testCases
+          ? q.testCases.map((tc) => this.testCasesRepository.create({ ...tc }))
+          : [];
+
+        return this.problemsRepository.create({
           ...q,
           type: problem.type,
           classroom: problem.classroom,
-          parameters: q.parameters as unknown as ParameterDefinition[],
-          testCases: q.testCases.map((tc) =>
-            this.testCasesRepository.create({ ...tc }),
-          ),
-        }),
-      );
+          parameters: childParams,
+          testCases: childTestCases,
+        }) as unknown as Problem; // <--- CORREÇÃO AQUI
+      });
     }
 
     if (testCases) {

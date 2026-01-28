@@ -1,65 +1,85 @@
 import {
-  IsNotEmpty,
   IsString,
-  IsArray,
-  ValidateNested,
+  IsNotEmpty,
   IsOptional,
   IsEnum,
+  IsArray,
+  ValidateNested,
   IsInt,
+  IsDateString,
   Min,
-  IsBoolean,
-  Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ProblemType } from '../entities/problem.entity';
 
-export class CreateTestCaseDto {
+// DTO para os Arquivos (Template)
+class FileEntryDto {
   @IsString()
   @IsNotEmpty()
-  input: string;
+  name: string;
 
   @IsString()
-  @IsNotEmpty()
-  expectedOutput: string;
-
-  @IsBoolean()
-  @IsOptional()
-  isHidden?: boolean;
+  content: string;
 }
 
-// Tipo auxiliar para evitar repetição e garantir sincronia
-type ParamType = 'int' | 'float' | 'string' | 'boolean' | 'int[]' | 'string[]';
-
-class ParameterDefinitionDto {
+// DTO para Parâmetros
+class ParameterDto {
   @IsString()
   @IsNotEmpty()
   name: string;
 
   @IsString()
   @IsNotEmpty()
-  @IsEnum(['int', 'float', 'string', 'boolean', 'int[]', 'string[]'])
-  // CORREÇÃO: Tipagem estrita em vez de 'string' genérica
-  type: ParamType;
+  type: string;
 }
 
-export class CreateQuestionDto {
-  @IsString() @IsNotEmpty() title: string;
-  @IsString() @IsNotEmpty() description: string;
+// DTO para Casos de Teste
+class TestCaseDto {
+  @IsString()
+  input: string;
 
-  // eslint-disable-next-line security/detect-unsafe-regex
-  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: 'Slug inválido' })
+  @IsString()
+  expectedOutput: string;
+
+  @IsOptional()
+  isHidden?: boolean;
+}
+
+// CORREÇÃO: Adicionado 'export' aqui
+export class CreateQuestionDto {
+  @IsString()
+  @IsNotEmpty()
+  title: string;
+
+  @IsString()
+  @IsNotEmpty()
+  description: string;
+
+  @IsString()
+  @IsNotEmpty()
   slug: string;
 
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ParameterDefinitionDto)
-  parameters: ParameterDefinitionDto[];
+  @Type(() => ParameterDto)
+  parameters?: ParameterDto[];
 
-  @IsString() returnType: string;
+  @IsOptional()
+  @IsString()
+  returnType?: string;
 
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CreateTestCaseDto)
-  testCases: CreateTestCaseDto[];
+  @Type(() => TestCaseDto)
+  testCases?: TestCaseDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FileEntryDto)
+  starterCode?: FileEntryDto[];
 }
 
 export class CreateProblemDto {
@@ -71,54 +91,63 @@ export class CreateProblemDto {
   @IsNotEmpty()
   description: string;
 
-  // eslint-disable-next-line security/detect-unsafe-regex
-  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+  @IsString()
+  @IsNotEmpty()
   slug: string;
 
+  @IsOptional()
+  @IsEnum(ProblemType)
+  type?: ProblemType;
+
+  @IsOptional()
   @IsInt()
-  @IsNotEmpty()
-  classroomId: number;
+  classroomId?: number;
 
-  @IsEnum(['EXERCISE', 'EXAM'])
-  type: 'EXERCISE' | 'EXAM';
-
+  // --- Campos de Prova ---
+  @IsOptional()
   @IsInt()
   @Min(1)
-  @IsOptional()
   maxAttempts?: number;
 
   @IsOptional()
-  @IsString()
-  deadline?: string;
-
   @IsInt()
-  @Min(1)
-  @IsOptional()
   timeLimit?: number;
 
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  deadline?: string;
+
+  // --- Campos de Exercício ---
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ParameterDefinitionDto)
-  @IsOptional()
-  parameters?: ParameterDefinitionDto[];
+  @Type(() => ParameterDto)
+  parameters?: ParameterDto[];
 
-  @IsString()
   @IsOptional()
+  @IsString()
   returnType?: string;
 
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CreateTestCaseDto)
-  @IsOptional()
-  testCases?: CreateTestCaseDto[];
+  @Type(() => TestCaseDto)
+  testCases?: TestCaseDto[];
 
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FileEntryDto)
+  starterCode?: FileEntryDto[];
+
+  // --- NOVO: Questões Filhas (para Prova) ---
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateQuestionDto)
-  @IsOptional()
   questions?: CreateQuestionDto[];
-
-  @IsOptional()
-  @IsString()
-  startDate?: string;
 }

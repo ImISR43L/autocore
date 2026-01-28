@@ -94,7 +94,7 @@ export class SubmissionsService {
   }
 
   async create(createSubmissionDto: CreateSubmissionDto, userId: number) {
-    const { code, language_id, problem_id } = createSubmissionDto;
+    const { files, language_id, problem_id } = createSubmissionDto;
 
     const problem = await this.problemsRepository.findOne({
       where: { id: String(problem_id) },
@@ -137,7 +137,7 @@ export class SubmissionsService {
 
     // Criação
     const submission = this.submissionsRepository.create({
-      code,
+      files,
       language_id: Number(language_id),
       status: 'Queued',
       stdout: '',

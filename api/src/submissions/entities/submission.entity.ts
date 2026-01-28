@@ -9,22 +9,30 @@ import {
 import { Problem } from '../../problems/entities/problem.entity';
 import { User } from '../../users/entities/user.entity';
 
+// Interface auxiliar para tipagem
+export interface FileEntry {
+  name: string;
+  content: string;
+}
+
 @Entity()
-@Index(['problem', 'user']) // Busca histórico do aluno num problema específico
-@Index(['problem', 'status']) // Busca estatísticas (Acertos vs Erros)
-@Index(['user', 'createdAt']) // Busca "Minhas últimas submissões"
+@Index(['problem', 'user'])
+@Index(['problem', 'status'])
+@Index(['user', 'createdAt'])
 export class Submission {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'text' })
-  code: string;
+  // ALTERAÇÃO: De 'code: string' para 'files: jsonb'
+  // Armazena: [{ name: "main.py", content: "..." }, { name: "utils.py", content: "..." }]
+  @Column({ type: 'jsonb' })
+  files: FileEntry[];
 
   @Column()
   language_id: number;
 
   @Column()
-  @Index() // Índice simples para filtrar por status globalmente
+  @Index()
   status: string;
 
   @Column({ type: 'text', nullable: true })
@@ -40,7 +48,7 @@ export class Submission {
   teacherComment: string | null;
 
   @CreateDateColumn()
-  @Index() // Acelera ordenação por data
+  @Index()
   createdAt: Date;
 
   @ManyToOne(() => Problem, (problem) => problem.submissions, {

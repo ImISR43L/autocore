@@ -1,15 +1,32 @@
-import { IsInt, IsNotEmpty, IsString } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsString,
+  IsArray,
+  ValidateNested,
+  IsUUID,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+
+class FileDto {
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @IsString()
+  content: string; // Pode ser vazio, mas deve ser string
+}
 
 export class CreateSubmissionDto {
-  @IsString()
-  @IsNotEmpty()
-  code: string;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FileDto)
+  files: FileDto[]; // ALTERAÇÃO: Recebe lista de arquivos
 
   @IsInt()
-  @IsNotEmpty()
   language_id: number;
 
-  @IsString()
+  @IsUUID()
   @IsNotEmpty()
   problem_id: string;
 }

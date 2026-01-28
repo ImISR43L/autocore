@@ -21,8 +21,13 @@ export interface ParameterDefinition {
   type: 'int' | 'float' | 'string' | 'boolean' | 'int[]' | 'string[]';
 }
 
+export interface FileEntry {
+  name: string;
+  content: string;
+}
+
 @Entity()
-@Index(['classroom']) // OTIMIZAÇÃO: Acelera listagem de problemas da turma
+@Index(['classroom'])
 export class Problem {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -45,6 +50,11 @@ export class Problem {
 
   @Column({ type: 'jsonb', default: [] })
   parameters: ParameterDefinition[];
+
+  // NOVO: Template inicial para o aluno (Múltiplos Arquivos)
+  // Ex: [{ name: "main.c", content: "..." }, { name: "header.h", content: "..." }]
+  @Column({ type: 'jsonb', nullable: true })
+  starterCode: FileEntry[] | null;
 
   @Column({ default: 'string' })
   returnType: string;
