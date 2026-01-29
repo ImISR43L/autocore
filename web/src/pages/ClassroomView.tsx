@@ -31,6 +31,7 @@ import {
   Clock,
   User,
   Search,
+  Filter,
 } from "lucide-react";
 import { io } from "socket.io-client";
 import { DiffViewer } from "../components/DiffViewer";
@@ -213,6 +214,11 @@ export default function ClassroomView() {
   >({});
   const [activeInspectionIndex, setActiveInspectionIndex] = useState(0);
   const [inspectFileIndex, setInspectFileIndex] = useState(0);
+  const [filterStatus, setFilterStatus] = useState<string[]>([]);
+  const [filterActivity, setFilterActivity] = useState<string[]>([]);
+  const [showFilterMenu, setShowFilterMenu] = useState<
+    "status" | "activity" | null
+  >(null);
 
   const [gradingGrade, setGradingGrade] = useState<string | number>("");
   const [gradingComment, setGradingComment] = useState("");
@@ -2034,89 +2040,412 @@ export default function ClassroomView() {
 
                     {/* COLUNA DA DIREITA: DETALHES DAS SUBMISSÕES */}
                     <div
-                      style={{ flex: 1, overflowY: "auto", background: "#111" }}
+                      style={{
+                        flex: 1,
+                        overflowY: "auto",
+                        background: "#111",
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
                     >
                       {selectedStudentFilter ? (
-                        <div style={{ padding: "20px" }}>
-                          <h3
-                            style={{
-                              marginTop: 0,
-                              marginBottom: "20px",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "10px",
-                            }}
-                          >
-                            <User size={20} />
-                            Submissões de{" "}
-                            {
-                              classroom.students.find(
-                                (s) => s.id === selectedStudentFilter,
-                              )?.email
-                            }
-                          </h3>
-                          <table className="custom-table">
-                            <thead>
-                              <tr>
-                                <th>Status</th>
-                                <th>Nota</th>
-                                <th>Data</th>
-                                <th>Ação</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {submissions
-                                .filter(
-                                  (s) => s.user.id === selectedStudentFilter,
-                                )
-                                .map((sub) => (
-                                  <tr key={sub.id}>
-                                    <td>
-                                      <span
-                                        className={`status-badge ${
-                                          sub.status === "Accepted"
-                                            ? "success"
-                                            : "error"
-                                        }`}
+                        (() => {
+                          // --- LÓGICA DE PREPARAÇÃO DOS DADOS ---
+                          const studentRawSubmissions = submissions.filter(
+                            (s) => s.user.id === selectedStudentFilter,
+                          );
+
+                          // Identifica opções únicas baseadas nos dados do aluno
+                          const uniqueStatuses = Array.from(
+                            new Set(studentRawSubmissions.map((s) => s.status)),
+                          );
+
+                          // Mapeia IDs de problemas para Títulos (para o filtro de atividade)
+                          const uniqueProblemIds = Array.from(
+                            new Set(
+                              studentRawSubmissions.map(
+                                (s) => s.problem?.id || s.problemId || "",
+                              ),
+                            ),
+                          );
+                          const problemMap = new Map<string, string>();
+
+                          // Popula mapa de nomes
+                          if (currentProblem) {
+                            problemMap.set(
+                              currentProblem.id,
+                              currentProblem.title,
+                            );
+                            currentProblem.children?.forEach((child) =>
+                              problemMap.set(child.id, child.title),
+                            );
+                          }
+
+                          // Aplica os filtros selecionados
+                          const filteredList = studentRawSubmissions.filter(
+                            (sub) => {
+                              const pId =
+                                sub.problem?.id || sub.problemId || "";
+
+                              const matchesStatus =
+                                filterStatus.length === 0 ||
+                                filterStatus.includes(sub.status);
+                              const matchesActivity =
+                                filterActivity.length === 0 ||
+                                filterActivity.includes(pId);
+
+                              return matchesStatus && matchesActivity;
+                            },
+                          );
+
+                          return (
+                            <div
+                              style={{
+                                padding: "20px",
+                                display: "flex",
+                                flexDirection: "column",
+                                height: "100%",
+                              }}
+                            >
+                              {/* CABEÇALHO COM NOME E BARRA DE FILTROS */}
+                              <div style={{ marginBottom: "20px" }}>
+                                <h3
+                                  style={{
+                                    marginTop: 0,
+                                    marginBottom: "15px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "10px",
+                                  }}
+                                >
+                                  <User size={20} />
+                                  Submissões de{" "}
+                                  {
+                                    classroom.students.find(
+                                      (s) => s.id === selectedStudentFilter,
+                                    )?.email
+                                  }
+                                </h3>
+
+                                {/* --- BARRA DE FILTROS --- */}
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: "10px",
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  {/* DROPDOWN DE RESULTADO (STATUS) */}
+                                  <div style={{ position: "relative" }}>
+                                    <button
+                                      className="btn btn-sm btn-secondary"
+                                      onClick={() =>
+                                        setShowFilterMenu(
+                                          showFilterMenu === "status"
+                                            ? null
+                                            : "status",
+                                        )
+                                      }
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        background:
+                                          filterStatus.length > 0
+                                            ? "#2e7d32"
+                                            : "#333",
+                                        color: "white",
+                                      }}
+                                    >
+                                      <Filter size={14} />
+                                      Resultado{" "}
+                                      {filterStatus.length > 0 &&
+                                        `(${filterStatus.length})`}
+                                      <ChevronDown size={14} />
+                                    </button>
+
+                                    {showFilterMenu === "status" && (
+                                      <div
+                                        style={{
+                                          position: "absolute",
+                                          top: "100%",
+                                          left: 0,
+                                          marginTop: "5px",
+                                          background: "#252526",
+                                          border: "1px solid #444",
+                                          borderRadius: "6px",
+                                          padding: "10px",
+                                          zIndex: 10,
+                                          minWidth: "200px",
+                                          boxShadow:
+                                            "0 4px 12px rgba(0,0,0,0.5)",
+                                        }}
                                       >
-                                        {sub.status}
-                                      </span>
-                                    </td>
-                                    <td>{sub.grade ?? "-"}</td>
-                                    <td>
-                                      {new Date(sub.createdAt).toLocaleString()}
-                                    </td>
-                                    <td>
+                                        {uniqueStatuses.map((status) => (
+                                          <label
+                                            key={status}
+                                            style={{
+                                              display: "flex",
+                                              alignItems: "center",
+                                              gap: "8px",
+                                              padding: "5px 0",
+                                              cursor: "pointer",
+                                              color: "#ccc",
+                                            }}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={filterStatus.includes(
+                                                status,
+                                              )}
+                                              onChange={(e) => {
+                                                if (e.target.checked)
+                                                  setFilterStatus([
+                                                    ...filterStatus,
+                                                    status,
+                                                  ]);
+                                                else
+                                                  setFilterStatus(
+                                                    filterStatus.filter(
+                                                      (s) => s !== status,
+                                                    ),
+                                                  );
+                                              }}
+                                            />
+                                            <span
+                                              className={`status-badge ${status === "Accepted" ? "success" : "error"}`}
+                                              style={{
+                                                fontSize: "0.75rem",
+                                                padding: "2px 6px",
+                                              }}
+                                            >
+                                              {status}
+                                            </span>
+                                          </label>
+                                        ))}
+                                        {uniqueStatuses.length === 0 && (
+                                          <span
+                                            style={{
+                                              color: "#666",
+                                              fontSize: "0.8rem",
+                                            }}
+                                          >
+                                            Sem dados
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* DROPDOWN DE ATIVIDADE (Só mostra se houver múltiplas questões/atividades nos dados) */}
+                                  {uniqueProblemIds.length > 1 && (
+                                    <div style={{ position: "relative" }}>
                                       <button
-                                        className="btn btn-sm btn-primary"
+                                        className="btn btn-sm btn-secondary"
                                         onClick={() =>
-                                          handleStartInspection(sub)
+                                          setShowFilterMenu(
+                                            showFilterMenu === "activity"
+                                              ? null
+                                              : "activity",
+                                          )
                                         }
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: "6px",
+                                          background:
+                                            filterActivity.length > 0
+                                              ? "#2e7d32"
+                                              : "#333",
+                                          color: "white",
+                                        }}
                                       >
-                                        Inspecionar
+                                        <FileCode size={14} />
+                                        Atividade{" "}
+                                        {filterActivity.length > 0 &&
+                                          `(${filterActivity.length})`}
+                                        <ChevronDown size={14} />
                                       </button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              {submissions.filter(
-                                (s) => s.user.id === selectedStudentFilter,
-                              ).length === 0 && (
-                                <tr>
-                                  <td
-                                    colSpan={4}
+
+                                      {showFilterMenu === "activity" && (
+                                        <div
+                                          style={{
+                                            position: "absolute",
+                                            top: "100%",
+                                            left: 0,
+                                            marginTop: "5px",
+                                            background: "#252526",
+                                            border: "1px solid #444",
+                                            borderRadius: "6px",
+                                            padding: "10px",
+                                            zIndex: 10,
+                                            minWidth: "250px",
+                                            boxShadow:
+                                              "0 4px 12px rgba(0,0,0,0.5)",
+                                          }}
+                                        >
+                                          {uniqueProblemIds.map((pId) => (
+                                            <label
+                                              key={pId}
+                                              style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "8px",
+                                                padding: "5px 0",
+                                                cursor: "pointer",
+                                                color: "#ccc",
+                                              }}
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                checked={filterActivity.includes(
+                                                  pId,
+                                                )}
+                                                onChange={(e) => {
+                                                  if (e.target.checked)
+                                                    setFilterActivity([
+                                                      ...filterActivity,
+                                                      pId,
+                                                    ]);
+                                                  else
+                                                    setFilterActivity(
+                                                      filterActivity.filter(
+                                                        (id) => id !== pId,
+                                                      ),
+                                                    );
+                                                }}
+                                              />
+                                              <span
+                                                style={{
+                                                  fontSize: "0.85rem",
+                                                  overflow: "hidden",
+                                                  textOverflow: "ellipsis",
+                                                  whiteSpace: "nowrap",
+                                                }}
+                                              >
+                                                {problemMap.get(pId) ||
+                                                  "Desconhecido"}
+                                              </span>
+                                            </label>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* BOTÃO LIMPAR FILTROS */}
+                                  {(filterStatus.length > 0 ||
+                                    filterActivity.length > 0) && (
+                                    <button
+                                      className="btn btn-sm btn-ghost"
+                                      onClick={() => {
+                                        setFilterStatus([]);
+                                        setFilterActivity([]);
+                                      }}
+                                      style={{ color: "#f44336" }}
+                                    >
+                                      Limpar
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Overlay invisível para fechar menus ao clicar fora */}
+                                {showFilterMenu && (
+                                  <div
                                     style={{
-                                      textAlign: "center",
-                                      padding: "20px",
-                                      color: "#666",
+                                      position: "fixed",
+                                      top: 0,
+                                      left: 0,
+                                      width: "100vw",
+                                      height: "100vh",
+                                      zIndex: 5,
                                     }}
-                                  >
-                                    Este aluno ainda não realizou submissões.
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
+                                    onClick={() => setShowFilterMenu(null)}
+                                  />
+                                )}
+                              </div>
+
+                              {/* TABELA DE SUBMISSÕES FILTRADA */}
+                              <div style={{ flex: 1, overflowY: "auto" }}>
+                                <table className="custom-table">
+                                  <thead>
+                                    <tr>
+                                      <th>Atividade</th>
+                                      <th>Status</th>
+                                      <th>Nota</th>
+                                      <th>Data</th>
+                                      <th>Ação</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {filteredList.map((sub) => {
+                                      const pId =
+                                        sub.problem?.id || sub.problemId || "";
+                                      const pTitle =
+                                        problemMap.get(pId) || "Principal";
+
+                                      return (
+                                        <tr key={sub.id}>
+                                          <td
+                                            style={{
+                                              maxWidth: "150px",
+                                              overflow: "hidden",
+                                              textOverflow: "ellipsis",
+                                              whiteSpace: "nowrap",
+                                              color: "#aaa",
+                                              fontSize: "0.85rem",
+                                            }}
+                                          >
+                                            {pTitle}
+                                          </td>
+                                          <td>
+                                            <span
+                                              className={`status-badge ${sub.status === "Accepted" ? "success" : "error"}`}
+                                            >
+                                              {sub.status}
+                                            </span>
+                                          </td>
+                                          <td>{sub.grade ?? "-"}</td>
+                                          <td>
+                                            {new Date(
+                                              sub.createdAt,
+                                            ).toLocaleString()}
+                                          </td>
+                                          <td>
+                                            <button
+                                              className="btn btn-sm btn-primary"
+                                              onClick={() =>
+                                                handleStartInspection(sub)
+                                              }
+                                            >
+                                              Inspecionar
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                    {filteredList.length === 0 && (
+                                      <tr>
+                                        <td
+                                          colSpan={5}
+                                          style={{
+                                            textAlign: "center",
+                                            padding: "30px",
+                                            color: "#666",
+                                          }}
+                                        >
+                                          {studentRawSubmissions.length === 0
+                                            ? "Este aluno ainda não realizou submissões."
+                                            : "Nenhuma submissão corresponde aos filtros."}
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })()
                       ) : (
                         <div
                           style={{

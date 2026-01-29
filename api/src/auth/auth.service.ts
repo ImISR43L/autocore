@@ -1,14 +1,16 @@
 import {
+  ConflictException,
   Injectable,
   UnauthorizedException,
-  ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as bcrypt from 'bcrypt';
 import { User } from '../users/entities/user.entity';
-import { AuthDto } from './dto/login.dto';
+import { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
@@ -18,15 +20,10 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async validateUser(
-    email: string,
-    pass: string,
-  ): Promise<Omit<User, 'password'> | null> {
-    // CORREÇÃO: Usamos createQueryBuilder para incluir o campo 'password'
-    // que agora está oculto por padrão (select: false).
+  async validateUser(email: string, pass: string): Promise<any> {
     const user = await this.usersRepository
       .createQueryBuilder('user')
-      .addSelect('user.password') // <--- Traz a senha apenas aqui
+      .addSelect('user.password')
       .where('user.email = :email', { email })
       .getOne();
 
@@ -38,57 +35,50 @@ export class AuthService {
     return null;
   }
 
-  async login(loginDto: AuthDto) {
+  async login(loginDto: LoginDto) {
     const user = await this.validateUser(loginDto.email, loginDto.password);
     if (!user) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
-
-    const payload = { email: user.email, sub: user.id, userId: user.id };
-
+    const payload = {
+      email: user.email,
+      sub: user.id,
+      name: user.name,
+    };
     return {
       access_token: this.jwtService.sign(payload),
-      // Retornamos o nome também para o frontend usar
-      user: { id: user.id, email: user.email, name: user.name },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      },
     };
   }
 
-  async register(loginDto: AuthDto) {
-    const hashedPassword = await bcrypt.hash(loginDto.password, 10);
+  async register(registerDto: RegisterDto) {
+    const existingUser = await this.usersRepository.findOne({
+      where: { email: registerDto.email },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Email já cadastrado');
+    }
+
+    const hashedPassword = await bcrypt.hash(registerDto.password, 10);
+
+    const user = this.usersRepository.create({
+      name: registerDto.name,
+      email: registerDto.email,
+      password: hashedPassword,
+    });
 
     try {
-      const user = this.usersRepository.create({
-        email: loginDto.email,
-        password: hashedPassword,
-        // O nome começa null na criação simples, mas já preparamos o campo
-      });
-
       const savedUser = await this.usersRepository.save(user);
-
-      const payload = {
-        email: savedUser.email,
-        sub: savedUser.id,
-        userId: savedUser.id,
-      };
-
-      return {
-        access_token: this.jwtService.sign(payload),
-        user: {
-          id: savedUser.id,
-          email: savedUser.email,
-          name: savedUser.name,
-        },
-      };
-    } catch (error: unknown) {
-      if (
-        error &&
-        typeof error === 'object' &&
-        'code' in error &&
-        (error as { code: string }).code === '23505'
-      ) {
-        throw new ConflictException('Este e-mail já está em uso.');
-      }
-      throw error;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { password, ...result } = savedUser;
+      return result;
+    } catch (error) {
+      throw new BadRequestException('Erro ao criar usuário');
     }
   }
 }
