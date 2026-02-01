@@ -317,15 +317,6 @@ export default function ClassroomView() {
     }
   }, [languageId]);
 
-  const handleEditorDidMount: OnMount = (editor, monaco) => {
-    editorRef.current = editor;
-    monacoRef.current = monaco;
-    // Valida o código inicial
-    if (files.length > 0) {
-      validateCode(files[activeFileIndex].content, languageId);
-    }
-  };
-
   const validateCode = useCallback((code: string, langId: number) => {
     if (!monacoRef.current || !editorRef.current) return;
 
@@ -423,6 +414,10 @@ export default function ClassroomView() {
       return () => clearTimeout(timer);
     }
   }, [files, activeFileIndex, languageId, validateCode]);
+
+  const submitSolutionRef = useRef<
+    ((e?: React.MouseEvent) => Promise<void>) | null
+  >(null);
 
   useEffect(() => {
     if (!classroom?.problems || selectedProblemId) return;
@@ -921,15 +916,25 @@ export default function ClassroomView() {
     }
   };
 
-  const submitSolution = async (e?: React.MouseEvent) => {
+  const submitSolution = async (e?: React.SyntheticEvent) => {
     if (e) e.preventDefault();
-    if (!displayProblem) return toast.warning("Selecione um exercício!");
+
+    // Verificações movidas para DENTRO da função para garantir que os atalhos respeitem o estado
+    if (!displayProblem) {
+      toast.warning("Selecione um exercício!");
+      return;
+    }
+    if (loading) {
+      return; // Previne duplo envio
+    }
+    if (isBlocked) {
+      toast.error("O envio está bloqueado para esta atividade.");
+      return;
+    }
 
     setLoading(true);
     loadingRef.current = true;
-
     setVerdict("Processando...");
-    // REMOVIDO: setters de executionOutput/Error
 
     try {
       const token = localStorage.getItem("token");
@@ -964,6 +969,52 @@ export default function ClassroomView() {
       }
     }
   };
+
+  useEffect(() => {
+    submitSolutionRef.current = submitSolution;
+  }, [submitSolution]);
+
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+
+    // FEATURE: Atalho Ctrl+Enter DENTRO do Editor
+    // 'addAction' é mais robusto que 'addCommand' para ações que devem aparecer no Command Palette
+    editor.addAction({
+      id: "submit-code-action",
+      label: "Enviar Solução",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+      run: () => {
+        console.log("Atalho Monaco acionado!"); // Debug
+        if (submitSolutionRef.current) {
+          submitSolutionRef.current();
+        }
+      },
+    });
+
+    if (files.length > 0) {
+      validateCode(files[activeFileIndex].content, languageId);
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Se o foco estiver no editor, o Monaco trata.
+      // Aqui tratamos quando o foco está na página (ex: clicou fora)
+      if (activeTab === "classwork" && selectedProblemId) {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          // Verifica se o alvo não é uma caixa de texto padrão (opcional, para não bloquear enter em textareas)
+          // Mas como é Ctrl+Enter, geralmente queremos enviar mesmo.
+          console.log("Atalho Global acionado!");
+          e.preventDefault();
+          submitSolution();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeTab, selectedProblemId, submitSolution]);
 
   const handleStartExam = async () => {
     if (!confirm("Iniciar?")) return;
