@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import axios from "axios";
 import Editor from "@monaco-editor/react";
+import type { OnMount } from "@monaco-editor/react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -202,9 +203,11 @@ export default function ClassroomView() {
   const [activeFileIndex, setActiveFileIndex] = useState(0);
   const [newFileName, setNewFileName] = useState("");
 
+  const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
+
   // UI & Execução
   const [verdict, setVerdict] = useState<string | null>(null);
-  // REMOVIDO: executionOutput e executionError (não usados)
 
   const [loading, setLoading] = useState<boolean>(false);
   const loadingRef = useRef(false);
@@ -308,7 +311,118 @@ export default function ClassroomView() {
 
   useEffect(() => {
     localStorage.setItem(`languageId`, String(languageId));
+    // Re-validar ao mudar linguagem
+    if (files[activeFileIndex]?.content) {
+      validateCode(files[activeFileIndex].content, languageId);
+    }
   }, [languageId]);
+
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+    // Valida o código inicial
+    if (files.length > 0) {
+      validateCode(files[activeFileIndex].content, languageId);
+    }
+  };
+
+  const validateCode = useCallback((code: string, langId: number) => {
+    if (!monacoRef.current || !editorRef.current) return;
+
+    const model = editorRef.current.getModel();
+    if (!model) return; // Segurança extra
+
+    const markers: any[] = [];
+    const lang = LANGUAGE_MAP[langId] || "plaintext";
+    const lines = code.split("\n");
+
+    lines.forEach((line, i) => {
+      const lineNum = i + 1;
+      const trimmed = line.trim();
+
+      if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#"))
+        return;
+
+      // --- LÓGICA PYTHON ---
+      if (lang === "python") {
+        const keywords = [
+          "def ",
+          "if ",
+          "elif ",
+          "else",
+          "for ",
+          "while ",
+          "try",
+          "except",
+          "finally",
+          "class ",
+        ];
+        // Nota: "else" e "try" no array original não tinham espaço, o que podia causar falsos positivos
+        // Ajustei para garantir consistência, mas sua lógica 'startsWith' ajuda.
+
+        const startsWithKeyword = keywords.some((k) => trimmed.startsWith(k));
+        // Correção para 'else' e 'try' que podem não ter espaço depois (ex: "else:")
+        const isExactKeyword = ["else", "try", "finally"].includes(
+          trimmed.replace(":", ""),
+        );
+
+        if ((startsWithKeyword || isExactKeyword) && !trimmed.endsWith(":")) {
+          markers.push({
+            severity: monacoRef.current.MarkerSeverity.Error,
+            message: "Erro de Sintaxe: Esperado ':' no final da linha.",
+            startLineNumber: lineNum,
+            startColumn: line.lastIndexOf(trimmed) + 1,
+            endLineNumber: lineNum,
+            endColumn: line.length + 1,
+          });
+        }
+      }
+
+      // --- LÓGICA C / C++ / JAVA ---
+      if (["c", "cpp", "java"].includes(lang)) {
+        const isStatement =
+          (trimmed.includes("=") ||
+            trimmed.startsWith("return") ||
+            trimmed.startsWith("print") ||
+            trimmed.startsWith("cout") ||
+            trimmed.startsWith("int ") ||
+            trimmed.startsWith("float ") ||
+            trimmed.startsWith("double ") ||
+            trimmed.startsWith("char ") ||
+            trimmed.startsWith("String ") ||
+            trimmed.startsWith("boolean ")) &&
+          !trimmed.includes("for") &&
+          !trimmed.includes("if") &&
+          !trimmed.includes("while") &&
+          !trimmed.endsWith("{") &&
+          !trimmed.endsWith("}") &&
+          !trimmed.startsWith("#");
+
+        if (isStatement && !trimmed.endsWith(";")) {
+          markers.push({
+            severity: monacoRef.current.MarkerSeverity.Warning,
+            message: "Possível falta de ';' no final da linha.",
+            startLineNumber: lineNum,
+            startColumn: line.lastIndexOf(trimmed) + 1,
+            endLineNumber: lineNum,
+            endColumn: line.length + 1,
+          });
+        }
+      }
+    });
+
+    monacoRef.current.editor.setModelMarkers(model, "owner", markers);
+  }, []);
+
+  useEffect(() => {
+    if (files.length > 0 && files[activeFileIndex]) {
+      // Pequeno timeout para garantir que o editor processou a mudança de valor
+      const timer = setTimeout(() => {
+        validateCode(files[activeFileIndex].content, languageId);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [files, activeFileIndex, languageId, validateCode]);
 
   useEffect(() => {
     if (!classroom?.problems || selectedProblemId) return;
@@ -579,6 +693,7 @@ export default function ClassroomView() {
 
   const handleCodeChange = (value: string | undefined) => {
     const val = value || "";
+    validateCode(val, languageId);
     const newFiles = [...files];
     if (newFiles[activeFileIndex]) {
       newFiles[activeFileIndex] = {
@@ -1467,11 +1582,11 @@ export default function ClassroomView() {
           </div>
 
           <div className="ide-main">
+            {/* EDITOR */}
             <div
               className="ide-editor-panel"
               style={{ display: "flex", flexDirection: "column" }}
             >
-              {/* --- ABAS DE ARQUIVOS (ATUALIZADO) --- */}
               <div
                 style={{
                   display: "flex",
@@ -1504,7 +1619,6 @@ export default function ClassroomView() {
                   >
                     <FileCode size={14} />
                     {file.name}
-                    {/* Botão Remover (Trash) */}
                     {files.length > 1 && (
                       <Trash
                         size={12}
@@ -1514,8 +1628,6 @@ export default function ClassroomView() {
                     )}
                   </div>
                 ))}
-
-                {/* Área de Adicionar Novo Arquivo (Plus) */}
                 <div
                   style={{
                     display: "flex",
@@ -1567,6 +1679,7 @@ export default function ClassroomView() {
                   theme="vs-dark"
                   value={files[activeFileIndex]?.content || ""}
                   onChange={handleCodeChange}
+                  onMount={handleEditorDidMount} // LIGANDO O LINTER AQUI
                   options={{
                     minimap: { enabled: false },
                     automaticLayout: true,
