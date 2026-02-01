@@ -12,6 +12,7 @@ import {
   ScrollText,
   Clock,
   X,
+  RefreshCw,
 } from "lucide-react";
 import "../App.css";
 
@@ -42,12 +43,11 @@ interface Question {
   starterCode: FileEntry[];
 }
 
-// Interface para o Payload (Tipos Atualizados para String)
 interface ProblemPayload {
   title: string;
   description: string;
   slug: string;
-  classroomId?: string; // Alterado para string (UUID) e opcional
+  classroomId?: string;
   type: "EXERCISE" | "EXAM";
   maxAttempts?: number;
   timeLimit?: number;
@@ -86,22 +86,28 @@ const DATA_TYPES = [
   { value: "string[]", label: "Array de String" },
 ];
 
-// --- TEMPLATES PADRÃO ---
-const STARTER_TEMPLATES = {
-  python: {
-    name: "main.py",
-    content:
-      "def solve():\n    # Escreva seu código aqui\n    pass\n\nif __name__ == '__main__':\n    solve()",
+// --- MAPAS DE TIPOS ---
+const TYPE_MAPS: Record<string, Record<string, string>> = {
+  cpp: {
+    int: "int",
+    float: "float",
+    string: "string",
+    boolean: "bool",
+    "int[]": "vector<int>",
+    "string[]": "vector<string>",
+    void: "void",
   },
   javascript: {
-    name: "index.js",
-    content:
-      "function solve() {\n    // Escreva seu código aqui\n}\n\nsolve();",
+    default: "",
   },
-  cpp: {
-    name: "main.cpp",
-    content:
-      "#include <iostream>\n\nusing namespace std;\n\nint main() {\n    // Escreva seu código aqui\n    return 0;\n}",
+  python: {
+    int: "int",
+    float: "float",
+    string: "str",
+    boolean: "bool",
+    "int[]": "List[int]",
+    "string[]": "List[str]",
+    void: "None",
   },
 };
 
@@ -128,32 +134,144 @@ export default function CreateProblem() {
   const [exReturnType, setExReturnType] = useState("void");
   const [exTestCases, setExTestCases] = useState<TestCase[]>([]);
 
-  // Inicializa com o template Python por padrão
-  const [exFiles, setExFiles] = useState<FileEntry[]>([
-    { ...STARTER_TEMPLATES.python },
-  ]);
+  // Arquivos
+  const [exFiles, setExFiles] = useState<FileEntry[]>([]);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
   const [newFileName, setNewFileName] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("python");
 
-  // Inputs temporários
   const [paramName, setParamName] = useState("");
   const [paramType, setParamType] = useState("int");
   const [tcInput, setTcInput] = useState("");
   const [tcOutput, setTcOutput] = useState("");
   const [tcHidden, setTcHidden] = useState(false);
 
-  // Estados da Lista de Questões (Prova)
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalTitle, setModalTitle] = useState("");
   const [modalDesc, setModalDesc] = useState("");
   const [modalSlug, setModalSlug] = useState("");
 
-  // Modo de Edição
   const [classroomId, setClassroomId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [problemId, setProblemId] = useState<string | null>(null);
+
+  // --- FUNÇÃO GERADORA DE TEMPLATE DO ZERO ---
+  const generateStarterCode = (
+    lang: string,
+    params: Parameter[],
+    retType: string,
+  ): FileEntry => {
+    let content = "";
+    const funcName = "solve";
+
+    if (lang === "python") {
+      const args = params
+        .map((p) => {
+          const pyType = TYPE_MAPS.python[p.type] || "Any";
+          return `${p.name}: ${pyType}`;
+        })
+        .join(", ");
+      const retPy = TYPE_MAPS.python[retType] || "None";
+
+      content = `from typing import List\n\n`;
+      content += `def ${funcName}(${args}) -> ${retPy}:\n`;
+      content += `    # Escreva seu código aqui\n`;
+      content += `    pass\n`;
+      return { name: "main.py", content };
+    } else if (lang === "cpp") {
+      const cppRet = TYPE_MAPS.cpp[retType] || "void";
+      const args = params
+        .map((p) => {
+          const cppType = TYPE_MAPS.cpp[p.type] || "auto";
+          return `${cppType} ${p.name}`;
+        })
+        .join(", ");
+
+      content = `#include <iostream>\n#include <vector>\n#include <string>\n\n`;
+      content += `using namespace std;\n\n`;
+      content += `${cppRet} ${funcName}(${args}) {\n`;
+      content += `    // Escreva seu código aqui\n`;
+      content += `    ${retType !== "void" ? "return 0;" : ""}\n`;
+      content += `}\n`;
+      return { name: "main.cpp", content };
+    } else {
+      // JavaScript
+      const args = params.map((p) => p.name).join(", ");
+      content = `/**\n`;
+      params.forEach((p) => {
+        content += ` * @param {${p.type}} ${p.name}\n`;
+      });
+      content += ` * @returns {${retType}}\n */\n`;
+      content += `function ${funcName}(${args}) {\n`;
+      content += `    // Escreva seu código aqui\n`;
+      content += `}\n`;
+      return { name: "index.js", content };
+    }
+  };
+
+  // --- FUNÇÃO DE SUBSTITUIÇÃO INTELIGENTE DE ASSINATURA ---
+  const updateCodeSignature = (
+    currentContent: string,
+    lang: string,
+    params: Parameter[],
+    retType: string,
+  ): string => {
+    const funcName = "solve";
+
+    if (lang === "python") {
+      const args = params
+        .map((p) => {
+          const pyType = TYPE_MAPS.python[p.type] || "Any";
+          return `${p.name}: ${pyType}`;
+        })
+        .join(", ");
+      const retPy = TYPE_MAPS.python[retType] || "None";
+      const newSignature = `def ${funcName}(${args}) -> ${retPy}:`;
+
+      // Regex busca: def solve( ... ):
+      // Substitui apenas a linha da definição
+      const regex = /def\s+solve\s*\(.*?\)(\s*->\s*.*?)?:/;
+      if (regex.test(currentContent)) {
+        return currentContent.replace(regex, newSignature);
+      }
+    } else if (lang === "cpp") {
+      const cppRet = TYPE_MAPS.cpp[retType] || "void";
+      const args = params
+        .map((p) => {
+          const cppType = TYPE_MAPS.cpp[p.type] || "auto";
+          return `${cppType} ${p.name}`;
+        })
+        .join(", ");
+      const newSignature = `${cppRet} ${funcName}(${args}) {`;
+
+      // Regex busca: TIPO solve( ... ) {
+      // \b[\w<>::]+\s+ busca o tipo de retorno (ex: int, void, std::vector<int>)
+      const regex = /\b[\w<>::]+\s+solve\s*\(.*?\)\s*\{/;
+      if (regex.test(currentContent)) {
+        return currentContent.replace(regex, newSignature);
+      }
+    } else if (lang === "javascript") {
+      const args = params.map((p) => p.name).join(", ");
+      const newSignature = `function ${funcName}(${args}) {`;
+
+      const regex = /function\s+solve\s*\(.*?\)\s*\{/;
+      if (regex.test(currentContent)) {
+        return currentContent.replace(regex, newSignature);
+      }
+    }
+
+    // Fallback: Se não encontrou a função (usuário apagou?), retorna o conteúdo original
+    // ou você poderia forçar um append no final. Vamos manter o original para não estragar.
+    return currentContent;
+  };
+
+  useEffect(() => {
+    if (!isEditing && exFiles.length === 0) {
+      const initial = generateStarterCode("python", [], "void");
+      setExFiles([initial]);
+    }
+  }, []);
 
   useEffect(() => {
     if (location.state?.classroomId) {
@@ -174,8 +292,6 @@ export default function CreateProblem() {
         setStartDate(p.startDate ? p.startDate.slice(0, 16) : "");
         setDeadline(p.deadline ? p.deadline.slice(0, 16) : "");
 
-        // Carregar questões se existirem (p.children)
-        // Nota: O backend pode retornar 'children' como array de Problems
         if (p.children && p.children.length > 0) {
           const loadedQuestions = p.children.map((child: any) => ({
             title: child.title,
@@ -203,15 +319,48 @@ export default function CreateProblem() {
     }
   }, [location.state]);
 
-  const applyTemplate = (lang: string) => {
+  // Função para aplicar template (com opção de preservar corpo)
+  const applyTemplate = (lang: string, preserveBody = false) => {
     setSelectedTemplate(lang);
-    const template = STARTER_TEMPLATES[lang as keyof typeof STARTER_TEMPLATES];
     const newFiles = [...exFiles];
-    if (newFiles.length > 0) {
-      newFiles[0] = { name: template.name, content: template.content };
-      setExFiles(newFiles);
-      setActiveFileIndex(0);
+
+    // Arquivo principal (Entrypoint)
+    let mainFile = newFiles[0];
+
+    if (preserveBody && mainFile && mainFile.content) {
+      // Tenta atualizar apenas a assinatura
+      const updatedContent = updateCodeSignature(
+        mainFile.content,
+        lang,
+        exParameters,
+        exReturnType,
+      );
+
+      // Se a linguagem mudou, o nome do arquivo precisa mudar também
+      const defaultTemplate = generateStarterCode(
+        lang,
+        exParameters,
+        exReturnType,
+      );
+      if (mainFile.name !== defaultTemplate.name) {
+        // Mudança de linguagem: Infelizmente, o corpo não serve mais.
+        // Aqui forçamos o reset pois código Python não roda em C++
+        mainFile = defaultTemplate;
+      } else {
+        mainFile = { ...mainFile, content: updatedContent };
+      }
+    } else {
+      // Reset total (ou inicialização)
+      mainFile = generateStarterCode(lang, exParameters, exReturnType);
     }
+
+    if (newFiles.length > 0) {
+      newFiles[0] = mainFile;
+    } else {
+      newFiles.push(mainFile);
+    }
+    setExFiles(newFiles);
+    setActiveFileIndex(0);
   };
 
   const handleAddFile = () => {
@@ -263,7 +412,8 @@ export default function CreateProblem() {
     setExParameters([]);
     setExReturnType("void");
     setExTestCases([]);
-    setExFiles([{ ...STARTER_TEMPLATES.python }]);
+    const defaultTemplate = generateStarterCode("python", [], "void");
+    setExFiles([defaultTemplate]);
     setSelectedTemplate("python");
     setIsModalOpen(true);
   };
@@ -292,7 +442,6 @@ export default function CreateProblem() {
     setQuestions(nq);
   };
 
-  // --- SALVAR TUDO ---
   const handleCreate = async () => {
     if (!title || !slug || !description)
       return toast.warning("Preencha os campos básicos");
@@ -314,23 +463,20 @@ export default function CreateProblem() {
       };
 
       if (type === "EXERCISE") {
-        // CORREÇÃO: Sanitização dos objetos para remover IDs residuais
         payload.starterCode = exFiles.map((f) => ({
           name: f.name,
           content: f.content,
         }));
 
-        payload.parameters = exParameters; // Geralmente parâmetros não têm ID, pois são JSONB
+        payload.parameters = exParameters;
         payload.returnType = exReturnType;
 
-        // AQUI ESTAVA O PROBLEMA: Removendo 'id', 'createdAt', etc.
         payload.testCases = exTestCases.map((tc) => ({
           input: tc.input,
           expectedOutput: tc.expectedOutput,
           isHidden: !!tc.isHidden,
         }));
       } else {
-        // Sanitização das Questões da Prova
         payload.questions = questions.map((q) => ({
           ...q,
           testCases: q.testCases.map((tc) => ({
@@ -365,7 +511,6 @@ export default function CreateProblem() {
     } catch (error: any) {
       console.error(error);
       const msg = error.response?.data?.message;
-      // Mostra a mensagem de erro específica se for array (erros do class-validator)
       toast.error(Array.isArray(msg) ? msg[0] : msg || "Erro ao salvar.");
     } finally {
       setLoading(false);
@@ -376,6 +521,10 @@ export default function CreateProblem() {
     <>
       <div className="card">
         <h3>Assinatura da Função</h3>
+        <p style={{ fontSize: "0.85rem", color: "#888", marginBottom: "15px" }}>
+          Defina os parâmetros de entrada e o tipo de retorno. O template será
+          gerado para a função <code>solve</code>.
+        </p>
         <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
           <input
             className="form-input"
@@ -467,14 +616,24 @@ export default function CreateProblem() {
           </h3>
 
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <button
+              // AQUI ESTÁ A MUDANÇA: Passamos 'true' para preservar o corpo
+              onClick={() => applyTemplate(selectedTemplate, true)}
+              title="Atualizar Assinatura (Mantém o código)"
+              className="btn btn-ghost"
+              style={{ padding: "5px", color: "#4caf50" }}
+            >
+              <RefreshCw size={18} />
+            </button>
             <span style={{ fontSize: "0.9rem", color: "#888" }}>
-              Linguagem Base:
+              Linguagem:
             </span>
             <select
               className="form-select"
               style={{ width: "auto", padding: "5px 10px", fontSize: "0.9rem" }}
               value={selectedTemplate}
-              onChange={(e) => applyTemplate(e.target.value)}
+              // Mudar o select reseta o código (false)
+              onChange={(e) => applyTemplate(e.target.value, false)}
             >
               <option value="python">Python</option>
               <option value="javascript">JavaScript</option>
@@ -484,7 +643,8 @@ export default function CreateProblem() {
         </div>
 
         <p style={{ color: "#888", fontSize: "0.9rem", marginBottom: "15px" }}>
-          O primeiro arquivo (fixo) será o ponto de entrada.
+          O código abaixo será a base para o aluno. A função{" "}
+          <strong>solve</strong> é chamada automaticamente pelo sistema.
         </p>
 
         <div
