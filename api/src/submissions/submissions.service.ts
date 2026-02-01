@@ -182,7 +182,7 @@ export class SubmissionsService {
     return this.submissionsRepository.find({ relations: ['problem', 'user'] });
   }
 
-  async getClassroomStats(classroomId: number, userId: number) {
+  async getClassroomStats(classroomId: string, userId: number) {
     const problems = await this.problemsRepository.find({
       where: { classroom: { id: classroomId } },
       select: ['id', 'title'],

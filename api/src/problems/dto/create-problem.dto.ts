@@ -8,6 +8,7 @@ import {
   IsInt,
   IsDateString,
   Min,
+  IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ProblemType } from '../entities/problem.entity';
@@ -99,9 +100,9 @@ export class CreateProblemDto {
   @IsEnum(ProblemType)
   type?: ProblemType;
 
-  @IsOptional()
-  @IsInt()
-  classroomId?: number;
+  @IsNotEmpty()
+  @IsUUID()
+  classroomId?: string;
 
   // --- Campos de Prova ---
   @IsOptional()

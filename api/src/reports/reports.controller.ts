@@ -27,7 +27,7 @@ export class ReportsController {
       'Content-Disposition': `attachment; filename="relatorio_turma_${id}.csv"`,
     });
     // Nota: renomeamos o método no service para generateClassroomCSV
-    return this.reportsService.generateClassroomCSV(+id, req.user.userId);
+    return this.reportsService.generateClassroomCSV(id, req.user.userId);
   }
 
   // NOVA ROTA (Excel)
@@ -45,6 +45,6 @@ export class ReportsController {
       'Content-Disposition': `attachment; filename="relatorio_turma_${id}.xlsx"`,
     });
 
-    return this.reportsService.generateClassroomExcel(+id, req.user.userId);
+    return this.reportsService.generateClassroomExcel(id, req.user.userId);
   }
 }

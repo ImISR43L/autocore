@@ -14,8 +14,8 @@ import { Announcement } from '../../announcements/entities/announcement.entity';
 
 @Entity()
 export class Classroom {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column()
   name: string;

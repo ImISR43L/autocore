@@ -42,15 +42,15 @@ interface Question {
   starterCode: FileEntry[];
 }
 
-// Interface para o Payload
+// Interface para o Payload (Tipos Atualizados para String)
 interface ProblemPayload {
   title: string;
   description: string;
   slug: string;
-  classroomId: number | null;
+  classroomId?: string; // Alterado para string (UUID) e opcional
   type: "EXERCISE" | "EXAM";
-  maxAttempts: number | null;
-  timeLimit: number | null;
+  maxAttempts?: number;
+  timeLimit?: number;
   startDate?: string;
   deadline?: string;
   questions?: Question[];
@@ -151,7 +151,7 @@ export default function CreateProblem() {
   const [modalSlug, setModalSlug] = useState("");
 
   // Modo de Edição
-  const [classroomId, setClassroomId] = useState<number | null>(null);
+  const [classroomId, setClassroomId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [problemId, setProblemId] = useState<string | null>(null);
 
@@ -173,13 +173,27 @@ export default function CreateProblem() {
         setTimeLimit(p.timeLimit ? String(p.timeLimit) : "");
         setStartDate(p.startDate ? p.startDate.slice(0, 16) : "");
         setDeadline(p.deadline ? p.deadline.slice(0, 16) : "");
+
+        // Carregar questões se existirem (p.children)
+        // Nota: O backend pode retornar 'children' como array de Problems
+        if (p.children && p.children.length > 0) {
+          const loadedQuestions = p.children.map((child: any) => ({
+            title: child.title,
+            description: child.description,
+            slug: child.slug,
+            parameters: child.parameters || [],
+            returnType: child.returnType || "void",
+            testCases: child.testCases || [],
+            starterCode: child.starterCode || [],
+          }));
+          setQuestions(loadedQuestions);
+        }
       } else {
         setExParameters(p.parameters || []);
         setExReturnType(p.returnType || "void");
         setExTestCases(p.testCases || []);
         if (p.starterCode && p.starterCode.length > 0) {
           setExFiles(p.starterCode);
-          // Tenta detectar o template baseado na extensão do primeiro arquivo
           const firstFile = p.starterCode[0].name;
           if (firstFile.endsWith(".js")) setSelectedTemplate("javascript");
           else if (firstFile.endsWith(".cpp")) setSelectedTemplate("cpp");
@@ -189,22 +203,17 @@ export default function CreateProblem() {
     }
   }, [location.state]);
 
-  // --- LÓGICA DE TEMPLATE ---
   const applyTemplate = (lang: string) => {
     setSelectedTemplate(lang);
     const template = STARTER_TEMPLATES[lang as keyof typeof STARTER_TEMPLATES];
-
-    // Substitui o primeiro arquivo (Main Script)
     const newFiles = [...exFiles];
     if (newFiles.length > 0) {
-      // Confirmação simples se houver conteúdo modificado (opcional, aqui sobrescreve direto para agilidade)
       newFiles[0] = { name: template.name, content: template.content };
       setExFiles(newFiles);
       setActiveFileIndex(0);
     }
   };
 
-  // --- ARQUIVOS ---
   const handleAddFile = () => {
     if (!newFileName.trim()) return toast.warning("Nome vazio");
     if (exFiles.some((f) => f.name === newFileName))
@@ -230,7 +239,6 @@ export default function CreateProblem() {
     }
   };
 
-  // --- PARÂMETROS E TESTES ---
   const addParameter = () => {
     if (!paramName) return;
     setExParameters([...exParameters, { name: paramName, type: paramType }]);
@@ -248,7 +256,6 @@ export default function CreateProblem() {
     setTcHidden(false);
   };
 
-  // --- MODAL DA QUESTÃO ---
   const openQuestionModal = () => {
     setModalTitle("");
     setModalDesc("");
@@ -256,7 +263,7 @@ export default function CreateProblem() {
     setExParameters([]);
     setExReturnType("void");
     setExTestCases([]);
-    setExFiles([{ ...STARTER_TEMPLATES.python }]); // Reset para Python
+    setExFiles([{ ...STARTER_TEMPLATES.python }]);
     setSelectedTemplate("python");
     setIsModalOpen(true);
   };
@@ -293,25 +300,49 @@ export default function CreateProblem() {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
+
       const payload: ProblemPayload = {
         title,
         description,
         slug,
-        classroomId,
         type,
-        maxAttempts: maxAttempts ? parseInt(maxAttempts) : null,
-        timeLimit: timeLimit ? parseInt(timeLimit) : null,
-        startDate: startDate ? new Date(startDate).toISOString() : undefined,
-        deadline: deadline ? new Date(deadline).toISOString() : undefined,
+        ...(classroomId && { classroomId }),
+        ...(maxAttempts && { maxAttempts: parseInt(maxAttempts) }),
+        ...(timeLimit && { timeLimit: parseInt(timeLimit) }),
+        ...(startDate && { startDate: new Date(startDate).toISOString() }),
+        ...(deadline && { deadline: new Date(deadline).toISOString() }),
       };
 
       if (type === "EXERCISE") {
-        payload.starterCode = exFiles;
-        payload.parameters = exParameters;
+        // CORREÇÃO: Sanitização dos objetos para remover IDs residuais
+        payload.starterCode = exFiles.map((f) => ({
+          name: f.name,
+          content: f.content,
+        }));
+
+        payload.parameters = exParameters; // Geralmente parâmetros não têm ID, pois são JSONB
         payload.returnType = exReturnType;
-        payload.testCases = exTestCases;
+
+        // AQUI ESTAVA O PROBLEMA: Removendo 'id', 'createdAt', etc.
+        payload.testCases = exTestCases.map((tc) => ({
+          input: tc.input,
+          expectedOutput: tc.expectedOutput,
+          isHidden: !!tc.isHidden,
+        }));
       } else {
-        payload.questions = questions;
+        // Sanitização das Questões da Prova
+        payload.questions = questions.map((q) => ({
+          ...q,
+          testCases: q.testCases.map((tc) => ({
+            input: tc.input,
+            expectedOutput: tc.expectedOutput,
+            isHidden: !!tc.isHidden,
+          })),
+          starterCode: q.starterCode.map((f) => ({
+            name: f.name,
+            content: f.content,
+          })),
+        }));
       }
 
       if (isEditing && problemId) {
@@ -320,21 +351,27 @@ export default function CreateProblem() {
         });
         toast.success("Atualizado!");
       } else {
+        if (!classroomId) {
+          toast.error("Erro: ID da turma não encontrado.");
+          setLoading(false);
+          return;
+        }
         await axios.post(`${API_URL}/problems`, payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
         toast.success("Criado!");
       }
       navigate(-1);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Erro ao salvar.");
+      const msg = error.response?.data?.message;
+      // Mostra a mensagem de erro específica se for array (erros do class-validator)
+      toast.error(Array.isArray(msg) ? msg[0] : msg || "Erro ao salvar.");
     } finally {
       setLoading(false);
     }
   };
 
-  // --- RENDERIZADOR DOS CAMPOS DE EXERCÍCIO ---
   const renderExerciseFields = () => (
     <>
       <div className="card">
@@ -429,7 +466,6 @@ export default function CreateProblem() {
             Template Inicial
           </h3>
 
-          {/* SELETOR DE LINGUAGEM DO TEMPLATE */}
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <span style={{ fontSize: "0.9rem", color: "#888" }}>
               Linguagem Base:
@@ -481,7 +517,6 @@ export default function CreateProblem() {
               }}
             >
               <span>{file.name}</span>
-              {/* O primeiro arquivo (Main) não pode ser removido */}
               {idx > 0 && (
                 <Trash
                   size={14}
@@ -765,7 +800,6 @@ export default function CreateProblem() {
         </div>
       </div>
 
-      {/* SE FOR PROVA: CONFIGURAÇÕES E LISTA DE QUESTÕES */}
       {type === "EXAM" && (
         <>
           <div className="card">

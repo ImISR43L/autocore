@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { CreateClassroomDto } from './dto/create-classroom.dto';
 import { Classroom } from './entities/classroom.entity';
 import { User } from '../users/entities/user.entity';
+import { customAlphabet } from 'nanoid';
 
 @Injectable()
 export class ClassroomsService {
@@ -20,7 +21,13 @@ export class ClassroomsService {
   ) {}
 
   async create(createClassroomDto: CreateClassroomDto, ownerId: number) {
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    // IMPLEMENTAÇÃO NANOID
+    // Alfabeto personalizado: Removemos 0, O, I, L para evitar confusão visual
+    const generateCode = customAlphabet('ABCDEFGHJKMNPQRSTUVWXYZ23456789  ', 6);
+
+    // Gera o código. (Em produção, você poderia fazer um loop 'while'
+    // para verificar colisão, mas com 6 chars e esse alfabeto, é raro no início)
+    const code = generateCode();
 
     const owner = await this.usersRepository.findOne({
       where: { id: ownerId },
@@ -84,7 +91,7 @@ export class ClassroomsService {
     ];
   }
 
-  async findOne(id: number, userId?: number) {
+  async findOne(id: string, userId?: number) {
     const classroom = await this.classroomsRepository.findOne({
       where: { id },
       relations: [
@@ -120,7 +127,7 @@ export class ClassroomsService {
 
           // Se AINDA NÃO começou, aí sim respeitamos o agendamento futuro.
           if (p.startDate && new Date(p.startDate) > now) return false;
-          
+
           return true;
         });
 
@@ -140,7 +147,7 @@ export class ClassroomsService {
     return classroom;
   }
 
-  async leave(id: number, userId: number) {
+  async leave(id: string, userId: number) {
     const classroom = await this.classroomsRepository.findOne({
       where: { id },
       relations: ['students'],
@@ -160,7 +167,7 @@ export class ClassroomsService {
     return this.classroomsRepository.save(classroom);
   }
 
-  async remove(id: number, userId: number) {
+  async remove(id: string, userId: number) {
     const classroom = await this.classroomsRepository.findOne({
       where: { id },
       relations: ['owner'],

@@ -51,7 +51,7 @@ export class SubmissionsController {
   @UseGuards(JwtAuthGuard)
   @Get('stats/classroom/:id')
   getClassroomStats(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.submissionsService.getClassroomStats(+id, req.user.userId);
+    return this.submissionsService.getClassroomStats(id, req.user.userId);
   }
 
   @UseGuards(JwtAuthGuard)

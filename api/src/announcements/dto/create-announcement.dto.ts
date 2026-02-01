@@ -1,11 +1,11 @@
-import { IsNotEmpty, IsString, IsNumber } from 'class-validator';
+import { IsNotEmpty, IsString, IsUUID } from 'class-validator';
 
 export class CreateAnnouncementDto {
   @IsString()
   @IsNotEmpty()
   content: string;
 
-  @IsNumber()
   @IsNotEmpty()
-  classroomId: number;
+  @IsUUID()
+  classroomId: string;
 }

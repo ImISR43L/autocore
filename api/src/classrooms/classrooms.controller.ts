@@ -48,17 +48,18 @@ export class ClassroomsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.classroomsService.findOne(+id, req.user.userId);
+  findOne(@Param('id') id: string, @Request() req) {
+    // Recebe string
+    return this.classroomsService.findOne(id, req.user.sub);
   }
 
   @Delete(':id')
   remove(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.classroomsService.remove(+id, req.user.userId);
+    return this.classroomsService.remove(id, req.user.userId);
   }
 
   @Delete(':id/leave')
   leave(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.classroomsService.leave(+id, req.user.userId);
+    return this.classroomsService.leave(id, req.user.userId);
   }
 }
