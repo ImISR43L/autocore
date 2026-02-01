@@ -1,52 +1,117 @@
-import React from "react";
+import {
+  AlertCircle,
+  CheckCircle,
+  Terminal,
+  AlertTriangle,
+} from "lucide-react";
 
 interface LogViewerProps {
-  content: string;
-  type?: "info" | "error";
-  height?: number | string;
+  logs: string;
+  status:
+    | "Pending"
+    | "Accepted"
+    | "Wrong Answer"
+    | "Time Limit Exceeded"
+    | "Compilation Error"
+    | "Runtime Error"
+    | "Memory Limit Exceeded";
 }
 
-export const LogViewer: React.FC<LogViewerProps> = ({
-  content,
-  type = "info",
-  height = 300,
-}) => {
-  // Se não houver conteúdo, não renderiza nada
-  if (!content) return null;
+export default function LogViewer({ logs, status }: LogViewerProps) {
+  if (!logs && status === "Pending") {
+    return (
+      <div className="flex items-center justify-center p-8 text-gray-500 bg-[#161616] rounded-lg border border-[#333] border-dashed">
+        <Terminal size={24} className="mr-2 animate-pulse" />
+        <span>Aguardando execução...</span>
+      </div>
+    );
+  }
+
+  // Define cores baseadas no status
+  const getStatusColor = () => {
+    switch (status) {
+      case "Accepted":
+        return "border-green-500/50 bg-green-500/5";
+      case "Compilation Error":
+      case "Runtime Error":
+        return "border-red-500/50 bg-red-500/5";
+      case "Wrong Answer":
+        return "border-yellow-500/50 bg-yellow-500/5";
+      default:
+        return "border-[#333] bg-[#161616]";
+    }
+  };
+
+  const getHeaderIcon = () => {
+    switch (status) {
+      case "Accepted":
+        return <CheckCircle className="text-green-500" size={18} />;
+      case "Compilation Error":
+      case "Runtime Error":
+        return <AlertCircle className="text-red-500" size={18} />;
+      case "Wrong Answer":
+        return <AlertTriangle className="text-yellow-500" size={18} />;
+      default:
+        return <Terminal className="text-gray-400" size={18} />;
+    }
+  };
+
+  // Processa linha a linha para colorir erros específicos
+  const renderLogLines = () => {
+    if (!logs)
+      return (
+        <span className="text-gray-500 italic">Sem output disponível.</span>
+      );
+
+    return logs.split("\n").map((line, i) => {
+      // Estilização simples de sintaxe para logs
+      let className = "text-gray-300"; // Padrão
+
+      if (
+        line.includes("Error:") ||
+        line.includes("Exception") ||
+        line.includes("❌")
+      ) {
+        className = "text-red-400 font-bold";
+      } else if (line.includes("Warning:") || line.includes("AVISO")) {
+        className = "text-yellow-400";
+      } else if (line.trim().startsWith("Linha") || line.includes('File "')) {
+        className = "text-blue-400 underline decoration-blue-400/30";
+      } else if (line.includes("Output Esperado:")) {
+        className = "text-green-400";
+      } else if (line.includes("Seu Output:")) {
+        className = "text-red-400";
+      }
+
+      return (
+        <div
+          key={i}
+          className={`${className} font-mono text-sm py-0.5 whitespace-pre-wrap break-words`}
+        >
+          {line}
+        </div>
+      );
+    });
+  };
 
   return (
     <div
-      style={{
-        height: typeof height === "number" ? `${height}px` : height,
-        width: "100%",
-        backgroundColor:
-          type === "error" ? "rgba(69, 10, 10, 0.1)" : "rgba(0, 0, 0, 0.3)",
-        borderRadius: "4px",
-        border:
-          type === "error"
-            ? "1px solid rgba(127, 29, 29, 0.3)"
-            : "1px solid transparent",
-        overflow: "hidden", // Garante que o container respeite a altura
-        display: "flex",
-        flexDirection: "column",
-      }}
+      className={`rounded-lg border ${getStatusColor()} overflow-hidden transition-colors duration-300`}
     >
-      <pre
-        style={{
-          margin: 0,
-          padding: "10px",
-          fontFamily: "monospace",
-          fontSize: "0.875rem", // text-sm
-          whiteSpace: "pre-wrap", // Quebra linhas longas automaticamente
-          wordBreak: "break-all", // Evita scroll horizontal infinito
-          color: type === "error" ? "#fca5a5" : "#d1d5db", // Cores Tailwind (red-300 / gray-300)
-          overflowY: "auto", // Scroll vertical nativo
-          height: "100%",
-          width: "100%",
-        }}
-      >
-        {content}
-      </pre>
+      {/* Cabeçalho do Log */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-[#333] bg-[#111]">
+        {getHeaderIcon()}
+        <span className="font-semibold text-sm text-gray-200">
+          {status === "Accepted"
+            ? "Resultado da Execução"
+            : "Log de Erro / Debug"}
+        </span>
+      </div>
+
+      {/* Corpo do Log (Console) */}
+      <div className="p-4 bg-[#0a0a0a] max-h-[300px] overflow-y-auto custom-scrollbar">
+        {renderLogLines()}
+      </div>
     </div>
   );
-};
+}

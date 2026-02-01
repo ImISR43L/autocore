@@ -68,6 +68,9 @@ export class Problem {
   @Column({ type: 'int', nullable: true })
   timeLimit: number;
 
+  @Column({ type: 'int', nullable: true })
+  memoryLimit: number; // Megabytes (MB)
+
   @Column({ type: 'timestamp', nullable: true })
   startedAt: Date;
 

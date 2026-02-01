@@ -32,10 +32,11 @@ import {
   User,
   Search,
   Filter,
+  Cpu,
 } from "lucide-react";
 import { io } from "socket.io-client";
 import { DiffViewer } from "../components/DiffViewer";
-import { LogViewer } from "../components/LogViewer";
+import LogViewer from "../components/LogViewer";
 
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
@@ -95,10 +96,22 @@ interface Classroom {
 
 interface Submission {
   id: string;
-  status: string;
+  status:
+    | "Pending"
+    | "Accepted"
+    | "Processing"
+    | "Wrong Answer"
+    | "Time Limit Exceeded"
+    | "Compilation Error"
+    | "Runtime Error"
+    | "Memory Limit Exceeded"
+    | "Internal Error";
   files: FileEntry[];
   stdout?: string;
   stderr?: string;
+  output: string;
+  executionTime: number;
+  memoryUsage: number;
   createdAt: string;
   user: { id: number; email: string };
   grade?: number;
@@ -191,14 +204,14 @@ export default function ClassroomView() {
 
   // UI & Execução
   const [verdict, setVerdict] = useState<string | null>(null);
-  const [executionOutput, setExecutionOutput] = useState<string | null>(null);
-  const [executionError, setExecutionError] = useState<string | null>(null);
+  // REMOVIDO: executionOutput e executionError (não usados)
+
   const [loading, setLoading] = useState<boolean>(false);
   const loadingRef = useRef(false);
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
 
-  // --- FILTRO DE SUBMISSÕES (NOVO) ---
+  // --- FILTRO DE SUBMISSÕES ---
   const [selectedStudentFilter, setSelectedStudentFilter] = useState<
     number | null
   >(null);
@@ -219,6 +232,11 @@ export default function ClassroomView() {
   const [showFilterMenu, setShowFilterMenu] = useState<
     "status" | "activity" | null
   >(null);
+
+  // Modal de Detalhes
+  const [selectedSubmission, setSelectedSubmission] =
+    useState<Submission | null>(null);
+  const [showModal, setShowModal] = useState(false);
 
   const [gradingGrade, setGradingGrade] = useState<string | number>("");
   const [gradingComment, setGradingComment] = useState("");
@@ -402,8 +420,7 @@ export default function ClassroomView() {
           submission.problemId === currentProb.id)
       ) {
         setVerdict(submission.status);
-        setExecutionOutput(submission.stdout || "");
-        setExecutionError(submission.stderr || "");
+        // REMOVIDO: setters de executionOutput/Error
         setLoading(false);
         loadingRef.current = false;
 
@@ -555,8 +572,7 @@ export default function ClassroomView() {
 
   useEffect(() => {
     setVerdict(null);
-    setExecutionOutput(null);
-    setExecutionError(null);
+    // REMOVIDO: setters de executionOutput/Error
     setLoading(false);
     loadingRef.current = false;
   }, [displayProblem?.id]);
@@ -616,59 +632,67 @@ export default function ClassroomView() {
     toast.success("Restaurado.");
   };
 
+  // Esta função agora é usada tanto para inspecionar quanto para abrir o modal de detalhes
   const handleStartInspection = async (targetSubmission: Submission) => {
-    setInspectingUser(targetSubmission.user);
-    setStudentSubmissions({});
-    setInspectFileIndex(0);
+    // Se for dono (professor), abre o fluxo de inspeção
+    if (isOwner) {
+      setInspectingUser(targetSubmission.user);
+      setStudentSubmissions({});
+      setInspectFileIndex(0);
+      // ... lógica de inspeção existente ...
+      const targetProblemId = targetSubmission.problem?.id
+        ? String(targetSubmission.problem.id)
+        : targetSubmission.problemId
+          ? String(targetSubmission.problemId)
+          : null;
 
-    const targetProblemId = targetSubmission.problem?.id
-      ? String(targetSubmission.problem.id)
-      : targetSubmission.problemId
-        ? String(targetSubmission.problemId)
-        : null;
+      if (currentProblem) {
+        const problemsToFetch =
+          currentProblem.children && currentProblem.children.length > 0
+            ? currentProblem.children
+            : [currentProblem];
 
-    if (currentProblem) {
-      const problemsToFetch =
-        currentProblem.children && currentProblem.children.length > 0
-          ? currentProblem.children
-          : [currentProblem];
+        const token = localStorage.getItem("token");
+        const loadedSubs: Record<string, Submission> = {};
+        let foundIndex = 0;
 
-      const token = localStorage.getItem("token");
-      const loadedSubs: Record<string, Submission> = {};
-      let foundIndex = 0;
-
-      for (let i = 0; i < problemsToFetch.length; i++) {
-        const p = problemsToFetch[i];
-        if (targetProblemId === String(p.id)) {
-          loadedSubs[p.id] = targetSubmission;
-          foundIndex = i;
-          continue;
+        for (let i = 0; i < problemsToFetch.length; i++) {
+          const p = problemsToFetch[i];
+          if (targetProblemId === String(p.id)) {
+            loadedSubs[p.id] = targetSubmission;
+            foundIndex = i;
+            continue;
+          }
+          try {
+            const res = await axios.get(
+              `${API_URL}/submissions/problem/${p.id}`,
+              { headers: { Authorization: `Bearer ${token}` } },
+            );
+            const userSub = res.data.find(
+              (s: Submission) => s.user.id === targetSubmission.user.id,
+            );
+            if (userSub) loadedSubs[p.id] = userSub;
+          } catch (e) {
+            console.error(e);
+          }
         }
-        try {
-          const res = await axios.get(
-            `${API_URL}/submissions/problem/${p.id}`,
-            { headers: { Authorization: `Bearer ${token}` } },
-          );
-          const userSub = res.data.find(
-            (s: Submission) => s.user.id === targetSubmission.user.id,
-          );
-          if (userSub) loadedSubs[p.id] = userSub;
-        } catch (e) {
-          console.error(e);
+
+        setStudentSubmissions(loadedSubs);
+        setActiveInspectionIndex(foundIndex);
+
+        const activeProbId = problemsToFetch[foundIndex].id;
+        if (loadedSubs[activeProbId]) {
+          setGradingGrade(loadedSubs[activeProbId].grade ?? "");
+          setGradingComment(loadedSubs[activeProbId].teacherComment ?? "");
+        } else {
+          setGradingGrade("");
+          setGradingComment("");
         }
       }
-
-      setStudentSubmissions(loadedSubs);
-      setActiveInspectionIndex(foundIndex);
-
-      const activeProbId = problemsToFetch[foundIndex].id;
-      if (loadedSubs[activeProbId]) {
-        setGradingGrade(loadedSubs[activeProbId].grade ?? "");
-        setGradingComment(loadedSubs[activeProbId].teacherComment ?? "");
-      } else {
-        setGradingGrade("");
-        setGradingComment("");
-      }
+    } else {
+      // Se for aluno, abre o modal de detalhes simples
+      setSelectedSubmission(targetSubmission);
+      setShowModal(true);
     }
   };
 
@@ -790,8 +814,7 @@ export default function ClassroomView() {
     loadingRef.current = true;
 
     setVerdict("Processando...");
-    setExecutionOutput(null);
-    setExecutionError(null);
+    // REMOVIDO: setters de executionOutput/Error
 
     try {
       const token = localStorage.getItem("token");
@@ -905,7 +928,15 @@ export default function ClassroomView() {
 
   const lastSubmission = useMemo(() => {
     if (!submissions || submissions.length === 0) return null;
-    return submissions.find((s) => s.user?.id === myUserId) || null;
+    // Pega a última submissão (ordenada por data decrescente pelo backend geralmente, mas podemos garantir aqui)
+    return (
+      submissions
+        .filter((s) => s.user?.id === myUserId)
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )[0] || null
+    );
   }, [submissions, myUserId]);
 
   if (!classroom) return <div className="container">Carregando...</div>;
@@ -933,7 +964,6 @@ export default function ClassroomView() {
     ? studentSubmissions[activeInspectionProblem.id]
     : null;
 
-  // --- FILTRO DE ESTUDANTES (PARA O MODAL) ---
   const filteredStudents = (classroom.students || []).filter((student) =>
     student.email.toLowerCase().includes(studentSearch.toLowerCase()),
   );
@@ -1219,7 +1249,7 @@ export default function ClassroomView() {
               <button
                 onClick={() => {
                   setShowSubmissions(true);
-                  setSelectedStudentFilter(null); // Reset filter on open
+                  setSelectedStudentFilter(null);
                 }}
                 className="btn btn-secondary"
                 style={{ marginLeft: "10px", backgroundColor: "#444" }}
@@ -1781,57 +1811,79 @@ export default function ClassroomView() {
                             expected="Esperado..."
                             actual={lastSubmission.stdout}
                           /> // Simplificado
-                        ) : (
-                          <>
-                            {lastSubmission.stdout && (
-                              <div className="mb-2">
-                                <span className="text-xs font-bold text-gray-500 uppercase">
-                                  Saída Padrão (Stdout):
-                                </span>
-                                <pre className="font-mono text-sm whitespace-pre-wrap text-gray-300 bg-black/30 p-2 rounded mt-1">
-                                  {lastSubmission.stdout}
-                                </pre>
-                              </div>
-                            )}
-                            {lastSubmission.stderr && (
-                              <div>
-                                <span className="text-xs font-bold text-red-500 uppercase">
-                                  Erro (Stderr):
-                                </span>
-                                <pre className="font-mono text-sm whitespace-pre-wrap text-red-300 bg-red-900/10 p-2 rounded mt-1 border border-red-900/30">
-                                  {lastSubmission.stderr}
-                                </pre>
-                              </div>
-                            )}
-                          </>
-                        )}
+                        ) : null}
                       </div>
                     )}
                   </div>
-                  {executionError && (
-                    <div className="mt-2">
-                      <span className="text-xs font-bold text-red-500 uppercase mb-1 block">
-                        Erro (Stderr):
-                      </span>
-                      <LogViewer
-                        content={executionError}
-                        type="error"
-                        height={200}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-[#161616] p-4 rounded-lg border border-[#333]">
+                      <div className="text-gray-500 text-xs uppercase font-bold mb-1 flex items-center gap-2">
+                        <Clock size={12} /> Tempo
+                      </div>
+                      <div className="text-2xl font-mono text-white flex items-baseline gap-1">
+                        {lastSubmission?.executionTime ?? 0}{" "}
+                        <span className="text-sm text-gray-600">ms</span>
+                      </div>
+                    </div>
+                    <div className="bg-[#161616] p-4 rounded-lg border border-[#333]">
+                      <div className="text-gray-500 text-xs uppercase font-bold mb-1 flex items-center gap-2">
+                        <Cpu size={12} /> Memória
+                      </div>
+                      <div className="text-2xl font-mono text-white flex items-baseline gap-1">
+                        {lastSubmission?.memoryUsage ?? 0}{" "}
+                        <span className="text-sm text-gray-600">KB</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Log Viewer Unificado com correções de tipo e verificação de nulo */}
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-400 mb-3 flex items-center gap-2">
+                      <FileText size={16} /> LOGS DE EXECUÇÃO
+                    </h4>
+
+                    <LogViewer
+                      logs={
+                        lastSubmission?.output ||
+                        lastSubmission?.stderr ||
+                        lastSubmission?.stdout ||
+                        ""
+                      }
+                      status={
+                        !lastSubmission ||
+                        lastSubmission.status === "Processing" ||
+                        lastSubmission.status === "Internal Error"
+                          ? "Pending"
+                          : (lastSubmission.status as any)
+                      }
+                    />
+                  </div>
+
+                  {/* Código Fonte */}
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-400 mb-3 flex items-center gap-2">
+                      <FileCode size={16} /> CÓDIGO FONTE
+                    </h4>
+                    <div className="border border-[#333] rounded-lg overflow-hidden">
+                      <Editor
+                        height="300px"
+                        theme="vs-dark"
+                        language="python"
+                        value={
+                          lastSubmission?.files?.[0]?.content ||
+                          "// Código não disponível ou formato antigo."
+                        }
+                        options={{
+                          readOnly: true,
+                          minimap: { enabled: false },
+                          scrollBeyondLastLine: false,
+                          fontFamily: "'Fira Code', monospace",
+                          fontSize: 14,
+                          padding: { top: 16 },
+                        }}
                       />
                     </div>
-                  )}
-                  {executionOutput && verdict !== "Accepted" && (
-                    <div className="mt-2">
-                      <span className="text-xs font-bold text-gray-500 uppercase mb-1 block">
-                        Saída (Stdout):
-                      </span>
-                      <LogViewer
-                        content={executionOutput}
-                        type="info"
-                        height={200}
-                      />
-                    </div>
-                  )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1914,7 +1966,6 @@ export default function ClassroomView() {
                       </div>
                       <div style={{ flex: 1, overflowY: "auto" }}>
                         {filteredStudents.map((student) => {
-                          // Analisa submissões deste aluno
                           const studentSubs = submissions.filter(
                             (s) => s.user.id === student.id,
                           );
@@ -2001,7 +2052,6 @@ export default function ClassroomView() {
                                 </div>
                               </div>
 
-                              {/* Ícone de Status */}
                               {hasAccepted ? (
                                 <CheckCircle
                                   size={18}
@@ -2050,17 +2100,14 @@ export default function ClassroomView() {
                     >
                       {selectedStudentFilter ? (
                         (() => {
-                          // --- LÓGICA DE PREPARAÇÃO DOS DADOS ---
                           const studentRawSubmissions = submissions.filter(
                             (s) => s.user.id === selectedStudentFilter,
                           );
 
-                          // Identifica opções únicas baseadas nos dados do aluno
                           const uniqueStatuses = Array.from(
                             new Set(studentRawSubmissions.map((s) => s.status)),
                           );
 
-                          // Mapeia IDs de problemas para Títulos (para o filtro de atividade)
                           const uniqueProblemIds = Array.from(
                             new Set(
                               studentRawSubmissions.map(
@@ -2070,7 +2117,6 @@ export default function ClassroomView() {
                           );
                           const problemMap = new Map<string, string>();
 
-                          // Popula mapa de nomes
                           if (currentProblem) {
                             problemMap.set(
                               currentProblem.id,
@@ -2081,7 +2127,6 @@ export default function ClassroomView() {
                             );
                           }
 
-                          // Aplica os filtros selecionados
                           const filteredList = studentRawSubmissions.filter(
                             (sub) => {
                               const pId =
@@ -2107,7 +2152,6 @@ export default function ClassroomView() {
                                 height: "100%",
                               }}
                             >
-                              {/* CABEÇALHO COM NOME E BARRA DE FILTROS */}
                               <div style={{ marginBottom: "20px" }}>
                                 <h3
                                   style={{
@@ -2127,7 +2171,6 @@ export default function ClassroomView() {
                                   }
                                 </h3>
 
-                                {/* --- BARRA DE FILTROS --- */}
                                 <div
                                   style={{
                                     display: "flex",
@@ -2135,7 +2178,6 @@ export default function ClassroomView() {
                                     flexWrap: "wrap",
                                   }}
                                 >
-                                  {/* DROPDOWN DE RESULTADO (STATUS) */}
                                   <div style={{ position: "relative" }}>
                                     <button
                                       className="btn btn-sm btn-secondary"
@@ -2237,7 +2279,6 @@ export default function ClassroomView() {
                                     )}
                                   </div>
 
-                                  {/* DROPDOWN DE ATIVIDADE (Só mostra se houver múltiplas questões/atividades nos dados) */}
                                   {uniqueProblemIds.length > 1 && (
                                     <div style={{ position: "relative" }}>
                                       <button
@@ -2333,7 +2374,6 @@ export default function ClassroomView() {
                                     </div>
                                   )}
 
-                                  {/* BOTÃO LIMPAR FILTROS */}
                                   {(filterStatus.length > 0 ||
                                     filterActivity.length > 0) && (
                                     <button
@@ -2349,7 +2389,6 @@ export default function ClassroomView() {
                                   )}
                                 </div>
 
-                                {/* Overlay invisível para fechar menus ao clicar fora */}
                                 {showFilterMenu && (
                                   <div
                                     style={{
@@ -2365,7 +2404,6 @@ export default function ClassroomView() {
                                 )}
                               </div>
 
-                              {/* TABELA DE SUBMISSÕES FILTRADA */}
                               <div style={{ flex: 1, overflowY: "auto" }}>
                                 <table className="custom-table">
                                   <thead>
@@ -2470,7 +2508,6 @@ export default function ClassroomView() {
                     </div>
                   </div>
                 ) : (
-                  /* --- VISÃO DO ALUNO: TABELA SIMPLES (MANTIDA) --- */
                   <div style={{ padding: "20px", overflowY: "auto" }}>
                     <table className="custom-table">
                       <thead>
@@ -2603,7 +2640,6 @@ export default function ClassroomView() {
                   >
                     {activeSubmission ? (
                       <>
-                        {/* ABAS DO ARQUIVO DO ALUNO */}
                         <div
                           style={{
                             display: "flex",
@@ -2649,7 +2685,6 @@ export default function ClassroomView() {
                           <Editor
                             height="100%"
                             theme="vs-dark"
-                            // Se tiver arquivos, mostra o selecionado. Se não, mostra vazio (ou legacy 'code' se tiver, mas backend mudou)
                             value={
                               activeSubmission.files?.[inspectFileIndex]
                                 ?.content || "// Código não disponível"
@@ -2660,7 +2695,6 @@ export default function ClassroomView() {
                             }}
                           />
                         </div>
-                        {/* PAINEL DE NOTAS E OUTPUT (MANTIDO) */}
                         <div
                           style={{
                             height: "250px",
@@ -2681,17 +2715,15 @@ export default function ClassroomView() {
                             >
                               Output
                             </h4>
-                            <div
-                              style={{
-                                fontFamily: "monospace",
-                                fontSize: "0.9rem",
-                                background: "#000",
-                                padding: "10px",
-                                borderRadius: "4px",
-                              }}
-                            >
-                              {activeSubmission.stdout || "Sem output"}
-                            </div>
+                            {/* --- CORREÇÃO: Usando LogViewer aqui também --- */}
+                            <LogViewer
+                              logs={
+                                activeSubmission.output ||
+                                activeSubmission.stdout ||
+                                ""
+                              }
+                              status={activeSubmission.status as any}
+                            />
                           </div>
                           {(isOwner || activeSubmission.grade != null) && (
                             <div style={{ width: "300px" }}>
@@ -2749,6 +2781,57 @@ export default function ClassroomView() {
                         Selecione uma submissão
                       </div>
                     )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Simples de Detalhes (Aluno) */}
+          {showModal && selectedSubmission && (
+            <div className="modal-overlay" style={{ zIndex: 1200 }}>
+              <div
+                className="modal-content large"
+                style={{
+                  height: "80vh",
+                  display: "flex",
+                  flexDirection: "column",
+                  padding: 0,
+                  overflow: "hidden",
+                }}
+              >
+                <div className="modal-header" style={{ padding: "15px 20px" }}>
+                  <h3>Detalhes da Submissão</h3>
+                  <button
+                    onClick={() => setShowModal(false)}
+                    className="btn btn-secondary"
+                  >
+                    Fechar
+                  </button>
+                </div>
+                <div style={{ padding: "20px", overflowY: "auto", flex: 1 }}>
+                  {/* Reuse metrics logic here if needed */}
+                  <LogViewer
+                    logs={
+                      selectedSubmission.output ||
+                      selectedSubmission.stdout ||
+                      ""
+                    }
+                    status={selectedSubmission.status as any}
+                  />
+                  <div
+                    style={{
+                      marginTop: "20px",
+                      height: "300px",
+                      border: "1px solid #333",
+                    }}
+                  >
+                    <Editor
+                      height="100%"
+                      theme="vs-dark"
+                      value={selectedSubmission.files?.[0]?.content || ""}
+                      options={{ readOnly: true, minimap: { enabled: false } }}
+                    />
                   </div>
                 </div>
               </div>

@@ -115,6 +115,10 @@ export class CreateProblemDto {
   timeLimit?: number;
 
   @IsOptional()
+  @IsInt()
+  memoryLimit?: number; // MB
+
+  @IsOptional()
   @IsDateString()
   startDate?: string;
 

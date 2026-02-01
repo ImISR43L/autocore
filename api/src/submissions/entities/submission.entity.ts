@@ -36,6 +36,15 @@ export class Submission {
   status: string;
 
   @Column({ type: 'text', nullable: true })
+  output: string | null; // Log limpo/sanitizado para o aluno
+
+  @Column({ type: 'int', nullable: true })
+  executionTime: number | null; // Tempo em ms
+
+  @Column({ type: 'int', nullable: true })
+  memoryUsage: number | null; // Memória em KB
+
+  @Column({ type: 'text', nullable: true })
   stdout: string | null;
 
   @Column({ type: 'text', nullable: true })

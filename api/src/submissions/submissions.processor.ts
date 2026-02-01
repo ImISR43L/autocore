@@ -1,4 +1,10 @@
-import { Process, Processor } from '@nestjs/bull';
+import {
+  Process,
+  Processor,
+  OnQueueActive,
+  OnQueueFailed,
+  OnQueueCompleted,
+} from '@nestjs/bull';
 import { Logger, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -23,13 +29,15 @@ interface ExecutorResponse {
   stdout?: string;
   stderr?: string;
   error?: string;
+  time?: number;
+  memory?: number;
 }
-
-const MAX_OUTPUT_LENGTH = 10000;
 
 @Processor('submission-queue')
 export class SubmissionsProcessor {
   private readonly logger = new Logger(SubmissionsProcessor.name);
+  private readonly executorUrl =
+    process.env.EXECUTOR_URL || 'http://go-judge:5050/run';
 
   constructor(
     @InjectRepository(Submission)
@@ -38,237 +46,187 @@ export class SubmissionsProcessor {
     private problemsRepository: Repository<Problem>,
     private submissionsGateway: SubmissionsGateway,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
-  ) {
-    this.logger.log('SubmissionsProcessor (Multi-File) inicializado.');
-  }
+  ) {}
 
-  private cleanOutput(text: string | undefined): string {
+  private cleanLog(text: string | undefined, languageId?: number): string {
     if (!text) return '';
-    let cleaned = text.replace(/\u0000/g, '').replace(/\r\n/g, '\n');
-    if (cleaned.length > MAX_OUTPUT_LENGTH) {
-      cleaned =
-        cleaned.substring(0, MAX_OUTPUT_LENGTH) +
-        '\n... (saída truncada por excesso de tamanho)';
+    let cleaned = text
+      .replace(/\u0000/g, '')
+      .replace(/\/w\//g, '')
+      .replace(/\/sandbox\//g, '')
+      .replace(/\/tmp\//g, '');
+
+    if (languageId === 71) {
+      cleaned = cleaned.replace(/File "wrapper-generator.ts".*\n/g, '');
+      cleaned = cleaned.replace(/File "main.py"/g, 'No seu código');
+      cleaned = cleaned.replace(
+        /Traceback \(most recent call last\):\n\s*File ".*wrapper.*",.*\n/g,
+        '',
+      );
     }
-    return cleaned;
+    return cleaned.trim();
   }
 
-  @Process('execute-code')
-  async processCode(job: Job) {
-    const { submissionId } = job.data;
-    this.logger.log(`Processando submissão: ${submissionId}`);
+  @Process('grade')
+  async handleGrade(job: Job) {
+    const { submissionId, files, language, timeLimit, memoryLimit } = job.data;
 
     try {
+      // Carrega a submissão COM as relações necessárias (user, problem) para uso no WebSocket
       const submission = await this.submissionsRepository.findOne({
         where: { id: submissionId },
-        relations: ['problem', 'user'],
+        relations: [
+          'problem',
+          'problem.testCases',
+          'user',
+          'problem.classroom',
+        ],
       });
 
       if (!submission) {
-        this.logger.warn(`Submissão ${submissionId} não encontrada.`);
+        this.logger.error(`[DEBUG] Submissão ${submissionId} não encontrada.`);
         return;
       }
 
-      submission.status = 'Processing';
+      const fullProblem = submission.problem;
+      const langConfig = this.getLanguageConfig(language);
+      if (!langConfig) {
+        this.logger.error(`[DEBUG] Linguagem ${language} não suportada.`);
+        submission.status = 'Internal Error';
+        // @ts-ignore
+        submission.output = 'Linguagem não suportada.';
+        await this.submissionsRepository.save(submission);
+        return;
+      }
+
+      // Wrapper Generator
+      let filesToRun: { name: string; content: string }[] = [];
+      try {
+        const inputFiles = Array.isArray(files)
+          ? files
+          : [{ name: langConfig.fileName, content: files }];
+        filesToRun = WrapperGenerator.apply(inputFiles, fullProblem, language);
+      } catch (wrapperError) {
+        submission.status = 'Compilation Error';
+        // @ts-ignore
+        submission.output = `Erro no Wrapper: ${wrapperError.message}`;
+        await this.submissionsRepository.save(submission);
+        return;
+      }
+
+      // Execução no Go-Judge
+      let totalGrade = 0;
+      let maxTime = 0;
+      let maxMemory = 0;
+      let firstErrorOutput: string | null = null;
+      let finalStatus = 'Accepted';
+
+      for (const [index, testCase] of fullProblem.testCases.entries()) {
+        const copyIn = {};
+        filesToRun.forEach((f) => {
+          copyIn[f.name] = { content: f.content };
+        });
+
+        const inputContent = testCase.input || '';
+
+        const runPayload = {
+          cmd: [
+            {
+              args: langConfig.runCommand,
+              env: [
+                'PATH=/usr/bin:/bin:/usr/local/bin',
+                'LANG=en_US.UTF-8',
+                'PYTHONUNBUFFERED=1', // Força saída imediata (sem buffer)
+              ],
+              files: [
+                { content: inputContent },
+                { name: 'stdout', max: 10240 }, // FD 1: STDOUT
+                { name: 'stderr', max: 10240 }, // FD 2: STDERR
+              ],
+              cpuLimit: (timeLimit || 2) * 1000000000,
+              memoryLimit: (memoryLimit || 128) * 1024 * 1024,
+              procLimit: 64,
+              copyIn: copyIn, // Arquivos do código fonte
+            },
+          ],
+        };
+
+        const response = await axios.post(this.executorUrl, runPayload);
+        const res = (response.data as ExecutorResponse[])[0];
+
+        if (res.status !== 'Accepted') {
+          finalStatus =
+            res.status === 'Nonzero Exit Status' ? 'Runtime Error' : res.status;
+
+          const rawError =
+            res.error ||
+            res.files?.stderr ||
+            res.files?.stdout ||
+            'Erro desconhecido (sem output)';
+
+          if (!firstErrorOutput) {
+            firstErrorOutput = this.cleanLog(rawError, language);
+          }
+          break;
+        }
+
+        const runStdout = this.cleanLog(res.files['stdout']);
+        const expected = testCase.expectedOutput?.trim() || '';
+
+        if (runStdout.trim() === expected) {
+          totalGrade += 100 / fullProblem.testCases.length;
+        } else {
+          finalStatus = 'Wrong Answer';
+          if (!firstErrorOutput) {
+            firstErrorOutput = `Esperado: ${expected}\nRecebido: ${runStdout.trim()}`;
+          }
+        }
+
+        const timeNs = res.time || 0;
+        const memBytes = res.memory || 0;
+        if (timeNs > maxTime) maxTime = timeNs;
+        if (memBytes > maxMemory) maxMemory = memBytes;
+      }
+
+      // Atualiza o objeto submission
+      submission.status = finalStatus;
+      submission.grade = Math.round(totalGrade);
+      // @ts-ignore
+      submission.executionTime = Math.floor(maxTime / 1000000);
+      // @ts-ignore
+      submission.memoryUsage = Math.floor(maxMemory / 1024);
+      // @ts-ignore
+      submission.output =
+        finalStatus !== 'Accepted' ? firstErrorOutput : 'Sucesso!';
+
+      // Salva no banco (mas não sobrescreve a variável 'submission' que tem as relações)
       await this.submissionsRepository.save(submission);
+
+      // CORREÇÃO WEBSOCKET: Usa o objeto 'submission' original que tem o 'user' carregado
       if (submission.user?.id) {
         this.submissionsGateway.server
           .to(`user-${submission.user.id}`)
           .emit('submission-finished', submission);
       }
-
-      const fullProblem = await this.problemsRepository.findOne({
-        where: { id: submission.problem.id },
-        relations: ['testCases', 'classroom'],
-      });
-
-      if (!fullProblem) {
-        this.logger.warn(`Problema ${submission.problem.id} não encontrado.`);
-        return;
-      }
-
-      const langConfig = this.getLanguageConfig(submission.language_id);
-      if (!langConfig) {
-        submission.status = 'Internal Error';
-        submission.stderr = 'Linguagem não suportada';
-        await this.submissionsRepository.save(submission);
-        return;
-      }
-
-      const langId = Number(submission.language_id);
-      this.logger.warn(
-        `[PROCESSOR] Iniciando Wrapper. LangID: ${langId} (Type: ${typeof langId})`,
-      );
-
-      let filesWithWrapper: any[] = [];
-      try {
-        if (!submission.files || !Array.isArray(submission.files)) {
-          throw new Error(
-            `submission.files inválido: ${JSON.stringify(submission.files)}`,
-          );
-        }
-
-        filesWithWrapper = WrapperGenerator.apply(
-          submission.files,
-          fullProblem,
-          langId,
-        );
-        this.logger.warn(
-          `Wrapper aplicado com sucesso. Arquivos: ${filesWithWrapper.length}`,
-        );
-      } catch (wrapperError) {
-        this.logger.warn(
-          `ERRO FATAL NO WRAPPER: ${wrapperError.message}`,
-          wrapperError.stack,
-        );
-        submission.status = 'Internal Error';
-        submission.stderr = `Erro interno ao processar código: ${wrapperError.message}`;
-        await this.submissionsRepository.save(submission);
-        return; // Aborta para não enviar lixo ao executor
-      }
-      // -------------------------------------
-
-      let finalVerdict = 'Accepted';
-      let executionStdout = '';
-      let executionStderr = '';
-
-      const testCases = fullProblem.testCases || [];
-
-      for (const testCase of testCases) {
-        try {
-          const copyInObj = filesWithWrapper.reduce(
-            (acc, f) => {
-              acc[f.name] = { content: f.content };
-              return acc;
-            },
-            {} as Record<string, any>,
-          );
-
-          if (langId === 63) {
-            // 63 = JavaScript
-            copyInObj['package.json'] = { content: '{ "type": "module" }' };
-          }
-
-          const payload = {
-            cmd: [
-              {
-                args: langConfig.runCommand,
-                env: [
-                  'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-                  'LANG=C.UTF-8',
-                ],
-                files: [
-                  { content: testCase.input || '' }, // FD 0: stdin
-                  { name: 'stdout', max: 10240 }, // FD 1: stdout
-                  { name: 'stderr', max: 10240 }, // FD 2: stderr
-                ],
-                cpuLimit: 2000000000,
-                clockLimit: 2000000000,
-                memoryLimit: 512 * 1024 * 1024,
-                procLimit: 50,
-                copyIn: copyInObj,
-              },
-            ],
-          };
-
-          const executorUrl =
-            process.env.EXECUTOR_URL || 'http://judge:5050/run';
-          const response = await axios.post(executorUrl, payload);
-          const result = response.data[0] as ExecutorResponse;
-
-          // 1. Priorize a leitura de files['stdout'], fallback para result.stdout
-          const rawOutput = result.files?.['stdout'] || result.stdout || '';
-          const output = rawOutput.trim();
-          const rawStderr = result.files?.['stderr'] || result.stderr || '';
-
-          if (result.status === 'Internal Error' || result.error) {
-            this.logger.warn(
-              `[GO-JUDGE ERROR] ${result.status}: ${result.error}`,
-            );
-          }
-
-          if (result.status !== 'Accepted') {
-            finalVerdict = result.status;
-            executionStderr += `[Caso ${testCase.id}] Erro: ${result.status}\n`;
-            if (result.error) executionStderr += `Detalhes: ${result.error}\n`;
-
-            // Use a variável corrigida rawStderr aqui
-            if (rawStderr) executionStderr += `STDERR: ${rawStderr}\n`;
-            break;
-          }
-          if (result.exitStatus !== 0) {
-            finalVerdict = 'Run Time Error';
-            executionStderr += `[Caso ${testCase.id}] Exit Code ${result.exitStatus}\n`;
-            if (rawStderr) executionStderr += `${rawStderr}\n`;
-            break;
-          }
-
-          const expected = testCase.expectedOutput.trim();
-
-          if (output !== expected) {
-            finalVerdict = 'Wrong Answer';
-
-            // ALTERAÇÃO:
-            // 1. O stdout guarda APENAS o que o código do aluno cuspiu (para o diff visual ficar limpo no "Seu Resultado")
-            executionStdout = output;
-
-            // 2. O stderr guarda os detalhes técnicos do erro para o aluno entender o contexto
-            executionStderr += `Esperado: ${expected}\n`;
-            executionStderr += `Obtido: ${output}\n`;
-            // Adicione logs extras se houver (do Go-Judge)
-            if (result.stderr)
-              executionStderr += `\nLogs de Execução:\n${result.stderr}`;
-
-            break; // Para na primeira falha
-          }
-        } catch (error) {
-          this.logger.warn(
-            `Erro na execução do caso de teste: ${error.message}`,
-          );
-          finalVerdict = 'Internal Error';
-          executionStderr = `Erro de comunicação com o executor: ${error.message}`;
-          break;
-        }
-      }
-
-      if (finalVerdict === 'Accepted') {
-        executionStdout = 'Todos os casos de teste foram aprovados!';
-      }
-
-      submission.status = finalVerdict;
-      submission.stdout = this.cleanOutput(executionStdout);
-      submission.stderr = this.cleanOutput(executionStderr);
-
-      const saved = await this.submissionsRepository.save(submission);
-
-      if (saved.user?.id) {
-        this.submissionsGateway.server
-          .to(`user-${saved.user.id}`)
-          .emit('submission-finished', saved);
-      }
-      if (fullProblem.classroom?.id) {
-        this.submissionsGateway.server
-          .to(`classroom-${fullProblem.classroom.id}`)
-          .emit('classroom-update', {
-            type: 'submission',
-            problemId: fullProblem.id,
-          });
-      }
     } catch (criticalError) {
       this.logger.error(
-        `FALHA CRÍTICA NO PROCESSAMENTO: ${criticalError.message}`,
+        `[DEBUG] Erro Crítico: ${criticalError.message}`,
         criticalError.stack,
       );
+      throw criticalError;
     }
   }
 
   private getLanguageConfig(languageId: number): LanguageConfig | null {
     switch (languageId) {
-      case 71:
-        return { fileName: 'main.py', runCommand: ['python3', 'main.py'] };
-      case 63:
+      case 71: // Python
+        return {
+          fileName: 'main.py',
+          runCommand: ['python3', '-u', 'main.py'], // -u para unbuffered
+        };
+      case 63: // Node.js
         return { fileName: 'index.js', runCommand: ['node', 'index.js'] };
-      case 62:
+      case 62: // Java
         return { fileName: 'Main.java', runCommand: ['java', 'Main.java'] };
       case 60:
       case 95:
@@ -280,7 +238,6 @@ export class SubmissionsProcessor {
           runCommand: ['gcc main.c -o main && ./main'],
         };
       case 54:
-      case 53:
         return {
           fileName: 'main.cpp',
           runCommand: ['g++ main.cpp -o main && ./main'],
