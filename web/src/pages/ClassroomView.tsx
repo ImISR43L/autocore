@@ -35,6 +35,13 @@ import {
   Filter,
   Cpu,
 } from "lucide-react";
+import {
+  Panel,
+  Group as PanelGroupOriginal,
+  Separator as PanelResizeHandle,
+} from "react-resizable-panels";
+const PanelGroup = PanelGroupOriginal as any;
+
 import { io } from "socket.io-client";
 import { DiffViewer } from "../components/DiffViewer";
 import LogViewer from "../components/LogViewer";
@@ -1632,425 +1639,407 @@ export default function ClassroomView() {
             </div>
           </div>
 
-          <div className="ide-main">
-            {/* EDITOR */}
-            <div
-              className="ide-editor-panel"
-              style={{ display: "flex", flexDirection: "column" }}
+          {/* MAIN IDE AREA with REACT-RESIZABLE-PANELS */}
+          {/* FIX: Garantindo flex-grow e altura total em todos os níveis */}
+          <div
+            className="ide-main"
+            style={{
+              flex: 1,
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              height: "100%",
+            }}
+          >
+            <PanelGroup
+              direction="horizontal"
+              style={{ height: "100%", width: "100%", display: "flex" }}
             >
-              <div
+              {/* PAINEL ESQUERDO: EDITOR */}
+              <Panel
+                defaultSize={60}
+                minSize={20}
                 style={{
                   display: "flex",
-                  background: "#252526",
-                  borderBottom: "1px solid #333",
-                  overflowX: "auto",
-                  alignItems: "center",
+                  flexDirection: "column",
+                  height: "100%",
                 }}
               >
-                {files.map((file, idx) => (
-                  <div
-                    key={idx}
-                    onClick={() => setActiveFileIndex(idx)}
-                    style={{
-                      padding: "8px 16px",
-                      cursor: "pointer",
-                      background:
-                        activeFileIndex === idx ? "#1e1e1e" : "transparent",
-                      color: activeFileIndex === idx ? "#fff" : "#888",
-                      borderTop:
-                        activeFileIndex === idx
-                          ? "2px solid #4caf50"
-                          : "2px solid transparent",
-                      fontSize: "0.9rem",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      borderRight: "1px solid #333",
-                    }}
-                  >
-                    <FileCode size={14} />
-                    {file.name}
-                    {files.length > 1 && (
-                      <Trash
-                        size={12}
-                        className="hover:text-red-500"
-                        onClick={(e) => handleRemoveFile(idx, e)}
-                      />
-                    )}
-                  </div>
-                ))}
                 <div
+                  className="ide-editor-panel"
                   style={{
                     display: "flex",
-                    alignItems: "center",
-                    padding: "0 8px",
-                    gap: "5px",
+                    flexDirection: "column",
+                    height: "100%",
+                    width: "100%", // Garantir largura total dentro do painel
                   }}
                 >
-                  <input
-                    style={{
-                      background: "#333",
-                      border: "none",
-                      color: "white",
-                      padding: "4px",
-                      fontSize: "0.8rem",
-                      width: "100px",
-                      borderRadius: "4px",
-                    }}
-                    placeholder="Novo arquivo..."
-                    value={newFileName}
-                    onChange={(e) => setNewFileName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAddFile()}
-                  />
-                  <Plus
-                    size={16}
-                    className="text-emerald-500 cursor-pointer hover:text-emerald-400"
-                    onClick={handleAddFile}
-                  />
-                </div>
-              </div>
-
-              <div style={{ flex: 1 }}>
-                <Editor
-                  key={`${languageId}-${displayProblem?.id || "empty"}-${activeFileIndex}`}
-                  height="100%"
-                  language={
-                    files[activeFileIndex]?.name.endsWith(".js")
-                      ? "javascript"
-                      : files[activeFileIndex]?.name.endsWith(".java")
-                        ? "java"
-                        : files[activeFileIndex]?.name.endsWith(".c")
-                          ? "c"
-                          : files[activeFileIndex]?.name.endsWith(".cpp")
-                            ? "cpp"
-                            : files[activeFileIndex]?.name.endsWith(".go")
-                              ? "go"
-                              : LANGUAGE_MAP[languageId] || "plaintext"
-                  }
-                  theme="vs-dark"
-                  value={files[activeFileIndex]?.content || ""}
-                  onChange={handleCodeChange}
-                  onMount={handleEditorDidMount} // LIGANDO O LINTER AQUI
-                  options={{
-                    minimap: { enabled: false },
-                    automaticLayout: true,
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="ide-info-panel">
-              {currentProblem?.children &&
-                currentProblem.children.length > 0 && (
+                  {/* TABS DE ARQUIVOS */}
                   <div
-                    className="question-nav"
                     style={{
                       display: "flex",
+                      background: "#252526",
+                      borderBottom: "1px solid #333",
+                      overflowX: "auto",
                       alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: "20px",
-                      paddingBottom: "15px",
-                      borderBottom: "1px solid #444",
+                      flexShrink: 0, // Impede que as abas encolham
                     }}
                   >
-                    <button
-                      className="btn btn-sm btn-secondary"
-                      disabled={activeChildIndex <= 0}
-                      onClick={() => setActiveChildIndex((prev) => prev - 1)}
-                      style={{
-                        visibility:
-                          activeChildIndex <= 0 ? "hidden" : "visible",
-                      }}
-                    >
-                      ← Anterior
-                    </button>
-                    <span
-                      style={{
-                        fontWeight: "bold",
-                        color: "#fff",
-                        fontSize: "1rem",
-                      }}
-                    >
-                      Questão {activeChildIndex + 1}{" "}
-                      <span style={{ color: "#666", fontSize: "0.9rem" }}>
-                        / {currentProblem.children.length}
-                      </span>
-                    </span>
-                    <button
-                      className="btn btn-sm btn-secondary"
-                      disabled={
-                        activeChildIndex >= currentProblem.children.length - 1
-                      }
-                      onClick={() => setActiveChildIndex((prev) => prev + 1)}
-                      style={{
-                        visibility:
-                          activeChildIndex >= currentProblem.children.length - 1
-                            ? "hidden"
-                            : "visible",
-                      }}
-                    >
-                      Próxima →
-                    </button>
-                  </div>
-                )}
-
-              {displayProblem ? (
-                <>
-                  <h3 className="ide-info-title">{displayProblem.title}</h3>
-                  <div className="ide-description markdown-body">
-                    <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
-                      {displayProblem.description}
-                    </ReactMarkdown>
-                  </div>
-                  {displayProblem.testCases &&
-                    displayProblem.testCases.length > 0 && (
-                      <div style={{ marginTop: "20px" }}>
-                        <h4
-                          style={{
-                            color: "#ccc",
-                            fontSize: "0.9rem",
-                            marginBottom: "10px",
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          Exemplos de Teste
-                        </h4>
-                        {displayProblem.testCases.map((tc, index) => (
-                          <div
-                            key={index}
-                            style={{
-                              background: "#252526",
-                              padding: "10px",
-                              borderRadius: "6px",
-                              marginBottom: "10px",
-                              borderLeft: "3px solid #4caf50",
-                            }}
-                          >
-                            <div style={{ marginBottom: "5px" }}>
-                              <span
-                                style={{
-                                  color: "#888",
-                                  fontSize: "0.8rem",
-                                  fontWeight: "bold",
-                                }}
-                              >
-                                Entrada:
-                              </span>
-                              <pre
-                                style={{
-                                  margin: "5px 0",
-                                  fontFamily: "monospace",
-                                  background: "#1e1e1e",
-                                  padding: "8px",
-                                  borderRadius: "4px",
-                                  overflowX: "auto",
-                                  fontSize: "0.9rem",
-                                  color: "#e0e0e0",
-                                }}
-                              >
-                                {tc.input}
-                              </pre>
-                            </div>
-                            <div>
-                              <span
-                                style={{
-                                  color: "#888",
-                                  fontSize: "0.8rem",
-                                  fontWeight: "bold",
-                                }}
-                              >
-                                Saída Esperada:
-                              </span>
-                              <pre
-                                style={{
-                                  margin: "5px 0",
-                                  fontFamily: "monospace",
-                                  background: "#1e1e1e",
-                                  padding: "8px",
-                                  borderRadius: "4px",
-                                  overflowX: "auto",
-                                  fontSize: "0.9rem",
-                                  color: "#e0e0e0",
-                                }}
-                              >
-                                {tc.expectedOutput}
-                              </pre>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  {isOwner && problemStats.length > 0 && (
-                    <div
-                      style={{
-                        marginTop: "30px",
-                        padding: "15px",
-                        background: "#252526",
-                        borderRadius: "8px",
-                        border: "1px solid #444",
-                      }}
-                    >
-                      <h4
+                    {files.map((file, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => setActiveFileIndex(idx)}
                         style={{
-                          margin: "0 0 15px 0",
+                          padding: "8px 16px",
+                          cursor: "pointer",
+                          background:
+                            activeFileIndex === idx ? "#1e1e1e" : "transparent",
+                          color: activeFileIndex === idx ? "#fff" : "#888",
+                          borderTop:
+                            activeFileIndex === idx
+                              ? "2px solid #4caf50"
+                              : "2px solid transparent",
                           fontSize: "0.9rem",
-                          color: "#ccc",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          borderRight: "1px solid #333",
                         }}
                       >
-                        📈 Estatísticas deste Exercício
-                      </h4>
-                      <div style={{ width: "100%", height: 250 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart
-                            data={problemStats}
-                            margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                        <FileCode size={14} />
+                        {file.name}
+                        {files.length > 1 && (
+                          <Trash
+                            size={12}
+                            className="hover:text-red-500"
+                            onClick={(e) => handleRemoveFile(idx, e)}
+                          />
+                        )}
+                      </div>
+                    ))}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "0 8px",
+                        gap: "5px",
+                      }}
+                    >
+                      <input
+                        style={{
+                          background: "#333",
+                          border: "none",
+                          color: "white",
+                          padding: "4px",
+                          fontSize: "0.8rem",
+                          width: "100px",
+                          borderRadius: "4px",
+                        }}
+                        placeholder="Novo..."
+                        value={newFileName}
+                        onChange={(e) => setNewFileName(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleAddFile()}
+                      />
+                      <Plus
+                        size={16}
+                        className="text-emerald-500 cursor-pointer hover:text-emerald-400"
+                        onClick={handleAddFile}
+                      />
+                    </div>
+                  </div>
+
+                  {/* MONACO EDITOR */}
+                  <div style={{ flex: 1, minHeight: 0 }}>
+                    {" "}
+                    {/* minHeight: 0 é crucial para flexbox scrollável */}
+                    <Editor
+                      key={`${languageId}-${displayProblem?.id || "empty"}-${activeFileIndex}`}
+                      height="100%"
+                      language={
+                        files[activeFileIndex]?.name.endsWith(".js")
+                          ? "javascript"
+                          : files[activeFileIndex]?.name.endsWith(".java")
+                            ? "java"
+                            : files[activeFileIndex]?.name.endsWith(".c")
+                              ? "c"
+                              : files[activeFileIndex]?.name.endsWith(".cpp")
+                                ? "cpp"
+                                : files[activeFileIndex]?.name.endsWith(".go")
+                                  ? "go"
+                                  : LANGUAGE_MAP[languageId] || "plaintext"
+                      }
+                      theme="vs-dark"
+                      value={files[activeFileIndex]?.content || ""}
+                      onChange={handleCodeChange}
+                      onMount={handleEditorDidMount}
+                      options={{
+                        minimap: { enabled: false },
+                        automaticLayout: true,
+                        scrollBeyondLastLine: false,
+                      }}
+                    />
+                  </div>
+                </div>
+              </Panel>
+
+              {/* HANDLE (A BARRA DE ARRASTAR) */}
+              <PanelResizeHandle
+                style={{
+                  width: "10px",
+                  background: "#1e1e1e",
+                  borderLeft: "1px solid #333",
+                  borderRight: "1px solid #333",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "col-resize",
+                  zIndex: 10,
+                  outline: "none",
+                  flexShrink: 0, // Handle não deve encolher
+                }}
+              >
+                <div
+                  style={{
+                    height: "30px",
+                    width: "4px",
+                    backgroundColor: "#444",
+                    borderRadius: "2px",
+                  }}
+                />
+              </PanelResizeHandle>
+
+              {/* PAINEL DIREITO: INFORMAÇÕES */}
+              <Panel
+                defaultSize={40}
+                minSize={20}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  height: "100%",
+                }}
+              >
+                <div
+                  className="ide-info-panel"
+                  style={{
+                    height: "100%",
+                    width: "100%",
+                    overflowY: "auto",
+                    padding: "20px",
+                  }}
+                >
+                  {currentProblem?.children &&
+                    currentProblem.children.length > 0 && (
+                      <div
+                        className="question-nav"
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          marginBottom: "20px",
+                        }}
+                      >
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          disabled={activeChildIndex <= 0}
+                          onClick={() =>
+                            setActiveChildIndex((prev) => prev - 1)
+                          }
+                        >
+                          Anterior
+                        </button>
+                        <span>Questão {activeChildIndex + 1}</span>
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          disabled={
+                            activeChildIndex >=
+                            currentProblem.children.length - 1
+                          }
+                          onClick={() =>
+                            setActiveChildIndex((prev) => prev + 1)
+                          }
+                        >
+                          Próxima
+                        </button>
+                      </div>
+                    )}
+
+                  {displayProblem ? (
+                    <>
+                      <h3 className="ide-info-title">{displayProblem.title}</h3>
+                      <div className="ide-description markdown-body">
+                        <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+                          {displayProblem.description}
+                        </ReactMarkdown>
+                      </div>
+                      {displayProblem.testCases &&
+                        displayProblem.testCases.length > 0 && (
+                          <div style={{ marginTop: "20px" }}>
+                            <h4>Exemplos de Teste</h4>
+                            {displayProblem.testCases.map((tc, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  background: "#252526",
+                                  padding: "10px",
+                                  marginBottom: "10px",
+                                  borderLeft: "3px solid #4caf50",
+                                }}
+                              >
+                                <div>
+                                  <strong>Entrada:</strong>{" "}
+                                  <pre>{tc.input}</pre>
+                                </div>
+                                <div>
+                                  <strong>Saída:</strong>{" "}
+                                  <pre>{tc.expectedOutput}</pre>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                      {/* ESTATÍSTICAS PARA O DONO */}
+                      {isOwner && problemStats.length > 0 && (
+                        <div
+                          style={{
+                            marginTop: "30px",
+                            padding: "15px",
+                            background: "#252526",
+                            borderRadius: "8px",
+                            border: "1px solid #444",
+                          }}
+                        >
+                          <h4
+                            style={{
+                              margin: "0 0 15px 0",
+                              fontSize: "0.9rem",
+                              color: "#ccc",
+                            }}
                           >
-                            <CartesianGrid
-                              strokeDasharray="3 3"
-                              stroke="#333"
-                              vertical={false}
-                            />
-                            <XAxis dataKey="name" stroke="#888" />
-                            <YAxis stroke="#888" allowDecimals={false} />
-                            <Tooltip
-                              contentStyle={{
-                                backgroundColor: "#1e1e1e",
-                                borderColor: "#444",
-                                color: "#fff",
-                              }}
-                              cursor={{ fill: "rgba(255,255,255,0.05)" }}
-                            />
-                            <Bar dataKey="value" barSize={40}>
-                              {problemStats.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.fill} />
-                              ))}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
+                            📈 Estatísticas deste Exercício
+                          </h4>
+                          <div style={{ width: "100%", height: 250 }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart
+                                data={problemStats}
+                                margin={{
+                                  top: 10,
+                                  right: 30,
+                                  left: 0,
+                                  bottom: 0,
+                                }}
+                              >
+                                <CartesianGrid
+                                  strokeDasharray="3 3"
+                                  stroke="#333"
+                                  vertical={false}
+                                />
+                                <XAxis dataKey="name" stroke="#888" />
+                                <YAxis stroke="#888" allowDecimals={false} />
+                                <Tooltip
+                                  contentStyle={{
+                                    backgroundColor: "#1e1e1e",
+                                    borderColor: "#444",
+                                    color: "#fff",
+                                  }}
+                                  cursor={{ fill: "rgba(255,255,255,0.05)" }}
+                                />
+                                <Bar dataKey="value" barSize={40}>
+                                  {problemStats.map((entry, index) => (
+                                    <Cell
+                                      key={`cell-${index}`}
+                                      fill={entry.fill}
+                                    />
+                                  ))}
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="ide-description">Selecione um exercício.</p>
+                  )}
+
+                  {/* FEEDBACK DA SUBMISSÃO */}
+                  {verdict && (
+                    <div
+                      className={`ide-feedback-box ${
+                        verdict === "Accepted"
+                          ? "success"
+                          : ["Queued", "Processing"].includes(verdict)
+                            ? "warning"
+                            : "error"
+                      }`}
+                    >
+                      <div className="feedback-header">
+                        {lastSubmission && (
+                          <div
+                            className={`mt-4 p-4 rounded-lg border ${
+                              lastSubmission.status === "Accepted"
+                                ? "border-green-500 bg-green-900/20"
+                                : "border-red-500 bg-red-900/20"
+                            }`}
+                          >
+                            <h3 className="font-bold mb-2">
+                              Resultado: {lastSubmission.status}
+                            </h3>
+                            {lastSubmission.status === "Wrong Answer" &&
+                            lastSubmission.stdout ? (
+                              <DiffViewer
+                                expected="Esperado..."
+                                actual={lastSubmission.stdout}
+                              />
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* LAYOUT GRID: 2 Colunas (Tempo e Memória) */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-[#161616] p-4 rounded-lg border border-[#333]">
+                          <div className="text-gray-500 text-xs font-bold flex items-center gap-2">
+                            <Clock size={12} /> Tempo
+                          </div>
+                          <div className="text-2xl font-mono text-white">
+                            {lastSubmission?.executionTime ?? 0} ms
+                          </div>
+                        </div>
+                        <div className="bg-[#161616] p-4 rounded-lg border border-[#333]">
+                          <div className="text-gray-500 text-xs font-bold flex items-center gap-2">
+                            <Cpu size={12} /> Memória
+                          </div>
+                          <div className="text-2xl font-mono text-white">
+                            {lastSubmission?.memoryUsage ?? 0} KB
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-400 mb-3">
+                          LOGS DE EXECUÇÃO
+                        </h4>
+                        <LogViewer
+                          logs={
+                            lastSubmission?.output ||
+                            lastSubmission?.stderr ||
+                            lastSubmission?.stdout ||
+                            ""
+                          }
+                          status={
+                            !lastSubmission ||
+                            lastSubmission.status === "Processing" ||
+                            lastSubmission.status === "Internal Error"
+                              ? "Pending"
+                              : (lastSubmission.status as any)
+                          }
+                        />
                       </div>
                     </div>
                   )}
-                </>
-              ) : (
-                <p className="ide-description">Selecione um exercício.</p>
-              )}
-
-              {verdict && (
-                <div
-                  className={`ide-feedback-box ${
-                    verdict === "Accepted"
-                      ? "success"
-                      : ["Queued", "Processing"].includes(verdict)
-                        ? "warning"
-                        : "error"
-                  }`}
-                >
-                  <div className="feedback-header">
-                    {lastSubmission && (
-                      <div
-                        className={`mt-4 p-4 rounded-lg border ${
-                          lastSubmission.status === "Accepted"
-                            ? "border-green-500 bg-green-900/20"
-                            : lastSubmission.status === "Processing"
-                              ? "border-yellow-500 bg-yellow-900/20"
-                              : "border-red-500 bg-red-900/20"
-                        }`}
-                      >
-                        <h3 className="font-bold mb-2 flex items-center gap-2">
-                          Resultado:{" "}
-                          <span
-                            className={
-                              lastSubmission.status === "Accepted"
-                                ? "text-green-400"
-                                : "text-red-400"
-                            }
-                          >
-                            {lastSubmission.status}
-                          </span>
-                        </h3>
-
-                        {lastSubmission.status === "Wrong Answer" &&
-                        lastSubmission.stdout ? (
-                          <DiffViewer
-                            expected="Esperado..."
-                            actual={lastSubmission.stdout}
-                          /> // Simplificado
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="bg-[#161616] p-4 rounded-lg border border-[#333]">
-                      <div className="text-gray-500 text-xs uppercase font-bold mb-1 flex items-center gap-2">
-                        <Clock size={12} /> Tempo
-                      </div>
-                      <div className="text-2xl font-mono text-white flex items-baseline gap-1">
-                        {lastSubmission?.executionTime ?? 0}{" "}
-                        <span className="text-sm text-gray-600">ms</span>
-                      </div>
-                    </div>
-                    <div className="bg-[#161616] p-4 rounded-lg border border-[#333]">
-                      <div className="text-gray-500 text-xs uppercase font-bold mb-1 flex items-center gap-2">
-                        <Cpu size={12} /> Memória
-                      </div>
-                      <div className="text-2xl font-mono text-white flex items-baseline gap-1">
-                        {lastSubmission?.memoryUsage ?? 0}{" "}
-                        <span className="text-sm text-gray-600">KB</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Log Viewer Unificado com correções de tipo e verificação de nulo */}
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-400 mb-3 flex items-center gap-2">
-                      <FileText size={16} /> LOGS DE EXECUÇÃO
-                    </h4>
-
-                    <LogViewer
-                      logs={
-                        lastSubmission?.output ||
-                        lastSubmission?.stderr ||
-                        lastSubmission?.stdout ||
-                        ""
-                      }
-                      status={
-                        !lastSubmission ||
-                        lastSubmission.status === "Processing" ||
-                        lastSubmission.status === "Internal Error"
-                          ? "Pending"
-                          : (lastSubmission.status as any)
-                      }
-                    />
-                  </div>
-
-                  {/* Código Fonte */}
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-400 mb-3 flex items-center gap-2">
-                      <FileCode size={16} /> CÓDIGO FONTE
-                    </h4>
-                    <div className="border border-[#333] rounded-lg overflow-hidden">
-                      <Editor
-                        height="300px"
-                        theme="vs-dark"
-                        language="python"
-                        value={
-                          lastSubmission?.files?.[0]?.content ||
-                          "// Código não disponível ou formato antigo."
-                        }
-                        options={{
-                          readOnly: true,
-                          minimap: { enabled: false },
-                          scrollBeyondLastLine: false,
-                          fontFamily: "'Fira Code', monospace",
-                          fontSize: 14,
-                          padding: { top: 16 },
-                        }}
-                      />
-                    </div>
-                  </div>
                 </div>
-              )}
-            </div>
+              </Panel>
+            </PanelGroup>
           </div>
 
           {/* --- MODAIS DE INSPEÇÃO E LISTAGEM --- */}
