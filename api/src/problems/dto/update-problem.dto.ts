@@ -4,7 +4,6 @@ import { IsArray, IsOptional, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateProblemDto extends PartialType(CreateProblemDto) {
-  // Adicionamos explicitamente para garantir a validação aninhada no Update
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateQuestionDto)

@@ -1,17 +1,33 @@
 import axios from "axios";
 
-// Instância centralizada do Axios
+// ... (configuração da instância api existente)
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
+  baseURL: "http://localhost:3000", // Ajuste conforme seu env
 });
 
-// Interceptor que injeta o Token automaticamente
 api.interceptors.request.use((config) => {
-  // CORREÇÃO: Mudamos de 'auth_token' para 'token' (conforme seu Login.tsx)
   const token = localStorage.getItem("token");
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
   return config;
 });
+
+// --- ATUALIZAÇÃO DA FUNÇÃO DRY RUN ---
+export const dryRunProblem = async (payload: {
+  starterCode: { name: string; content: string }[];
+  testCases: { input: string; expectedOutput: string }[];
+  // Novos campos obrigatórios para o Wrapper funcionar
+  parameters: { name: string; type: string }[];
+  returnType?: string;
+  language?: string;
+}) => {
+  const { data } = await api.post("/problems/dry-run", {
+    ...payload,
+    language: payload.language || "python",
+  });
+  return data;
+};

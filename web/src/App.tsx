@@ -1,7 +1,7 @@
 // web/src/App.tsx
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { Toaster } from "sonner"; // <--- 1. IMPORTAR
+import { Toaster } from "sonner";
 
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -16,7 +16,6 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 function App() {
   return (
     <BrowserRouter>
-      {/* 2. ADICIONAR O TOASTER AQUI (pode ser antes ou depois das Routes) */}
       <Toaster position="top-right" richColors expand={true} />
 
       <Routes>
@@ -40,8 +39,10 @@ function App() {
           }
         />
 
+        {/* --- CORREÇÃO AQUI --- */}
+        {/* Mudamos de "/create-problem" para incluir o ID da turma */}
         <Route
-          path="/create-problem"
+          path="/class/:classroomId/create-problem"
           element={
             <PrivateRoute>
               <CreateProblem />

@@ -917,7 +917,7 @@ export default function ClassroomView() {
     if (selectedProblemId && classroom) {
       const p = classroom.problems.find((p) => p.id === selectedProblemId);
       if (p)
-        navigate("/create-problem", {
+        navigate(`/class/${id}/create-problem`, {
           state: { classroomId: classroom.id, problemToEdit: p },
         });
     }
@@ -1407,7 +1407,7 @@ export default function ClassroomView() {
                 )}
                 <button
                   onClick={() =>
-                    navigate("/create-problem", {
+                    navigate(`/class/${id}/create-problem`, {
                       state: { classroomId: classroom.id },
                     })
                   }

@@ -13,6 +13,7 @@ import { ProblemsService } from './problems.service';
 import { CreateProblemDto } from './dto/create-problem.dto';
 import { UpdateProblemDto } from './dto/update-problem.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { DryRunDto } from './dto/dry-run.dto';
 
 // Interface para tipagem do Request
 interface RequestWithUser {
@@ -69,5 +70,10 @@ export class ProblemsController {
   @Delete(':id')
   remove(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.problemsService.remove(id, req.user.userId);
+  }
+
+  @Post('dry-run')
+  async dryRun(@Body() dryRunDto: DryRunDto) {
+    return this.problemsService.dryRun(dryRunDto);
   }
 }

@@ -21,9 +21,11 @@ export interface ParameterDefinition {
   type: 'int' | 'float' | 'string' | 'boolean' | 'int[]' | 'string[]';
 }
 
-export interface FileEntry {
-  name: string;
-  content: string;
+export interface StarterCodeDefinition {
+  languageId: number;
+  code: string;
+  name?: string;
+  content?: string;
 }
 
 @Entity()
@@ -43,6 +45,22 @@ export class Problem {
 
   @Column({
     type: 'enum',
+    enum: ['EASY', 'MEDIUM', 'HARD'],
+    default: 'EASY',
+  })
+  difficulty: string;
+
+  @Column({ type: 'text', nullable: true })
+  teacherNotes: string;
+
+  @Column('simple-array', { nullable: true })
+  allowedLanguages: number[];
+
+  @Column('simple-array', { nullable: true })
+  tags: string[];
+
+  @Column({
+    type: 'enum',
     enum: ProblemType,
     default: ProblemType.EXERCISE,
   })
@@ -51,10 +69,11 @@ export class Problem {
   @Column({ type: 'jsonb', default: [] })
   parameters: ParameterDefinition[];
 
-  // NOVO: Template inicial para o aluno (Múltiplos Arquivos)
-  // Ex: [{ name: "main.c", content: "..." }, { name: "header.h", content: "..." }]
   @Column({ type: 'jsonb', nullable: true })
-  starterCode: FileEntry[] | null;
+  starterCode: StarterCodeDefinition[] | null;
+
+  @Column({ type: 'jsonb', default: [], select: false }) // select: false protege de retornar para o aluno num findAll comum
+  solutionCode: { name: string; content: string }[];
 
   @Column({ default: 'string' })
   returnType: string;
@@ -69,7 +88,11 @@ export class Problem {
   timeLimit: number;
 
   @Column({ type: 'int', nullable: true })
-  memoryLimit: number; // Megabytes (MB)
+  memoryLimit: number;
+
+  // REINSERIDO: Data de início (Agendamento da Prova)
+  @Column({ type: 'timestamp', nullable: true })
+  startDate: Date;
 
   @Column({ type: 'timestamp', nullable: true })
   startedAt: Date;
@@ -88,6 +111,7 @@ export class Problem {
   @OneToMany(() => Submission, (submission) => submission.problem)
   submissions: Submission[];
 
+  // REINSERIDO: Auto-relacionamento para Sub-questões
   @ManyToOne(() => Problem, (problem) => problem.children, {
     onDelete: 'CASCADE',
     nullable: true,
@@ -96,7 +120,4 @@ export class Problem {
 
   @OneToMany(() => Problem, (problem) => problem.parent, { cascade: true })
   children: Problem[];
-
-  @Column({ type: 'timestamp', nullable: true })
-  startDate: Date;
 }

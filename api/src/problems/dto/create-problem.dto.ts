@@ -6,15 +6,17 @@ import {
   IsArray,
   ValidateNested,
   IsInt,
-  IsDateString,
+  IsISO8601,
   Min,
+  IsNumber,
   IsUUID,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ProblemType } from '../entities/problem.entity';
 
-// DTO para os Arquivos (Template)
-class FileEntryDto {
+// 1. Nova estrutura para arquivos (substitui o antigo StarterCodeDto)
+export class ProblemFileDto {
   @IsString()
   @IsNotEmpty()
   name: string;
@@ -23,7 +25,6 @@ class FileEntryDto {
   content: string;
 }
 
-// DTO para Parâmetros
 class ParameterDto {
   @IsString()
   @IsNotEmpty()
@@ -34,7 +35,6 @@ class ParameterDto {
   type: string;
 }
 
-// DTO para Casos de Teste
 class TestCaseDto {
   @IsString()
   input: string;
@@ -43,10 +43,11 @@ class TestCaseDto {
   expectedOutput: string;
 
   @IsOptional()
+  @IsBoolean()
   isHidden?: boolean;
 }
 
-// CORREÇÃO: Adicionado 'export' aqui
+// DTO para Sub-questões (usado dentro de uma Prova)
 export class CreateQuestionDto {
   @IsString()
   @IsNotEmpty()
@@ -76,11 +77,19 @@ export class CreateQuestionDto {
   @Type(() => TestCaseDto)
   testCases?: TestCaseDto[];
 
+  // Atualizado para usar ProblemFileDto
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => FileEntryDto)
-  starterCode?: FileEntryDto[];
+  @Type(() => ProblemFileDto)
+  starterCode?: ProblemFileDto[];
+
+  // Atualizado para usar ProblemFileDto
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProblemFileDto)
+  solutionCode?: ProblemFileDto[];
 }
 
 export class CreateProblemDto {
@@ -96,46 +105,42 @@ export class CreateProblemDto {
   @IsNotEmpty()
   slug: string;
 
+  @IsEnum(['EASY', 'MEDIUM', 'HARD'])
   @IsOptional()
-  @IsEnum(ProblemType)
-  type?: ProblemType;
+  difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
 
+  @IsString()
+  @IsOptional()
+  teacherNotes?: string;
+
+  @IsArray()
+  @IsNumber({}, { each: true })
+  @IsOptional()
+  allowedLanguages?: number[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  tags?: string[];
+
+  // 2. Mudança: Aceitar UUID
   @IsNotEmpty()
   @IsUUID()
-  classroomId?: string;
+  classroomId: string;
 
-  // --- Campos de Prova ---
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  maxAttempts?: number;
-
-  @IsOptional()
-  @IsInt()
-  timeLimit?: number;
-
-  @IsOptional()
-  @IsInt()
-  memoryLimit?: number; // MB
-
-  @IsOptional()
-  @IsDateString()
-  startDate?: string;
-
-  @IsOptional()
-  @IsDateString()
-  deadline?: string;
-
-  // --- Campos de Exercício ---
+  // 3. Mudança: Usar ProblemFileDto
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ParameterDto)
-  parameters?: ParameterDto[];
+  @Type(() => ProblemFileDto)
+  starterCode?: ProblemFileDto[];
 
+  // 3. Mudança: Usar ProblemFileDto
   @IsOptional()
-  @IsString()
-  returnType?: string;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProblemFileDto)
+  solutionCode?: ProblemFileDto[];
 
   @IsOptional()
   @IsArray()
@@ -144,12 +149,40 @@ export class CreateProblemDto {
   testCases?: TestCaseDto[];
 
   @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => FileEntryDto)
-  starterCode?: FileEntryDto[];
+  @IsEnum(ProblemType)
+  type?: ProblemType;
 
-  // --- NOVO: Questões Filhas (para Prova) ---
+  // 4. Mudança: Permitir 0 (infinito)
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxAttempts?: number;
+
+  @IsOptional()
+  @IsInt()
+  timeLimit?: number;
+
+  @IsOptional()
+  @IsInt()
+  memoryLimit?: number;
+
+  // 5. Mudança: Validação de Data ISO8601 (aceita null se sanitizado)
+  @IsOptional()
+  @IsISO8601()
+  startDate?: string | null;
+
+  @IsOptional()
+  @IsISO8601()
+  deadline?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  parameters?: ParameterDto[];
+
+  @IsOptional()
+  @IsString()
+  returnType?: string;
+
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })

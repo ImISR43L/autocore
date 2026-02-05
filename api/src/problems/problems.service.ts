@@ -3,11 +3,14 @@ import {
   Injectable,
   NotFoundException,
   Logger,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import axios from 'axios';
 import { CreateProblemDto } from './dto/create-problem.dto';
 import { UpdateProblemDto } from './dto/update-problem.dto';
+import { DryRunDto } from './dto/dry-run.dto';
 import {
   ParameterDefinition,
   Problem,
@@ -15,10 +18,14 @@ import {
 } from './entities/problem.entity';
 import { TestCase } from './entities/test-case.entity';
 import { Classroom } from '../classrooms/entities/classroom.entity';
+import { WrapperGenerator } from '../submissions/wrapper-generator';
 
 @Injectable()
 export class ProblemsService {
   private readonly logger = new Logger(ProblemsService.name);
+
+  private readonly executorUrl =
+    process.env.EXECUTOR_URL || 'http://go-judge:5050/run';
 
   constructor(
     @InjectRepository(Problem)
@@ -30,14 +37,19 @@ export class ProblemsService {
   ) {}
 
   async create(createProblemDto: CreateProblemDto) {
-    // 1. Extrair parameters para tratar a tipagem separadamente
-    const { classroomId, questions, parameters, ...problemData } =
-      createProblemDto;
+    const {
+      classroomId,
+      questions,
+      parameters,
+      startDate,
+      deadline,
+      ...problemData
+    } = createProblemDto;
 
     let classroom: Classroom | undefined = undefined;
     if (classroomId) {
       const foundClassroom = await this.classroomsRepository.findOne({
-        where: { id: classroomId },
+        where: { id: String(classroomId) },
       });
       if (!foundClassroom) throw new NotFoundException('Turma não encontrada');
       classroom = foundClassroom;
@@ -50,8 +62,9 @@ export class ProblemsService {
           ...q,
           type: ProblemType.EXERCISE,
           classroom: classroom,
-          // Cast explícito para resolver incompatibilidade DTO (string) vs Entidade (Union)
           parameters: q.parameters as unknown as ParameterDefinition[],
+          starterCode: q.starterCode as any,
+          solutionCode: q.solutionCode as any,
           testCases: q.testCases
             ? q.testCases.map((tc) =>
                 this.testCasesRepository.create({ ...tc }),
@@ -63,8 +76,12 @@ export class ProblemsService {
 
     const problem = this.problemsRepository.create({
       ...problemData,
-      // Cast explícito também para o problema principal
+      // Se vier string/data, converte. Se vier null/undefined, passa undefined para o create ignorar ou usar default.
+      startDate: startDate ? new Date(startDate) : undefined,
+      deadline: deadline ? new Date(deadline) : undefined,
       parameters: parameters as unknown as ParameterDefinition[],
+      starterCode: problemData.starterCode as any,
+      solutionCode: problemData.solutionCode as any,
       classroom: classroom,
       children: children.length > 0 ? children : undefined,
     });
@@ -135,8 +152,10 @@ export class ProblemsService {
     });
 
     if (!problem) throw new NotFoundException('Prova não encontrada');
+
     if (problem.classroom.owner.id !== userId)
       throw new ForbiddenException('Apenas o professor pode iniciar.');
+
     if (problem.type !== ProblemType.EXAM)
       throw new ForbiddenException('Apenas provas podem ser iniciadas.');
 
@@ -173,7 +192,6 @@ export class ProblemsService {
         await this.problemsRepository.remove(problem.children);
       }
 
-      // 2. CORREÇÃO: Cast 'as unknown as Problem' para evitar o erro de conversão
       problem.children = questions.map((q) => {
         const childParams = q.parameters as unknown as ParameterDefinition[];
         const childTestCases = q.testCases
@@ -185,8 +203,10 @@ export class ProblemsService {
           type: problem.type,
           classroom: problem.classroom,
           parameters: childParams,
+          starterCode: q.starterCode as any,
+          solutionCode: q.solutionCode as any,
           testCases: childTestCases,
-        }) as unknown as Problem; // <--- CORREÇÃO AQUI
+        }) as unknown as Problem;
       });
     }
 
@@ -202,10 +222,20 @@ export class ProblemsService {
     if (parameters) {
       problem.parameters = parameters as unknown as ParameterDefinition[];
     }
-    if (deadline) problem.deadline = new Date(deadline);
-    if (startDate) problem.startDate = new Date(startDate);
 
-    Object.assign(problem, dataToUpdate);
+    // CORREÇÃO: Cast para 'any' ou 'Date' para permitir null
+    if (deadline !== undefined) {
+      problem.deadline = (deadline ? new Date(deadline) : null) as any;
+    }
+    if (startDate !== undefined) {
+      problem.startDate = (startDate ? new Date(startDate) : null) as any;
+    }
+
+    Object.assign(problem, {
+      ...dataToUpdate,
+      starterCode: dataToUpdate.starterCode as any,
+      solutionCode: dataToUpdate.solutionCode as any,
+    });
 
     return this.problemsRepository.save(problem);
   }
@@ -223,5 +253,153 @@ export class ProblemsService {
     }
 
     return this.problemsRepository.remove(problem);
+  }
+
+  async dryRun(dto: DryRunDto) {
+    this.logger.log(`[DryRun] Iniciando execução para ${dto.language}`);
+
+    const langConfig = this.getLanguageConfig(dto.language);
+    if (!langConfig) {
+      throw new InternalServerErrorException(
+        `Linguagem ${dto.language} não suportada para Dry Run.`,
+      );
+    }
+
+    const tempProblem = {
+      parameters: dto.parameters as unknown as ParameterDefinition[],
+      returnType: (dto as any).returnType || 'void',
+    } as Problem;
+
+    const filesClone = JSON.parse(JSON.stringify(dto.starterCode));
+
+    const processedFiles = WrapperGenerator.apply(
+      filesClone,
+      tempProblem,
+      langConfig.id,
+    );
+
+    const mainFile = processedFiles.find((f) =>
+      f.name.endsWith(langConfig.ext),
+    );
+    if (!mainFile) {
+      throw new InternalServerErrorException(
+        'Arquivo principal não encontrado após processamento.',
+      );
+    }
+
+    const promises = dto.testCases.map(async (tc, index) => {
+      try {
+        const result = await this.executeInGoJudge(
+          langConfig,
+          processedFiles,
+          tc.input,
+        );
+
+        const actualOutput = (result.stdout || '').trim();
+        const expectedOutput = tc.expectedOutput.trim();
+        const status =
+          actualOutput === expectedOutput ? 'ACCEPTED' : 'WRONG_ANSWER';
+
+        return {
+          id: index,
+          status,
+          input: tc.input,
+          expectedOutput: tc.expectedOutput,
+          actualOutput: actualOutput,
+          error: result.stderr || result.error,
+          executionTime: result.time ? `${result.time / 1000000}ms` : '0ms',
+          memory: result.memory
+            ? `${(result.memory / 1024 / 1024).toFixed(2)}MB`
+            : '0MB',
+        };
+      } catch (error) {
+        this.logger.error(`[DryRun] Erro no caso ${index}: ${error.message}`);
+        return {
+          id: index,
+          status: 'INTERNAL_ERROR',
+          input: tc.input,
+          expectedOutput: tc.expectedOutput,
+          actualOutput: '',
+          error: 'Falha na comunicação com o executor.',
+        };
+      }
+    });
+
+    const results = await Promise.all(promises);
+
+    return {
+      success: results.every((r) => r.status === 'ACCEPTED'),
+      results,
+    };
+  }
+
+  private getLanguageConfig(lang: string) {
+    const map: Record<
+      string,
+      { id: number; runCommand: string[]; ext: string }
+    > = {
+      python: {
+        id: 71,
+        ext: '.py',
+        runCommand: ['python3', '-u', 'main.py'],
+      },
+      javascript: {
+        id: 63,
+        ext: '.js',
+        runCommand: ['node', 'index.js'],
+      },
+      cpp: {
+        id: 54,
+        ext: '.cpp',
+        runCommand: ['/bin/sh', '-c', 'g++ main.cpp -o main && ./main'],
+      },
+    };
+    return map[lang.toLowerCase()] || null;
+  }
+
+  private async executeInGoJudge(
+    config: { runCommand: string[]; ext: string },
+    files: { name: string; content: string }[],
+    stdin: string,
+  ) {
+    const copyIn: Record<string, { content: string }> = {};
+    files.forEach((f) => {
+      copyIn[f.name] = { content: f.content };
+    });
+
+    const payload = {
+      cmd: [
+        {
+          args: config.runCommand,
+          env: ['PATH=/usr/bin:/bin'],
+          files: [
+            { content: stdin },
+            { name: 'stdout', max: 10240 },
+            { name: 'stderr', max: 10240 },
+          ],
+          cpuLimit: 2000000000,
+          memoryLimit: 128 * 1024 * 1024,
+          procLimit: 50,
+          copyIn,
+        },
+      ],
+    };
+
+    const { data } = await axios.post(this.executorUrl, payload);
+    const result = data[0];
+
+    if (result.status !== 'Accepted') {
+      return {
+        ...result,
+        stdout: result.files['stdout'],
+        stderr: result.files['stderr'] || `Erro de execução: ${result.status}`,
+      };
+    }
+
+    return {
+      ...result,
+      stdout: result.files['stdout'],
+      stderr: result.files['stderr'],
+    };
   }
 }

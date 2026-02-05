@@ -23,7 +23,7 @@ export class ClassroomsService {
   async create(createClassroomDto: CreateClassroomDto, ownerId: number) {
     // IMPLEMENTAÇÃO NANOID
     // Alfabeto personalizado: Removemos 0, O, I, L para evitar confusão visual
-    const generateCode = customAlphabet('ABCDEFGHJKMNPQRSTUVWXYZ23456789  ', 6);
+    const generateCode = customAlphabet('ABCDEFGHJKMNPQRSTUVWXYZ23456789', 6);
 
     // Gera o código. (Em produção, você poderia fazer um loop 'while'
     // para verificar colisão, mas com 6 chars e esse alfabeto, é raro no início)
@@ -123,7 +123,7 @@ export class ClassroomsService {
           // === CORREÇÃO: PRIORIDADE PARA INÍCIO MANUAL ===
           // Se a prova JÁ COMEÇOU (tem startedAt), ela deve aparecer,
           // ignorando completamente a data de agendamento (startDate).
-          if (p.startedAt) return true;
+          if (p.startDate) return true;
 
           // Se AINDA NÃO começou, aí sim respeitamos o agendamento futuro.
           if (p.startDate && new Date(p.startDate) > now) return false;

@@ -1,0 +1,132 @@
+import { z } from "zod";
+
+// --- Blocos Fundamentais (Building Blocks) ---
+
+const parameterSchema = z.object({
+  name: z
+    .string()
+    .min(1, "Nome do parâmetro é obrigatório")
+    .regex(
+      /^[a-zA-Z_][a-zA-Z0-9_]*$/,
+      "Nome inválido (use apenas letras, números e _)",
+    ),
+  // CORREÇÃO CRÍTICA AQUI:
+  // Removemos o { errorMap: ... } que estava causando o crash "(intermediate value) is null".
+  // Usamos errorMap ou params padrões suportados.
+  type: z
+    .enum(["int", "float", "string", "boolean", "int[]", "string[]"])
+    .refine((val) => val, { message: "Inválido" }),
+});
+
+const fileEntrySchema = z.object({
+  name: z
+    .string()
+    .min(1, "Nome do arquivo é obrigatório")
+    .regex(/^[\w.-]+$/, "Nome de arquivo inválido"),
+  content: z.string().default(""),
+});
+
+const testCaseSchema = z.object({
+  input: z.string().describe("Entrada do caso de teste"),
+  expectedOutput: z.string().min(1, "Saída esperada é obrigatória"),
+  isHidden: z.boolean().default(false),
+});
+
+// --- Schemas por Etapa (Progressive Disclosure) ---
+
+export const basicInfoSchema = z.object({
+  title: z.string().min(3, "Título deve ter pelo menos 3 caracteres"),
+  slug: z
+    .string()
+    .min(3, "Slug muito curto")
+    .regex(
+      /^[a-z0-9-]+$/,
+      "Slug deve conter apenas letras minúsculas, números e hifens",
+    ),
+  description: z.string().min(10, "Descrição muito curta"),
+  type: z.enum(["EXERCISE", "EXAM"]),
+  classroomId: z.string().optional(),
+});
+
+export const exerciseDetailsSchema = z.object({
+  parameters: z.array(parameterSchema).default([]),
+  returnType: z.string().default("void"),
+  starterCode: z
+    .array(fileEntrySchema)
+    .min(1, "Pelo menos um arquivo inicial é necessário"),
+  solutionCode: z.array(fileEntrySchema).default([]),
+  testCases: z.array(testCaseSchema).default([]),
+});
+
+const questionSchema = z.object({
+  title: z.string().min(1),
+  description: z.string(),
+  slug: z.string(),
+  parameters: z.array(parameterSchema),
+  returnType: z.string(),
+  starterCode: z.array(fileEntrySchema),
+  testCases: z.array(testCaseSchema),
+});
+
+export const examQuestionsSchema = z.object({
+  questions: z
+    .array(questionSchema)
+    .min(1, "A prova deve ter pelo menos uma questão")
+    .optional(),
+});
+
+const nestedQuestionSchema = z
+  .object({
+    title: z.string().min(1, "Título da questão é obrigatório"),
+    description: z.string().min(1, "Descrição é obrigatória"),
+    slug: z.string().min(1, "Slug é obrigatório"),
+  })
+  .merge(exerciseDetailsSchema); // Herda parameters, starterCode, testCases...
+
+// Configurações da Prova (Datas/Limites)
+export const examSettingsSchema = z
+  .object({
+    maxAttempts: z.coerce.number().int().min(0).optional(),
+    timeLimit: z.coerce.number().int().min(1).optional(),
+    memoryLimit: z.coerce.number().int().min(1).optional(),
+    startDate: z
+      .string()
+      .datetime({ message: "Data inválida" })
+      .optional()
+      .or(z.literal("")),
+    deadline: z
+      .string()
+      .datetime({ message: "Data inválida" })
+      .optional()
+      .or(z.literal("")),
+    // --- O CAMPO QUE FALTAVA ---
+    questions: z.array(nestedQuestionSchema).default([]),
+  })
+  .refine(
+    (data) => {
+      if (
+        data.startDate &&
+        data.deadline &&
+        data.startDate !== "" &&
+        data.deadline !== ""
+      ) {
+        return new Date(data.startDate) < new Date(data.deadline);
+      }
+      return true;
+    },
+    {
+      message: "A data de entrega deve ser posterior à data de início",
+      path: ["deadline"],
+    },
+  );
+
+// --- Schema Unificado (Discriminated Union) ---
+export const problemSchema = z.discriminatedUnion("type", [
+  basicInfoSchema
+    .extend({ type: z.literal("EXERCISE") })
+    .merge(exerciseDetailsSchema),
+  // Agora EXAM inclui 'questions' via examSettingsSchema
+  basicInfoSchema.extend({ type: z.literal("EXAM") }).merge(examSettingsSchema),
+]);
+
+export type ProblemFormValues = z.infer<typeof problemSchema>;

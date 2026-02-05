@@ -1,4 +1,7 @@
 /* web/src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   /* Paleta "Dark Academia / Modern IDE" */
@@ -20,8 +23,8 @@
   --warning: #f59e0b;
 
   --radius: 6px; /* Bordas levemente arredondadas */
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
-    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 html,
@@ -32,7 +35,11 @@ body {
   height: 100%;
   background-color: var(--bg-app);
   color: var(--text-main);
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
