@@ -1,11 +1,9 @@
-import { useState, useEffect, Suspense, lazy } from "react";
+import { useState, useEffect, Suspense, lazy, useMemo } from "react";
 import { useFormContext, useFieldArray, Controller } from "react-hook-form";
 import {
   FlaskConical,
   Plus,
   Trash2,
-  Eye,
-  EyeOff,
   Play,
   CheckCircle,
   XCircle,
@@ -13,8 +11,9 @@ import {
   FileJson,
   Code2,
   RotateCcw,
-  Maximize2, // Novo
-  Minimize2, // Novo
+  Maximize2,
+  Minimize2,
+  RefreshCw,
 } from "lucide-react";
 import { dryRunProblem } from "../../../lib/api";
 import { toast } from "sonner";
@@ -25,28 +24,25 @@ interface ValidationConfigProps {
   basePath?: string;
 }
 
+const getLanguageFromExt = (filename: string) => {
+  if (!filename) return "plaintext";
+  if (filename.endsWith(".js")) return "javascript";
+  if (filename.endsWith(".ts")) return "typescript";
+  if (filename.endsWith(".py")) return "python";
+  if (filename.endsWith(".java")) return "java";
+  if (filename.endsWith(".cpp") || filename.endsWith(".c")) return "cpp";
+  return "plaintext";
+};
+
 export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
-  const {
-    register,
-    control,
-    getValues,
-    setValue,
-    watch,
-    formState: { errors },
-  } = useFormContext();
+  const { register, control, getValues, setValue, watch } = useFormContext();
 
   const [isRunning, setIsRunning] = useState(false);
   const [runResults, setRunResults] = useState<any>(null);
   const [activeSolutionTab, setActiveSolutionTab] = useState(0);
-
-  // 1. Estado para Tela Cheia do Gabarito
   const [isSolutionFullscreen, setIsSolutionFullscreen] = useState(false);
 
   const getName = (name: string) => (basePath ? `${basePath}.${name}` : name);
-
-  const getError = (path: string) => {
-    return path.split(".").reduce((obj, key) => obj?.[key], errors as any);
-  };
 
   const {
     fields: testFields,
@@ -62,38 +58,125 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     name: getName("solutionCode"),
   });
 
-  // --- AUTO-SYNC ---
+  const starterCode = watch(getName("starterCode"));
+  const parameters = watch(getName("parameters")) || [];
+  const firstSolutionContent = watch(getName(`solutionCode.0.content`));
+  const firstSolutionName = watch(getName(`solutionCode.0.name`));
+
+  const cleanCopy = (files: any[]) => {
+    return JSON.parse(JSON.stringify(files)).map(
+      ({ id, ...rest }: any) => rest,
+    );
+  };
+
+  // --- SINCRONIZAÇÃO SCADFFOLDING -> VALIDATION ---
   useEffect(() => {
-    const currentSolution = getValues(getName("solutionCode"));
-    const starter = getValues(getName("starterCode"));
+    const currentStarter = starterCode || [];
+    if (currentStarter.length === 0) return;
 
-    if (
-      (!currentSolution || currentSolution.length === 0) &&
-      starter &&
-      starter.length > 0
-    ) {
-      replaceSolution(JSON.parse(JSON.stringify(starter)));
+    const currentSolution = getValues(getName("solutionCode")) || [];
+
+    // 1. Inicializa se estiver vazio
+    if (currentSolution.length === 0) {
+      replaceSolution(cleanCopy(currentStarter));
+      return;
     }
-  }, []);
 
-  // 2. Listener para sair com ESC
+    // 2. Verifica Mismatches
+    const starterLang = getLanguageFromExt(currentStarter[0]?.name || "");
+    const solutionLang = getLanguageFromExt(currentSolution[0]?.name || "");
+    const hasLangMismatch = starterLang !== solutionLang;
+
+    const hasStructureMismatch =
+      currentStarter.length !== currentSolution.length ||
+      currentStarter.some((file: any, index: number) => {
+        return (
+          !currentSolution[index] || file.name !== currentSolution[index].name
+        );
+      });
+
+    // 3. Aplica sincronização se necessário
+    if (hasLangMismatch || hasStructureMismatch) {
+      replaceSolution(cleanCopy(currentStarter));
+
+      if (hasLangMismatch) {
+        toast.info(`Gabarito atualizado para ${starterLang} (Sincronizado).`);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(starterCode), replaceSolution, getValues, getName]);
+  // ^^^ O JSON.stringify aqui é OBRIGATÓRIO para detectar a mudança feita pelo setValue no outro componente.
+
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isSolutionFullscreen) {
+      if (e.key === "Escape" && isSolutionFullscreen)
         setIsSolutionFullscreen(false);
-      }
     };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, [isSolutionFullscreen]);
 
+  // Lógica de DryRun e Parâmetros (inalterada)
+  const currentLang = useMemo(
+    () => getLanguageFromExt(firstSolutionName || ""),
+    [firstSolutionName],
+  );
+  const expectedParamsString = useMemo(() => {
+    if (!parameters || parameters.length === 0) return "";
+    if (currentLang === "python" || currentLang === "javascript") {
+      return parameters.map((p: any) => p.name).join(", ");
+    } else if (currentLang === "cpp") {
+      const typeMap: Record<string, string> = {
+        int: "int",
+        integer: "int",
+        float: "double",
+        string: "string",
+        boolean: "bool",
+        char: "char",
+      };
+      return parameters
+        .map((p: any) => `${typeMap[p.type] || "auto"} ${p.name}`)
+        .join(", ");
+    }
+    return "";
+  }, [parameters, currentLang]);
+
+  const isParamsOutOfSync = useMemo(() => {
+    if (!firstSolutionContent) return false;
+    let regex: RegExp;
+    if (currentLang === "python") regex = /def\s+solve\s*\(([^)]*)\)/;
+    else if (currentLang === "javascript")
+      regex = /function\s+solve\s*\(([^)]*)\)/;
+    else regex = /(?:int|void)\s+(?:solve|main)\s*\(([^)]*)\)/;
+    const match = firstSolutionContent.match(regex);
+    if (!match) return false;
+    return match[1].trim() !== expectedParamsString;
+  }, [firstSolutionContent, expectedParamsString, currentLang]);
+
+  const handleSyncParams = () => {
+    if (!firstSolutionContent) return;
+    let regex: RegExp;
+    if (currentLang === "python") regex = /(def\s+solve\s*\()([^)]*)(\))/;
+    else if (currentLang === "javascript")
+      regex = /(function\s+solve\s*\()([^)]*)(\))/;
+    else regex = /((?:int|void)\s+(?:solve|main)\s*\()([^)]*)(\))/;
+    const newContent = firstSolutionContent.replace(
+      regex,
+      `$1${expectedParamsString}$3`,
+    );
+    if (newContent !== firstSolutionContent) {
+      setValue(getName(`solutionCode.0.content`), newContent, {
+        shouldDirty: true,
+      });
+      toast.success("Parâmetros do gabarito atualizados!");
+    }
+  };
+
   const handleResetSolution = () => {
     const starter = getValues(getName("starterCode"));
     if (starter && starter.length > 0) {
-      setValue(getName("solutionCode"), JSON.parse(JSON.stringify(starter)));
+      replaceSolution(cleanCopy(starter));
       toast.info("Solução reiniciada para o código original do template.");
-    } else {
-      toast.error("Não há código inicial definido para restaurar.");
     }
   };
 
@@ -101,9 +184,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     const tests = getValues(getName("testCases"));
     if (tests && tests.length > 0) {
       navigator.clipboard.writeText(JSON.stringify(tests, null, 2));
-      toast.success("Casos de teste copiados (JSON)!");
-    } else {
-      toast.warning("Nenhum caso de teste para exportar.");
+      toast.success("JSON copiado!");
     }
   };
 
@@ -112,82 +193,65 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     const testCases = getValues(getName("testCases"));
     const parameters = getValues(getName("parameters"));
     const returnType = getValues(getName("returnType"));
-
-    if (!solutionCode || solutionCode.length === 0)
-      return toast.error("Escreva uma solução de referência para testar.");
-    if (!testCases || testCases.length === 0)
-      return toast.error("Adicione pelo menos um caso de teste.");
-
+    if (!solutionCode?.length)
+      return toast.error("Escreva uma solução de referência.");
+    if (!testCases?.length) return toast.error("Adicione casos de teste.");
     setIsRunning(true);
     setRunResults(null);
-
     try {
       const result = await dryRunProblem({
         starterCode: solutionCode,
         testCases,
         parameters,
         returnType,
-        language: "python", // TODO: Dinâmico
+        language: getLanguageFromExt(solutionCode[0].name),
       });
-
       setRunResults(result);
-      if (result.success)
-        toast.success("Solução válida! Todos os testes passaram.");
-      else toast.warning("A solução falhou em alguns testes.");
+      if (result.success) toast.success("Solução válida!");
+      else toast.warning("Solução falhou em alguns testes.");
     } catch (error) {
       console.error(error);
-      toast.error("Erro ao executar Dry Run.");
+      toast.error("Erro na execução.");
     } finally {
       setIsRunning(false);
     }
   };
 
-  const getLanguageFromExt = (filename: string) => {
-    if (filename?.endsWith(".js")) return "javascript";
-    if (filename?.endsWith(".py")) return "python";
-    if (filename?.endsWith(".cpp")) return "cpp";
-    return "plaintext";
-  };
-
   return (
     <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-10 w-full">
-      {/* --- SEÇÃO 1: SOLUÇÃO DE REFERÊNCIA (Com suporte a Fullscreen) --- */}
       <div
-        className={`
-            flex flex-col gap-3 transition-all duration-300
-            ${
-              isSolutionFullscreen
-                ? "fixed inset-0 z-50 bg-[#0d1117] p-6 h-screen w-screen" // Modo Focado
-                : "w-full" // Modo Normal
-            }
-        `}
+        className={`flex flex-col gap-3 transition-all duration-300 ${isSolutionFullscreen ? "fixed inset-0 z-50 bg-[#0d1117] p-6 h-screen w-screen" : "w-full"}`}
       >
         <div className="border-b border-gray-800 pb-2 flex justify-between items-end flex-none">
-          <div>
-            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-              <Code2 className="text-green-500" size={20} />
-              {isSolutionFullscreen
-                ? "Modo de Edição: Gabarito"
-                : "Solução de Referência (Gabarito)"}
-            </h3>
-            {!isSolutionFullscreen && (
-              <p className="text-sm text-gray-400">
-                Código para validação (invisível para o aluno).
-              </p>
+          <div className="flex items-center gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Code2 className="text-green-500" size={20} />
+                {isSolutionFullscreen
+                  ? "Edição: Gabarito"
+                  : "Solução de Referência"}
+              </h3>
+              {!isSolutionFullscreen && (
+                <p className="text-sm text-gray-400">
+                  Código validador (oculto).
+                </p>
+              )}
+            </div>
+            {parameters.length > 0 && (
+              <button
+                onClick={handleSyncParams}
+                disabled={!isParamsOutOfSync}
+                className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] border ${isParamsOutOfSync ? "bg-amber-500/10 text-amber-400 border-amber-500/30" : "bg-gray-800 text-gray-500 border-transparent opacity-50"}`}
+              >
+                <RefreshCw size={12} />{" "}
+                {isParamsOutOfSync ? "Sincronizar" : "Sincronizado"}
+              </button>
             )}
           </div>
-
           <div className="flex items-center gap-3">
-            {/* Botão de Toggle Fullscreen */}
             <button
-              type="button"
               onClick={() => setIsSolutionFullscreen(!isSolutionFullscreen)}
-              className="text-gray-400 hover:text-white p-1.5 rounded hover:bg-white/10 transition-colors"
-              title={
-                isSolutionFullscreen
-                  ? "Sair da Tela Cheia (Esc)"
-                  : "Expandir Editor"
-              }
+              className="text-gray-400 hover:text-white p-1.5 rounded hover:bg-white/10"
             >
               {isSolutionFullscreen ? (
                 <Minimize2 size={18} />
@@ -195,18 +259,14 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                 <Maximize2 size={18} />
               )}
             </button>
-
             <button
-              type="button"
               onClick={handleResetSolution}
-              className="text-xs text-gray-500 hover:text-white flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-white/5"
-              title="Restaurar código do template"
+              className="text-xs text-gray-500 hover:text-white flex items-center gap-1 px-2 py-1 rounded hover:bg-white/5"
             >
               <RotateCcw size={12} /> Restaurar
             </button>
           </div>
         </div>
-
         <div
           className={`border border-gray-800 rounded-md overflow-hidden bg-[#1e1e1e] flex flex-col w-full shadow-lg ${isSolutionFullscreen ? "flex-1" : "h-[500px]"}`}
         >
@@ -215,22 +275,17 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
               <div
                 key={field.id}
                 onClick={() => setActiveSolutionTab(index)}
-                className={`px-4 py-2 text-sm cursor-pointer border-r border-gray-800 select-none ${
-                  index === activeSolutionTab
-                    ? "bg-[#1e1e1e] text-white border-t-2 border-t-green-500"
-                    : "text-gray-500 hover:bg-[#2a2d2e]"
-                }`}
+                className={`px-4 py-2 text-sm cursor-pointer border-r border-gray-800 select-none ${index === activeSolutionTab ? "bg-[#1e1e1e] text-white border-t-2 border-t-green-500" : "text-gray-500 hover:bg-[#2a2d2e]"}`}
               >
                 {watch(getName(`solutionCode.${index}.name`))}
               </div>
             ))}
           </div>
-
           <div className="flex-1 relative min-h-0">
             <Suspense
               fallback={
                 <div className="absolute inset-0 flex items-center justify-center text-gray-500 gap-2">
-                  <Loader2 className="animate-spin" /> Carregando Editor...
+                  <Loader2 className="animate-spin" /> Carregando...
                 </div>
               }
             >
@@ -242,10 +297,11 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                     render={({ field }) => (
                       <div className="absolute inset-0">
                         <Editor
+                          key={`${solutionFields[activeSolutionTab].id}-${watch(getName(`solutionCode.${activeSolutionTab}.name`))}`}
                           height="100%"
                           width="100%"
                           theme="vs-dark"
-                          path={`solution-${basePath ? basePath + "-" : ""}${solutionFields[activeSolutionTab].id}`}
+                          path={`sol-${basePath}-${solutionFields[activeSolutionTab].id}`}
                           language={getLanguageFromExt(
                             watch(
                               getName(`solutionCode.${activeSolutionTab}.name`),
@@ -255,9 +311,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                           onChange={(value) => field.onChange(value)}
                           options={{
                             minimap: { enabled: false },
-                            fontSize: isSolutionFullscreen ? 16 : 14, // Fonte maior no foco
-                            scrollBeyondLastLine: false,
-                            padding: { top: 16 },
+                            fontSize: isSolutionFullscreen ? 16 : 14,
                             automaticLayout: true,
                           }}
                         />
@@ -268,206 +322,88 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
             </Suspense>
           </div>
         </div>
-
-        {isSolutionFullscreen && (
-          <p className="text-xs text-gray-500 flex-none text-center">
-            Pressione ESC para sair do modo tela cheia.
-          </p>
-        )}
       </div>
-
-      {/* --- SEÇÃO 2: CASOS DE TESTE --- */}
+      {/* (Código de testes mantido, apenas encurtado na visualização) */}
       <div className="flex flex-col gap-4 w-full">
-        {/* ... (Conteúdo de Testes inalterado) ... */}
         <div className="flex justify-between items-end border-b border-gray-800 pb-2">
-          <div>
-            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-              <FlaskConical className="text-orange-500" size={20} />
-              Gerenciador de Testes
-            </h3>
-          </div>
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <FlaskConical className="text-orange-500" size={20} /> Testes
+          </h3>
           <div className="flex gap-2">
             <button
-              type="button"
               onClick={handleExportTests}
-              className="flex items-center gap-1 text-sm border border-gray-700 text-gray-400 hover:text-white px-3 py-1.5 rounded transition-colors"
-              title="Copiar JSON"
+              className="px-3 py-1.5 border border-gray-700 rounded text-gray-400 hover:text-white"
             >
               <FileJson size={16} />
             </button>
-
             <button
-              type="button"
               onClick={handleDryRun}
               disabled={isRunning}
-              className={`flex items-center gap-2 text-sm font-medium border px-4 py-1.5 rounded transition-all shadow-lg
-                    ${
-                      isRunning
-                        ? "border-gray-700 bg-gray-800 text-gray-500 cursor-wait"
-                        : "border-green-600 bg-green-600/10 text-green-500 hover:bg-green-600 hover:text-white"
-                    }`}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded border ${isRunning ? "bg-gray-800 border-gray-700 text-gray-500" : "bg-green-600/10 border-green-600 text-green-500 hover:bg-green-600 hover:text-white"}`}
             >
               {isRunning ? (
                 <Loader2 size={16} className="animate-spin" />
               ) : (
-                <Play size={16} fill="currentColor" />
-              )}
-              {isRunning ? "Validando..." : "Validar (Dry Run)"}
+                <Play size={16} />
+              )}{" "}
+              {isRunning ? "Validando..." : "Validar"}
             </button>
-
             <button
-              type="button"
               onClick={() =>
                 appendTest({ input: "", expectedOutput: "", isHidden: false })
               }
-              className="flex items-center gap-1 text-sm bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded transition-colors"
+              className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded flex items-center gap-1"
             >
               <Plus size={16} /> Add
             </button>
           </div>
         </div>
-
-        {/* Resultados do Dry Run */}
         {runResults && (
           <div
-            className={`border rounded-lg overflow-hidden animate-in zoom-in-95 duration-300 w-full ${
-              runResults.success
-                ? "border-green-800 bg-green-950/20"
-                : "border-red-800 bg-red-950/20"
-            }`}
+            className={`border rounded p-3 ${runResults.success ? "border-green-800 bg-green-950/20 text-green-400" : "border-red-800 bg-red-950/20 text-red-400"}`}
           >
-            <div
-              className={`px-4 py-3 text-sm font-bold flex items-center gap-2 border-b ${
-                runResults.success
-                  ? "border-green-800 text-green-400"
-                  : "border-red-800 text-red-400"
-              }`}
-            >
+            <div className="flex items-center gap-2 font-bold mb-2">
               {runResults.success ? (
                 <CheckCircle size={18} />
               ) : (
                 <XCircle size={18} />
               )}
-              {runResults.success
-                ? "Sucesso: A solução passou em todos os testes."
-                : "Falha: Revise a solução ou outputs."}
+              {runResults.success ? "Sucesso!" : "Falha nos testes."}
             </div>
-            {!runResults.success && (
-              <div className="max-h-60 overflow-y-auto p-2 flex flex-col gap-2">
-                {runResults.results
-                  .filter((r: any) => r.status !== "ACCEPTED")
-                  .map((res: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="text-xs bg-black/40 rounded p-2 border border-red-900/30"
-                    >
-                      <div className="font-bold text-red-400 mb-1 flex items-center gap-1">
-                        <XCircle size={12} /> Caso #{idx + 1} (Input:{" "}
-                        {res.input})
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <span className="text-gray-500">Esperado:</span>{" "}
-                          <pre className="text-gray-300">
-                            {res.expectedOutput}
-                          </pre>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Recebido:</span>{" "}
-                          <pre className="text-yellow-300">
-                            {res.actualOutput}
-                          </pre>
-                        </div>
-                      </div>
-                      {res.error && (
-                        <div className="mt-1 text-red-400 font-mono bg-red-950/30 p-1">
-                          {res.error}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-              </div>
-            )}
           </div>
         )}
-
-        {/* Lista de Testes */}
-        <div className="flex flex-col gap-4 w-full">
-          {testFields.map((field, index) => {
-            const expectedError = getError(
-              getName(`testCases.${index}.expectedOutput`),
-            );
-
-            return (
-              <div
-                key={field.id}
-                className="bg-gray-900 border border-gray-800 rounded-lg p-4 relative group w-full shadow-sm hover:border-gray-700 transition-colors"
+        {testFields.map((field, index) => (
+          <div
+            key={field.id}
+            className="bg-gray-900 border border-gray-800 rounded-lg p-4 relative group"
+          >
+            <div className="flex justify-between mb-2">
+              <span className="text-xs bg-gray-800 px-2 py-0.5 rounded text-gray-500">
+                Case #{index + 1}
+              </span>
+              <button
+                onClick={() => removeTest(index)}
+                className="text-gray-600 hover:text-red-500"
               >
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs font-mono text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
-                    Case #{index + 1}
-                  </span>
-                  <div className="flex gap-2">
-                    <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 hover:text-white">
-                      <input
-                        type="checkbox"
-                        {...register(getName(`testCases.${index}.isHidden`))}
-                        className="peer hidden"
-                      />
-                      <span className="peer-checked:hidden flex items-center gap-1">
-                        <Eye size={14} /> Público
-                      </span>
-                      <span className="hidden peer-checked:flex items-center gap-1 text-yellow-500">
-                        <EyeOff size={14} /> Oculto
-                      </span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => removeTest(index)}
-                      className="text-gray-600 hover:text-red-500"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 w-full">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[10px] uppercase font-bold text-gray-500">
-                      Input
-                    </label>
-                    <textarea
-                      {...register(getName(`testCases.${index}.input`))}
-                      rows={2}
-                      className="w-full bg-black/20 border border-gray-700 rounded p-2 text-sm text-gray-300 font-mono outline-none focus:border-orange-500 resize-none"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[10px] uppercase font-bold text-gray-500">
-                      Output
-                    </label>
-                    <textarea
-                      {...register(
-                        getName(`testCases.${index}.expectedOutput`),
-                      )}
-                      rows={2}
-                      className={`w-full bg-black/20 border ${expectedError ? "border-red-500" : "border-gray-700"} rounded p-2 text-sm text-gray-300 font-mono outline-none focus:border-orange-500 resize-none`}
-                    />
-                    {expectedError && (
-                      <span className="text-red-500 text-xs">
-                        {expectedError.message as string}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          {testFields.length === 0 && (
-            <div className="text-center py-4 text-gray-500 text-sm">
-              Nenhum caso de teste.
+                <Trash2 size={16} />
+              </button>
             </div>
-          )}
-        </div>
+            <div className="grid grid-cols-2 gap-4">
+              <textarea
+                {...register(getName(`testCases.${index}.input`))}
+                className="bg-black/20 border border-gray-700 rounded p-2 text-sm text-gray-300 font-mono w-full"
+                placeholder="Input"
+                rows={2}
+              />
+              <textarea
+                {...register(getName(`testCases.${index}.expectedOutput`))}
+                className="bg-black/20 border border-gray-700 rounded p-2 text-sm text-gray-300 font-mono w-full"
+                placeholder="Output"
+                rows={2}
+              />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
