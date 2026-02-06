@@ -7,6 +7,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import ClassroomView from "./pages/ClassroomView";
 import CreateProblem from "./pages/CreateProblem";
+import EditProblem from "./pages/EditProblem"; // <--- NOVO IMPORT
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem("token");
@@ -39,13 +40,22 @@ function App() {
           }
         />
 
-        {/* --- CORREÇÃO AQUI --- */}
-        {/* Mudamos de "/create-problem" para incluir o ID da turma */}
+        {/* Rota de Criação */}
         <Route
           path="/class/:classroomId/create-problem"
           element={
             <PrivateRoute>
               <CreateProblem />
+            </PrivateRoute>
+          }
+        />
+
+        {/* --- NOVA ROTA DE EDIÇÃO --- */}
+        <Route
+          path="/class/:classroomId/problem/:problemId/edit"
+          element={
+            <PrivateRoute>
+              <EditProblem />
             </PrivateRoute>
           }
         />

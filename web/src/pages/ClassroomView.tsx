@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import axios from "axios";
 import Editor from "@monaco-editor/react";
 import type { OnMount } from "@monaco-editor/react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -34,6 +34,7 @@ import {
   Search,
   Filter,
   Cpu,
+  Settings,
 } from "lucide-react";
 import {
   Panel,
@@ -913,16 +914,6 @@ export default function ClassroomView() {
     }
   };
 
-  const handleEditProblem = () => {
-    if (selectedProblemId && classroom) {
-      const p = classroom.problems.find((p) => p.id === selectedProblemId);
-      if (p)
-        navigate(`/class/${id}/create-problem`, {
-          state: { classroomId: classroom.id, problemToEdit: p },
-        });
-    }
-  };
-
   const submitSolution = async (e?: React.SyntheticEvent) => {
     if (e) e.preventDefault();
 
@@ -1389,13 +1380,13 @@ export default function ClassroomView() {
               <div style={{ display: "flex", gap: "5px", marginLeft: "10px" }}>
                 {selectedProblemId && (
                   <>
-                    <button
-                      onClick={handleEditProblem}
-                      className="btn btn-secondary"
-                      title="Editar"
+                    <Link
+                      to={`/class/${id}/problem/${selectedProblemId}/edit`}
+                      className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 px-3 py-1.5 rounded-md text-xs font-medium border border-gray-700 transition-all hover:border-gray-600"
                     >
-                      ✏️
-                    </button>
+                      <Settings size={14} />
+                      Editar Atividade
+                    </Link>
                     <button
                       onClick={handleDeleteProblem}
                       className="btn btn-danger"
