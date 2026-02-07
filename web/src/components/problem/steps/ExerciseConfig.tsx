@@ -1,6 +1,9 @@
 import { useFieldArray, useFormContext } from "react-hook-form";
-import { Plus, Trash2, ChevronDown, Type } from "lucide-react";
-import { cn } from "../../../lib/utils";
+import { Plus, Trash2, Type, CalendarClock } from "lucide-react"; // Importar CalendarClock
+import { Button } from "../../ui/Button";
+import { Input } from "../../ui/Input";
+import { Select } from "../../ui/Select";
+import { Card } from "../../ui/Card";
 
 interface ExerciseConfigProps {
   basePath?: string;
@@ -27,24 +30,26 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
   return (
     <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500 w-full">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 w-full">
-        {/* --- Coluna 1: Parâmetros --- */}
+        {/* --- Coluna 1: Parâmetros (Ocupa 2/3 no desktop) --- */}
         <div className="lg:col-span-2 flex flex-col gap-5">
-          <div className="flex justify-between items-end border-b border-border pb-3">
+          {/* ... (Código da lista de parâmetros mantém igual) ... */}
+          <div className="flex flex-wrap justify-between items-end border-b border-border pb-3 gap-3">
             <div>
               <label className="text-sm font-semibold text-white flex items-center gap-2">
                 Parâmetros de Entrada
               </label>
               <p className="text-xs text-muted mt-1">
-                Defina os argumentos que a função do aluno receberá.
+                Argumentos que a função receberá.
               </p>
             </div>
-            <button
+            <Button
               type="button"
+              size="sm"
               onClick={() => append({ name: "", type: "int" })}
-              className="flex items-center gap-2 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md transition-all active:scale-95 shadow-lg shadow-primary/20"
+              className="w-full sm:w-auto"
             >
-              <Plus size={14} /> Adicionar Parâmetro
-            </button>
+              <Plus size={14} className="mr-2" /> Adicionar
+            </Button>
           </div>
 
           <div className="flex flex-col gap-3">
@@ -65,60 +70,52 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
               return (
                 <div
                   key={field.id}
-                  className="group flex gap-4 items-start animate-in slide-in-from-left-2 duration-300"
+                  className="group flex flex-col sm:flex-row gap-3 items-start animate-in slide-in-from-left-2 duration-300 bg-surface/50 sm:bg-transparent p-3 sm:p-0 rounded-lg border sm:border-0 border-border"
                 >
-                  <div className="flex flex-col flex-1">
-                    <input
+                  <div className="w-full sm:flex-1">
+                    <Input
                       {...register(getName(`parameters.${index}.name`))}
                       placeholder="nome_da_variavel"
-                      className={cn(
-                        "h-11 w-full bg-background border rounded-md px-4 text-sm text-zinc-200 placeholder:text-muted outline-none focus:ring-2 transition-all font-mono",
-                        nameError
-                          ? "border-destructive focus:border-destructive focus:ring-destructive/20"
-                          : "border-border focus:border-primary focus:ring-primary/20",
-                      )}
+                      error={nameError?.message as string}
+                      className="font-mono bg-background"
                     />
-                    {nameError && (
-                      <span className="text-[10px] text-destructive mt-1 ml-1">
-                        {nameError.message as string}
-                      </span>
-                    )}
                   </div>
 
-                  <div className="relative w-40">
-                    <select
-                      {...register(getName(`parameters.${index}.type`))}
-                      className="h-11 w-full appearance-none bg-background border border-border rounded-md px-4 pr-10 text-sm text-zinc-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all cursor-pointer font-mono"
-                    >
-                      <option value="int">Integer (int)</option>
-                      <option value="float">Float</option>
-                      <option value="string">String</option>
-                      <option value="boolean">Boolean</option>
-                      <option value="int[]">Array (int[])</option>
-                      <option value="string[]">Array (string[])</option>
-                    </select>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
-                      <ChevronDown size={14} />
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <div className="flex-1 sm:w-40">
+                      <Select
+                        {...register(getName(`parameters.${index}.type`))}
+                        className="font-mono bg-background"
+                      >
+                        <option value="int">Integer (int)</option>
+                        <option value="float">Float</option>
+                        <option value="string">String</option>
+                        <option value="boolean">Boolean</option>
+                        <option value="int[]">Array (int[])</option>
+                        <option value="string[]">Array (string[])</option>
+                      </Select>
                     </div>
-                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => remove(index)}
-                    className="h-11 w-11 flex items-center justify-center text-muted hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors border border-transparent hover:border-destructive/20"
-                    title="Remover parâmetro"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      onClick={() => remove(index)}
+                      className="px-3"
+                      title="Remover parâmetro"
+                    >
+                      <Trash2 size={18} />
+                    </Button>
+                  </div>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* --- Coluna 2: Tipo de Retorno --- */}
-        <div className="lg:col-span-1">
-          <div className="bg-surface/50 border border-border rounded-xl p-6 flex flex-col gap-5 sticky top-4 shadow-xl">
+        {/* --- Coluna 2: Configurações Laterais --- */}
+        <div className="lg:col-span-1 space-y-6">
+          {/* Card Tipo de Retorno */}
+          <Card className="p-6 flex flex-col gap-5">
             <div className="flex items-center gap-3 text-zinc-300 border-b border-border pb-3">
               <div className="p-2 bg-primary/10 rounded-md text-primary">
                 <Type size={18} />
@@ -134,33 +131,58 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-xs uppercase font-bold text-muted tracking-wider">
-                Tipo de Retorno
-              </label>
-              <div className="relative">
-                <select
-                  {...register(getName("returnType"))}
-                  className="h-12 w-full appearance-none bg-background border border-border rounded-lg px-4 pr-10 text-sm text-white focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all cursor-pointer font-mono"
-                >
-                  <option value="void">Void (Sem retorno)</option>
-                  <option value="int">Integer (int)</option>
-                  <option value="float">Float</option>
-                  <option value="string">String</option>
-                  <option value="boolean">Boolean</option>
-                  <option value="int[]">Array (int[])</option>
-                  <option value="string[]">Array (string[])</option>
-                </select>
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
-                  <ChevronDown size={16} />
-                </div>
-              </div>
+              <Select
+                label="Tipo de Retorno"
+                {...register(getName("returnType"))}
+                className="font-mono bg-background"
+              >
+                <option value="void">Void (Sem retorno)</option>
+                <option value="int">Integer (int)</option>
+                <option value="float">Float</option>
+                <option value="string">String</option>
+                <option value="boolean">Boolean</option>
+                <option value="int[]">Array (int[])</option>
+                <option value="string[]">Array (string[])</option>
+              </Select>
+
               <p className="text-[11px] text-muted leading-relaxed mt-1">
-                O avaliador (executor) irá comparar o valor retornado pela
-                função do aluno com o <strong>Output Esperado</strong> dos
-                testes.
+                O executor irá comparar o retorno com o{" "}
+                <strong>Output Esperado</strong>.
               </p>
             </div>
-          </div>
+          </Card>
+
+          {/* NOVO: Card de Prazos para Exercícios */}
+          <Card className="p-6 flex flex-col gap-5">
+            <div className="flex items-center gap-3 text-zinc-300 border-b border-border pb-3">
+              <div className="p-2 bg-primary/10 rounded-md text-primary">
+                <CalendarClock size={18} />
+              </div>
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider block text-muted">
+                  Prazos
+                </span>
+                <span className="text-sm font-semibold text-white">
+                  Agendamento
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <Input
+                type="datetime-local"
+                label="Disponível em"
+                {...register(getName("startDate"))}
+                className="bg-background"
+              />
+              <Input
+                type="datetime-local"
+                label="Data de Entrega"
+                {...register(getName("deadline"))}
+                className="bg-background"
+              />
+            </div>
+          </Card>
         </div>
       </div>
     </div>

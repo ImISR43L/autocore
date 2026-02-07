@@ -25,7 +25,8 @@ export function MarkdownInput({
 
   return (
     <div className="flex flex-col gap-2 h-full">
-      <div className="flex justify-between items-end">
+      {/* HEADER: Flex wrap para evitar quebra em mobile muito pequeno */}
+      <div className="flex flex-wrap justify-between items-end gap-2">
         <label className="text-sm font-medium text-muted">{label}</label>
         <div className="flex bg-surface border border-border rounded-lg p-1 gap-1">
           <button
@@ -57,7 +58,7 @@ export function MarkdownInput({
 
       <div className="relative flex-1 min-h-[200px]">
         {isPreview ? (
-          <div className="w-full h-full bg-surface border border-border rounded-xl p-4 text-sm prose prose-invert max-w-none overflow-y-auto">
+          <div className="w-full h-full bg-surface border border-border rounded-xl p-4 text-sm prose prose-invert max-w-none overflow-y-auto custom-scrollbar">
             {watchValue ? (
               <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
                 {watchValue}
@@ -69,9 +70,10 @@ export function MarkdownInput({
         ) : (
           <textarea
             {...register}
+            // RESPONSIVIDADE: text-base no mobile evita zoom do iOS. text-sm no desktop (sm:text-sm).
             className={cn(
-              "w-full h-full bg-surface border border-border rounded-xl p-4 text-zinc-100",
-              "focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none transition-all resize-none font-mono text-sm",
+              "w-full h-full bg-surface border border-border rounded-xl p-4 text-zinc-100 text-base sm:text-sm",
+              "focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none transition-all resize-none font-mono leading-relaxed",
               error &&
                 "border-destructive focus:border-destructive focus:ring-destructive/20",
             )}

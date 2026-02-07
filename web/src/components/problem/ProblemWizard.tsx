@@ -34,7 +34,8 @@ interface ProblemWizardProps {
   onSubmit: (data: ProblemFormValues) => Promise<void>;
 }
 
-// CORREÇÃO: Container de Scroll simples que preenche o espaço disponível
+// CORREÇÃO: Container de Scroll que preenche o espaço disponível (flex-1)
+// Removemos alturas fixas (calc) para funcionar bem em mobile com barras de endereço dinâmicas
 const ScrollableStepContent = ({
   children,
   isWide = false,
@@ -45,7 +46,7 @@ const ScrollableStepContent = ({
   <div className="h-full w-full overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
     <div
       className={cn(
-        "mx-auto flex flex-col gap-6 pt-6 pb-10 px-4 transition-all duration-300",
+        "mx-auto flex flex-col gap-6 pt-6 pb-10 px-4 sm:px-6 transition-all duration-300",
         isWide ? "max-w-[98%]" : "max-w-5xl",
       )}
     >
@@ -122,7 +123,7 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
   };
 
   const handleDiscardDraft = () => {
-    if (confirm("Tem certeza? Isso limpará todo o formulário.")) {
+    if (confirm("Tem a certeza? Isto limpará todo o formulário.")) {
       clearDraft();
       reset({ ...defaults, classroomId } as any);
     }
@@ -159,23 +160,23 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
 
   const step2ValidationFields =
     problemType === "EXERCISE"
-      ? ["parameters", "returnType"]
+      ? ["parameters", "returnType", "startDate", "deadline"]
       : ["startDate", "deadline", "timeLimit", "memoryLimit", "maxAttempts"];
 
   return (
-    // CORREÇÃO: Container principal Flex + Overflow hidden para conter tudo na tela
+    // Container Principal: Flex Column + Altura total + Overflow hidden para conter scrolls internos
     <div className="h-full flex flex-col relative bg-surface rounded-xl overflow-hidden border border-border shadow-2xl">
       {/* Modal Confirmação */}
       {showExitConfirmation && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full m-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+          <div className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full animate-in zoom-in-95">
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3 text-amber-500">
                 <AlertTriangle size={24} />
                 <h3 className="text-lg font-bold text-white">Cancelar?</h3>
               </div>
               <p className="text-sm text-muted">
-                Seu progresso será salvo como rascunho.
+                O seu progresso será salvo como rascunho.
               </p>
               <div className="flex gap-3 mt-2 justify-end">
                 <Button
@@ -198,19 +199,20 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
           methods={methods as any}
           onComplete={handleFinalSubmit}
         >
-          {/* HEADER FIXO */}
-          <div className="flex-none border-b border-border bg-surface p-4 flex items-center justify-between gap-4 z-20 relative shadow-sm">
+          {/* HEADER DO WIZARD */}
+          <div className="flex-none border-b border-border bg-surface p-3 sm:p-4 flex items-center justify-between gap-3 z-20 relative shadow-sm">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setShowExitConfirmation(true)}
-              className="text-muted border-border hover:bg-background"
+              className="text-muted border-border hover:bg-background px-2 sm:px-3"
             >
-              <ArrowLeft size={16} className="mr-2" /> Voltar
+              <ArrowLeft size={16} className="sm:mr-2" />
+              <span className="hidden sm:inline">Voltar</span>
             </Button>
 
-            {/* Navegação centralizada que não quebra o layout */}
-            <div className="flex-1 flex justify-center min-w-0">
+            {/* Container flexível para o Stepper não quebrar o layout */}
+            <div className="flex-1 flex justify-center min-w-0 px-2">
               <Stepper.Navigation />
             </div>
 
@@ -218,25 +220,28 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
               variant="ghost"
               size="sm"
               onClick={handleDiscardDraft}
-              className="text-muted hover:text-destructive"
+              className="text-muted hover:text-destructive px-2 sm:px-3"
             >
-              <Trash size={16} className="mr-2" /> Limpar
+              <Trash size={16} className="sm:mr-2" />
+              <span className="hidden sm:inline">Limpar</span>
             </Button>
           </div>
 
+          {/* PASSO 1: IDENTIDADE */}
           <Stepper.Step
             label="Identidade"
             validationFields={["title", "slug", "description", "type"]}
           >
             <ScrollableStepContent>
-              <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="flex flex-col gap-6 sm:gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {/* Inputs de Título e Slug */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <Input
                     label="Título do Problema"
                     placeholder="Ex: Soma de Dois Números"
                     {...register("title")}
                     error={errors.title?.message}
-                    className="h-12 text-base"
+                    className="h-11 sm:h-12 text-base"
                   />
 
                   <div className="flex flex-col gap-1.5">
@@ -260,7 +265,7 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
                       <input
                         {...register("slug")}
                         className={cn(
-                          "flex h-12 w-full rounded-md border border-border bg-background px-3 py-2 pl-6 text-base text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-mono",
+                          "flex h-11 sm:h-12 w-full rounded-md border border-border bg-background px-3 py-2 pl-6 text-base text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-mono",
                           errors.slug &&
                             "border-destructive focus:border-destructive",
                         )}
@@ -275,15 +280,15 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
                   </div>
                 </div>
 
-                {/* Cards de Tipo de Problema */}
+                {/* Cards de Tipo de Problema (Responsivo: Stack no mobile) */}
                 <div className="flex flex-col gap-3">
                   <label className="text-xs font-medium text-muted uppercase tracking-wider flex items-center gap-2">
                     <LayoutTemplate size={14} /> Tipo de Problema
                   </label>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <label
                       className={cn(
-                        "cursor-pointer border rounded-xl p-5 flex items-center gap-4 transition-all duration-300 relative overflow-hidden group hover:bg-surface-hover",
+                        "cursor-pointer border rounded-xl p-4 sm:p-5 flex items-center gap-4 transition-all duration-300 relative overflow-hidden group hover:bg-surface-hover select-none",
                         problemType === "EXERCISE"
                           ? "bg-primary/5 border-primary shadow-[0_0_15px_rgba(16,185,129,0.1)]"
                           : "bg-background border-border",
@@ -297,7 +302,7 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
                       />
                       <div
                         className={cn(
-                          "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
+                          "w-5 h-5 rounded-full border-2 flex-none flex items-center justify-center transition-colors",
                           problemType === "EXERCISE"
                             ? "border-primary"
                             : "border-muted group-hover:border-zinc-400",
@@ -326,7 +331,7 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
 
                     <label
                       className={cn(
-                        "cursor-pointer border rounded-xl p-5 flex items-center gap-4 transition-all duration-300 relative overflow-hidden group hover:bg-surface-hover",
+                        "cursor-pointer border rounded-xl p-4 sm:p-5 flex items-center gap-4 transition-all duration-300 relative overflow-hidden group hover:bg-surface-hover select-none",
                         problemType === "EXAM"
                           ? "bg-primary/5 border-primary shadow-[0_0_15px_rgba(16,185,129,0.1)]"
                           : "bg-background border-border",
@@ -340,7 +345,7 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
                       />
                       <div
                         className={cn(
-                          "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
+                          "w-5 h-5 rounded-full border-2 flex-none flex items-center justify-center transition-colors",
                           problemType === "EXAM"
                             ? "border-primary"
                             : "border-muted group-hover:border-zinc-400",
@@ -369,13 +374,13 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 flex-1 min-h-[300px]">
                   <label className="text-xs font-medium text-muted uppercase tracking-wider flex items-center gap-2">
                     <FileText size={14} /> Enunciado
                   </label>
                   <div
                     className={cn(
-                      "rounded-xl overflow-hidden border bg-background",
+                      "flex-1 rounded-xl overflow-hidden border bg-background flex flex-col",
                       errors.description
                         ? "border-destructive"
                         : "border-border",
@@ -394,6 +399,7 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
             </ScrollableStepContent>
           </Stepper.Step>
 
+          {/* PASSO 2: CONFIGURAÇÃO */}
           <Stepper.Step
             label={problemType === "EXERCISE" ? "Assinatura" : "Regras"}
             validationFields={step2ValidationFields as any}
@@ -403,27 +409,30 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
             </ScrollableStepContent>
           </Stepper.Step>
 
+          {/* PASSO 3 (EXERCÍCIO): TEMPLATE */}
           {problemType === "EXERCISE" && (
             <Stepper.Step label="Template" validationFields={["starterCode"]}>
               <ScrollableStepContent isWide={true}>
-                {/* Altura ajustada para não quebrar layout */}
-                <div className="h-full min-h-[500px]">
+                {/* Altura adaptativa para o editor */}
+                <div className="h-full min-h-[500px] flex flex-col">
                   <ScaffoldingConfig />
                 </div>
               </ScrollableStepContent>
             </Stepper.Step>
           )}
 
+          {/* PASSO 3 (PROVA): QUESTÕES */}
           {problemType === "EXAM" && (
             <Stepper.Step label="Questões" validationFields={["questions"]}>
               <ScrollableStepContent isWide={true}>
-                <div className="h-full min-h-[500px]">
+                <div className="h-full min-h-[500px] flex flex-col">
                   <ExamQuestions />
                 </div>
               </ScrollableStepContent>
             </Stepper.Step>
           )}
 
+          {/* PASSO 4 (EXERCÍCIO): TESTES */}
           {problemType === "EXERCISE" && (
             <Stepper.Step label="Testes" validationFields={["testCases"]}>
               <ScrollableStepContent isWide={true}>
@@ -432,6 +441,7 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
             </Stepper.Step>
           )}
 
+          {/* PASSO 4 (PROVA): REVISÃO */}
           {problemType === "EXAM" && (
             <Stepper.Step label="Revisão" validationFields={[]}>
               <ScrollableStepContent>

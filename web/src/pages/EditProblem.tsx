@@ -1,112 +1,176 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { ProblemEditor } from "../components/problem/ProblemEditor";
 import { toast } from "sonner";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
+import { Button } from "../components/ui/Button";
 
 export default function EditProblem() {
-  const { classroomId, problemId } = useParams();
+  const params = useParams();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [problemData, setProblemData] = useState<any>(null);
 
-  // 1. Carregar dados do Problema
+  // Suporte a rotas aninhadas ou diretas
+  const problemId = params.problemId || params.id;
+
+  const [problem, setProblem] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const [isFormDirty, setIsFormDirty] = useState(false);
+  const [showExitModal, setShowExitModal] = useState(false);
+
   useEffect(() => {
-    async function fetchProblem() {
+    if (!problemId) {
+      toast.error("ID não encontrado.");
+      navigate("/dashboard");
+      return;
+    }
+
+    async function loadProblem() {
       try {
-        const response = await api.get(`/problems/${problemId}`);
-        const data = response.data;
-
-        // Sanitização de dados para o formulário
-        const formattedData = {
-          ...data,
-          // Garante que datas sejam strings ou vazias para os inputs
-          startDate: data.startDate ? data.startDate.split("T")[0] : "",
-          deadline: data.deadline ? data.deadline.split("T")[0] : "",
-          // Garante arrays vazios se nulos
-          starterCode: data.starterCode || [],
-          solutionCode: data.solutionCode || [],
-          testCases: data.testCases || [],
-          parameters: data.parameters || [],
+        const res = await api.get(`/problems/${problemId}`);
+        const formatted = {
+          ...res.data,
+          parameters: res.data.parameters || [],
+          testCases: res.data.testCases || [],
+          starterCode: res.data.starterCode || [],
+          solutionCode: res.data.solutionCode || [],
+          // Formata datas vindas do banco (ISO) para o formato do input (YYYY-MM-DDThh:mm)
+          startDate: res.data.startDate
+            ? new Date(res.data.startDate).toISOString().slice(0, 16)
+            : "",
+          deadline: res.data.deadline
+            ? new Date(res.data.deadline).toISOString().slice(0, 16)
+            : "",
         };
-
-        setProblemData(formattedData);
+        setProblem(formatted);
       } catch (error) {
         console.error(error);
-        toast.error("Erro ao carregar dados da atividade.");
-        navigate(`/class/${classroomId}`);
+        toast.error("Erro ao carregar dados.");
+        navigate("/dashboard");
       } finally {
-        setLoading(false);
+        setIsLoading(false);
       }
     }
+    loadProblem();
+  }, [problemId, navigate]);
 
-    if (problemId) {
-      fetchProblem();
+  const handleUpdate = async (rawData: any) => {
+    if (!problemId) return;
+
+    // 1. Sanitização e Limpeza
+    const payload = { ...rawData };
+
+    // Remove questions se for EXERCISE para evitar erro de validação no backend
+    if (payload.type === "EXERCISE") {
+      delete payload.questions;
     }
-  }, [problemId, classroomId, navigate]);
 
-  // 2. Salvar alterações (PATCH)
-  const handleUpdate = async (data: any) => {
+    // 2. Conversão de Datas para ISO 8601
     try {
-      // Pequena limpeza antes de enviar
-      const payload = {
-        ...data,
-        classroomId: undefined, // Não mudamos a turma na edição
-        id: undefined,
-        // Converter datas vazias para null
-        startDate: data.startDate === "" ? null : data.startDate,
-        deadline: data.deadline === "" ? null : data.deadline,
-      };
+      payload.startDate = payload.startDate
+        ? new Date(payload.startDate).toISOString()
+        : null;
+      payload.deadline = payload.deadline
+        ? new Date(payload.deadline).toISOString()
+        : null;
+    } catch (e) {
+      toast.error("Data inválida.");
+      return;
+    }
 
+    try {
       await api.patch(`/problems/${problemId}`, payload);
-      toast.success("Atividade atualizada com sucesso!");
-      navigate(`/class/${classroomId}`); // Volta para a turma
-    } catch (error) {
+      toast.success("Atualizado com sucesso!");
+
+      setIsFormDirty(false);
+
+      if (payload.classroomId) {
+        navigate(`/class/${payload.classroomId}`, {
+          state: { activeTab: "classwork" },
+        });
+      } else {
+        navigate("/dashboard");
+      }
+    } catch (error: any) {
       console.error(error);
-      toast.error("Erro ao salvar alterações.");
+      const msg = error.response?.data?.message;
+      toast.error(Array.isArray(msg) ? msg[0] : "Erro ao atualizar.");
     }
   };
 
-  if (loading) {
+  const handleBack = () => {
+    if (isFormDirty) {
+      setShowExitModal(true);
+    } else {
+      navigate(-1);
+    }
+  };
+
+  if (isLoading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-[#09090b] text-white">
-        <div className="flex flex-col items-center gap-2">
-          <Loader2 className="animate-spin text-blue-500" size={32} />
-          <span className="text-sm text-gray-400">Carregando atividade...</span>
-        </div>
+      <div className="min-h-screen bg-background flex items-center justify-center text-zinc-400">
+        <Loader2 className="animate-spin mr-2" /> Carregando...
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-white flex flex-col">
-      {/* Header Simples */}
-      <header className="border-b border-gray-800 bg-black/20 p-4 flex items-center gap-4">
-        <button
-          onClick={() => navigate(`/class/${classroomId}`)}
-          className="p-2 hover:bg-white/5 rounded-full transition-colors text-gray-400 hover:text-white"
+    <div className="h-screen w-full bg-background text-zinc-100 flex flex-col font-sans overflow-hidden">
+      {showExitModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full animate-in zoom-in-95">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3 text-amber-500">
+                <AlertTriangle size={24} />
+                <h3 className="text-lg font-bold text-white">
+                  Sair da edição?
+                </h3>
+              </div>
+              <p className="text-sm text-muted">
+                Alterações não salvas serão perdidas.
+              </p>
+              <div className="flex gap-3 mt-2 justify-end">
+                <Button variant="ghost" onClick={() => setShowExitModal(false)}>
+                  Voltar
+                </Button>
+                <Button variant="danger" onClick={() => navigate(-1)}>
+                  Sair sem Salvar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="p-4 md:p-6 pb-2 flex-none flex items-center gap-4">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handleBack}
+          className="border-border hover:bg-surface text-muted hover:text-white"
         >
           <ArrowLeft size={20} />
-        </button>
+        </Button>
         <div>
-          <h1 className="text-lg font-bold flex items-center gap-2">
-            Editando:{" "}
-            <span className="text-emerald-400">{problemData?.title}</span>
+          <h1 className="text-2xl font-bold tracking-tight text-white">
+            Editar Atividade
           </h1>
-          <p className="text-xs text-gray-500">
-            Todas as alterações são salvas ao clicar em "Salvar Alterações".
+          <p className="text-muted text-sm">
+            {problem?.title || "Carregando..."}
           </p>
         </div>
-      </header>
+      </div>
 
-      {/* Área Principal - O Editor Unificado */}
-      <div className="flex-1 overflow-hidden">
-        <ProblemEditor
-          initialValues={problemData}
-          onSubmit={handleUpdate}
-          mode="EDIT"
-        />
+      <div className="flex-1 min-h-0 p-4 md:p-6 pt-2">
+        <div className="h-full bg-surface border border-border rounded-xl shadow-2xl overflow-hidden">
+          <ProblemEditor
+            initialValues={problem}
+            onSubmit={handleUpdate}
+            mode="EDIT"
+            onDirtyChange={setIsFormDirty}
+          />
+        </div>
       </div>
     </div>
   );

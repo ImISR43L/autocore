@@ -1,6 +1,8 @@
 import { useFormContext } from "react-hook-form";
 import { CalendarClock, Zap, ShieldAlert, Cpu } from "lucide-react";
 import type { ProblemFormValues } from "../../../schemas/problem.schema";
+import { Input } from "../../ui/Input";
+import { Card } from "../../ui/Card";
 
 type ExamValues = Extract<ProblemFormValues, { type: "EXAM" }>;
 
@@ -11,110 +13,78 @@ export function ExamConfig() {
   } = useFormContext<ExamValues>();
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Coluna 1: Datas */}
-      <div className="flex flex-col gap-4">
-        <h3 className="text-lg font-semibold text-white flex items-center gap-2 border-b border-gray-800 pb-2">
-          <CalendarClock className="text-purple-500" size={20} />
+      <Card className="p-6 space-y-6">
+        <h3 className="text-lg font-semibold text-white flex items-center gap-2 border-b border-border pb-3">
+          <CalendarClock className="text-primary" size={20} />
           Janela de Tempo
         </h3>
 
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-gray-300">
-            Início da Prova
-          </label>
-          <input
+        <div className="space-y-4">
+          <Input
             type="datetime-local"
+            label="Início da Prova"
             {...register("startDate")}
-            className="bg-gray-900 border border-gray-700 rounded p-2 text-white focus:border-purple-500 outline-none transition-colors"
+            error={errors.startDate?.message}
+            className="bg-background"
           />
-          {errors.startDate && (
-            <span className="text-red-500 text-xs">
-              {errors.startDate.message}
-            </span>
-          )}
-        </div>
 
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-gray-300">
-            Prazo Final (Deadline)
-          </label>
-          <input
+          <Input
             type="datetime-local"
+            label="Prazo Final (Deadline)"
             {...register("deadline")}
-            className="bg-gray-900 border border-gray-700 rounded p-2 text-white focus:border-purple-500 outline-none transition-colors"
+            error={errors.deadline?.message}
+            className="bg-background"
           />
-          <p className="text-xs text-gray-500">
-            Após esta data, submissões serão rejeitadas.
-          </p>
-          {errors.deadline && (
-            <span className="text-red-500 text-xs">
-              {errors.deadline.message}
-            </span>
-          )}
         </div>
-      </div>
+      </Card>
 
-      {/* Coluna 2: Restrições */}
-      <div className="flex flex-col gap-4">
-        <h3 className="text-lg font-semibold text-white flex items-center gap-2 border-b border-gray-800 pb-2">
-          <ShieldAlert className="text-yellow-500" size={20} />
-          Restrições de Execução
+      {/* Coluna 2: Regras */}
+      <Card className="p-6 space-y-6">
+        <h3 className="text-lg font-semibold text-white flex items-center gap-2 border-b border-border pb-3">
+          <ShieldAlert className="text-primary" size={20} />
+          Regras de Execução
         </h3>
 
         <div className="grid grid-cols-2 gap-4">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-gray-300 flex items-center gap-1">
-              <Zap size={14} /> Tempo Limite (ms)
-            </label>
-            <input
-              type="number"
-              placeholder="Ex: 1000"
-              {...register("timeLimit")}
-              className="bg-gray-900 border border-gray-700 rounded p-2 text-white focus:border-yellow-500 outline-none transition-colors"
-            />
-            {errors.timeLimit && (
-              <span className="text-red-500 text-xs">
-                {errors.timeLimit.message}
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-gray-300 flex items-center gap-1">
-              <Cpu size={14} /> Memória (MB)
-            </label>
-            <input
-              type="number"
-              placeholder="Ex: 256"
-              {...register("memoryLimit")}
-              className="bg-gray-900 border border-gray-700 rounded p-2 text-white focus:border-yellow-500 outline-none transition-colors"
-            />
-            {errors.memoryLimit && (
-              <span className="text-red-500 text-xs">
-                {errors.memoryLimit.message}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2 mt-2">
-          <label className="text-sm font-medium text-gray-300">
-            Tentativas Máximas (0 = Ilimitado)
-          </label>
-          <input
+          <Input
             type="number"
-            placeholder="0"
-            {...register("maxAttempts")}
-            className="bg-gray-900 border border-gray-700 rounded p-2 text-white focus:border-yellow-500 outline-none transition-colors"
+            label="Tempo Limite (ms)"
+            placeholder="Ex: 1000"
+            {...register("timeLimit", { valueAsNumber: true })}
+            error={errors.timeLimit?.message}
+            className="bg-background"
           />
-          {errors.maxAttempts && (
-            <span className="text-red-500 text-xs">
-              {errors.maxAttempts.message}
-            </span>
-          )}
+
+          <Input
+            type="number"
+            label="Memória (MB)"
+            placeholder="Ex: 256"
+            {...register("memoryLimit", { valueAsNumber: true })}
+            error={errors.memoryLimit?.message}
+            className="bg-background"
+          />
         </div>
-      </div>
+
+        <Input
+          type="number"
+          label="Tentativas Máximas (0 = Ilimitado)"
+          placeholder="0"
+          {...register("maxAttempts", { valueAsNumber: true })}
+          error={errors.maxAttempts?.message}
+          className="bg-background"
+        />
+
+        <div className="flex items-start gap-3 p-3 bg-background rounded-lg border border-border mt-2">
+          <Zap size={16} className="text-yellow-500 mt-0.5 flex-none" />
+          <p className="text-xs text-muted">
+            <strong className="text-zinc-200">Modo Prova:</strong> O feedback
+            será limitado. Alunos não verão os casos de teste ocultos até o fim
+            do prazo.
+          </p>
+        </div>
+      </Card>
     </div>
   );
 }

@@ -13,14 +13,8 @@ import type {
   Path,
   FieldErrors,
 } from "react-hook-form";
-import {
-  Check,
-  ChevronRight,
-  AlertCircle,
-  ChevronLeft,
-  Loader2,
-} from "lucide-react";
-import { Button } from "./ui/Button"; // Importando componente Button padronizado
+import { Check, ChevronRight, AlertCircle, ChevronLeft } from "lucide-react";
+import { Button } from "./ui/Button";
 import { cn } from "../lib/utils";
 
 // --- Tipos & Interfaces ---
@@ -121,7 +115,6 @@ export function Stepper<T extends FieldValues>({
   };
 
   const goToStep = async (index: number) => {
-    // Permite voltar, mas valida ao avançar se necessário
     if (index < activeStepIndex) {
       setActiveStepIndex(index);
     }
@@ -150,7 +143,6 @@ export function Stepper<T extends FieldValues>({
     ],
   );
 
-  // Lógica segura para indexar Steps sem duplicar no StrictMode
   const childrenArray = React.Children.toArray(children);
   let stepIndexCounter = 0;
 
@@ -165,10 +157,6 @@ export function Stepper<T extends FieldValues>({
 
   return (
     <StepperContext.Provider value={contextValue}>
-      {/* CORREÇÃO DE LAYOUT: 
-          flex flex-col h-full permite que o conteudo ocupe 100% da altura do pai
-          e distribua o header, conteudo e footer corretamente.
-      */}
       <div className="flex flex-col h-full overflow-hidden w-full relative">
         {processedChildren}
       </div>
@@ -184,8 +172,9 @@ function Navigation() {
   const { activeStepIndex, orderedSteps, formState, goToStep } = context;
 
   return (
-    <div className="w-full flex items-center justify-center px-4">
-      <div className="flex items-center w-full max-w-3xl">
+    <div className="w-full flex items-center justify-center px-2 sm:px-4">
+      {/* RESPONSIVIDADE: overflow-x-auto permite scroll se houver muitos passos em tela pequena */}
+      <div className="flex items-center w-full max-w-3xl overflow-x-auto no-scrollbar py-2">
         {orderedSteps.map((step, index) => {
           const isActive = index === activeStepIndex;
           const isCompleted = index < activeStepIndex;
@@ -206,7 +195,6 @@ function Navigation() {
 
           return (
             <React.Fragment key={step.id}>
-              {/* Item do Passo */}
               <button
                 type="button"
                 onClick={() => goToStep(index)}
@@ -218,7 +206,7 @@ function Navigation() {
               >
                 <div
                   className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center border-2 text-xs font-bold transition-all duration-300",
+                    "w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center border-2 text-xs sm:text-sm font-bold transition-all duration-300",
                     hasError
                       ? "border-destructive text-destructive bg-destructive/10"
                       : isActive
@@ -237,10 +225,9 @@ function Navigation() {
                   )}
                 </div>
 
-                {/* Texto do Passo (Escondido em mobile muito pequeno) */}
                 <span
                   className={cn(
-                    "text-sm font-medium hidden sm:block transition-colors whitespace-nowrap",
+                    "text-sm font-medium hidden md:block transition-colors whitespace-nowrap",
                     isActive
                       ? "text-white"
                       : "text-muted group-hover:text-zinc-300",
@@ -250,9 +237,8 @@ function Navigation() {
                 </span>
               </button>
 
-              {/* Linha Conectora (Flexível) */}
               {!isLast && (
-                <div className="flex-1 mx-2 sm:mx-4 h-[2px] bg-border relative">
+                <div className="flex-1 mx-2 sm:mx-4 h-[2px] bg-border relative min-w-[1rem]">
                   <div
                     className={cn(
                       "absolute inset-0 bg-primary transition-all duration-500 ease-in-out origin-left",
@@ -303,7 +289,6 @@ function Step<T extends FieldValues>({
 
   if (activeStepIndex !== __index) return null;
 
-  // CORREÇÃO: h-full e overflow-hidden para garantir que o conteúdo interno gerencie o scroll
   return (
     <div
       className={`flex-1 h-full overflow-hidden animate-in fade-in slide-in-from-right-8 duration-300 ${className}`}
@@ -323,13 +308,14 @@ function Controls() {
   const isFirstStep = activeStepIndex === 0;
 
   return (
-    <div className="flex-none border-t border-border bg-surface p-4 flex justify-between items-center z-20 shadow-[-1px_-5px_20px_rgba(0,0,0,0.2)]">
+    <div className="flex-none border-t border-border bg-surface p-4 flex gap-4 justify-between items-center z-20 shadow-[-1px_-5px_20px_rgba(0,0,0,0.2)]">
+      {/* RESPONSIVIDADE: Botões flex-1 no mobile para alvo de toque maior */}
       <Button
         type="button"
         variant="secondary"
         onClick={prevStep}
         disabled={isFirstStep || isSubmitting}
-        className="w-32"
+        className="flex-1 sm:flex-none sm:w-32"
       >
         <ChevronLeft size={16} className="mr-2" /> Voltar
       </Button>
@@ -340,7 +326,7 @@ function Controls() {
         onClick={nextStep}
         disabled={isSubmitting}
         isLoading={isSubmitting}
-        className="w-32"
+        className="flex-1 sm:flex-none sm:w-32"
       >
         {isSubmitting ? (
           "Salvando..."

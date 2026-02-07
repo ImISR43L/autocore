@@ -36,6 +36,13 @@ import {
   Cpu,
   Settings,
   BarChart as BarChartIcon,
+  Menu,
+  Terminal,
+  BookOpen,
+  Code2,
+  History,
+  GraduationCap, // Icone para a nota
+  MessageSquare, // Icone para comentários
 } from "lucide-react";
 import {
   Panel,
@@ -56,7 +63,7 @@ import { cn } from "../lib/utils";
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
 
-// --- INTERFACES (Mantidas) ---
+// --- INTERFACES ---
 interface Announcement {
   id: string;
   content: string;
@@ -103,8 +110,9 @@ interface Classroom {
   id: number;
   name: string;
   code: string;
-  owner: { id: number; email: string };
-  students: { id: number; email: string }[];
+  // Alterado: Adicionado 'name?: string'
+  owner: { id: number; email: string; name?: string };
+  students: { id: number; email: string; name?: string }[];
   problems: Problem[];
   announcements: Announcement[];
 }
@@ -128,7 +136,7 @@ interface Submission {
   executionTime: number;
   memoryUsage: number;
   createdAt: string;
-  user: { id: number; email: string };
+  user: { id: number; email: string; name?: string };
   grade?: number;
   teacherComment?: string;
   problemId?: string;
@@ -204,6 +212,11 @@ export default function ClassroomView() {
   const [activeTab, setActiveTab] = useState<
     "stream" | "classwork" | "people" | "analytics"
   >("stream");
+  const [mobileIdeTab, setMobileIdeTab] = useState<
+    "problem" | "editor" | "console"
+  >("problem");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   const [languageId, setLanguageId] = useState<number>(
     () => Number(localStorage.getItem(`languageId`)) || 71,
   );
@@ -226,14 +239,20 @@ export default function ClassroomView() {
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
 
+  // Filtros de Submissão
   const [selectedStudentFilter, setSelectedStudentFilter] = useState<
     number | null
   >(null);
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<
+    string | null
+  >(null);
+
   const [studentSearch, setStudentSearch] = useState("");
 
   const [inspectingUser, setInspectingUser] = useState<{
     id: number;
     email: string;
+    name?: string;
   } | null>(null);
   const [studentSubmissions, setStudentSubmissions] = useState<
     Record<string, Submission>
@@ -301,7 +320,10 @@ export default function ClassroomView() {
   const initialRedirectChecked = useRef(false);
 
   useEffect(() => {
-    if (
+    if (location.state?.activeTab) {
+      setActiveTab(location.state.activeTab);
+      window.history.replaceState({}, document.title);
+    } else if (
       location.state &&
       location.state.problemId &&
       !initialRedirectChecked.current
@@ -309,9 +331,10 @@ export default function ClassroomView() {
       setActiveTab("classwork");
       initialRedirectChecked.current = true;
     } else if (id) {
-      localStorage.setItem(`activeTab_${id}`, activeTab);
+      const savedTab = localStorage.getItem(`activeTab_${id}`);
+      if (savedTab) setActiveTab(savedTab as any);
     }
-  }, [location.state, id, activeTab]);
+  }, [location.state, id]);
 
   useEffect(() => {
     localStorage.setItem(`languageId`, String(languageId));
@@ -499,6 +522,19 @@ export default function ClassroomView() {
     }
   }, [id, API_URL]);
 
+  const aggregatedStats = useMemo(() => {
+    const totalAccepted = stats.reduce(
+      (acc, curr) => acc + (curr.Accepted || 0),
+      0,
+    );
+    const totalError = stats.reduce((acc, curr) => acc + (curr.Error || 0), 0);
+
+    return [
+      { name: "Acertos", value: totalAccepted, fill: "#10b981" },
+      { name: "Erros", value: totalError, fill: "#ef4444" },
+    ];
+  }, [stats]);
+
   useEffect(() => {
     fetchClassroomData();
     const interval = setInterval(fetchClassroomData, 10000);
@@ -527,6 +563,10 @@ export default function ClassroomView() {
         setVerdict(submission.status);
         setLoading(false);
         loadingRef.current = false;
+
+        if (window.innerWidth < 1024 && !isOwnerRef.current) {
+          setMobileIdeTab("console");
+        }
 
         if (submission.status === "Accepted")
           toast.success("Solução Aceita! 🚀");
@@ -881,6 +921,11 @@ export default function ClassroomView() {
   const submitSolution = async (e?: React.SyntheticEvent) => {
     if (e) e.preventDefault();
 
+    if (isOwner) {
+      toast.error("Professor não pode enviar soluções.");
+      return;
+    }
+
     if (!displayProblem) {
       toast.warning("Selecione um exercício!");
       return;
@@ -896,6 +941,10 @@ export default function ClassroomView() {
     setLoading(true);
     loadingRef.current = true;
     setVerdict("Processando...");
+
+    if (window.innerWidth < 1024) {
+      setMobileIdeTab("console");
+    }
 
     try {
       const token = localStorage.getItem("token");
@@ -945,6 +994,10 @@ export default function ClassroomView() {
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
       run: () => {
         console.log("Atalho Monaco acionado!");
+        if (isOwnerRef.current) {
+          toast.error("Ação não permitida para professores.");
+          return;
+        }
         if (submitSolutionRef.current) {
           submitSolutionRef.current();
         }
@@ -962,6 +1015,7 @@ export default function ClassroomView() {
         if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
           console.log("Atalho Global acionado!");
           e.preventDefault();
+          if (isOwner) return;
           submitSolution();
         }
       }
@@ -969,7 +1023,7 @@ export default function ClassroomView() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeTab, selectedProblemId, submitSolution]);
+  }, [activeTab, selectedProblemId, submitSolution, isOwner]);
 
   const handleStartExam = async () => {
     if (!confirm("Iniciar?")) return;
@@ -1089,13 +1143,247 @@ export default function ClassroomView() {
     ? studentSubmissions[activeInspectionProblem.id]
     : null;
 
-  const filteredStudents = (classroom.students || []).filter((student) =>
-    student.email.toLowerCase().includes(studentSearch.toLowerCase()),
+  const filteredStudents = (classroom.students || []).filter((student) => {
+    const term = studentSearch.toLowerCase();
+    const name = student.name?.toLowerCase() || "";
+    const email = student.email.toLowerCase();
+    return name.includes(term) || email.includes(term);
+  });
+
+  const editorContent = (
+    <div className="flex flex-col h-full bg-surface">
+      <div className="flex-none flex bg-surface border-b border-border overflow-x-auto no-scrollbar">
+        {files.map((file, idx) => (
+          <div
+            key={idx}
+            onClick={() => setActiveFileIndex(idx)}
+            className={cn(
+              "px-5 py-3 text-sm cursor-pointer flex items-center gap-3 border-r border-border border-t-2 select-none min-w-fit",
+              activeFileIndex === idx
+                ? "bg-background text-zinc-100 border-t-primary"
+                : "bg-surface text-muted border-t-transparent hover:bg-surface-hover",
+            )}
+          >
+            <FileCode size={16} />
+            {file.name}
+            {files.length > 1 && (
+              <Trash
+                size={14}
+                className="hover:text-destructive ml-2"
+                onClick={(e) => handleRemoveFile(idx, e)}
+              />
+            )}
+          </div>
+        ))}
+        <div className="flex items-center px-3 min-w-[100px]">
+          <input
+            className="bg-transparent border-none text-sm text-zinc-100 w-full focus:outline-none placeholder:text-muted/50"
+            placeholder="+ Novo..."
+            value={newFileName}
+            onChange={(e) => setNewFileName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAddFile()}
+          />
+        </div>
+      </div>
+
+      <div className="flex-1 relative">
+        <Editor
+          key={`${languageId}-${displayProblem?.id}-${activeFileIndex}`}
+          height="100%"
+          theme="vs-dark"
+          language={LANGUAGE_MAP[languageId] || "plaintext"}
+          value={files[activeFileIndex]?.content || ""}
+          onChange={handleCodeChange}
+          onMount={handleEditorDidMount}
+          options={{
+            minimap: { enabled: false },
+            automaticLayout: true,
+            fontSize: 16,
+            scrollBeyondLastLine: false,
+            padding: { top: 16 },
+          }}
+        />
+      </div>
+    </div>
+  );
+
+  const problemDetailsContent = (
+    <div className="h-full overflow-y-auto bg-background p-6 md:p-8">
+      {displayProblem ? (
+        <>
+          <h1 className="text-2xl md:text-3xl font-bold mb-6">
+            {displayProblem.title}
+          </h1>
+          <div className="prose prose-invert prose-base max-w-none mb-10">
+            <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+              {displayProblem.description}
+            </ReactMarkdown>
+          </div>
+
+          <div className="space-y-4 mb-10">
+            <h4 className="text-base font-bold uppercase tracking-wider text-muted">
+              Exemplos
+            </h4>
+            {displayProblem.testCases?.map((tc, idx) => (
+              <div
+                key={idx}
+                className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface p-4 rounded-lg border border-border"
+              >
+                <div>
+                  <div className="text-sm text-muted mb-2 font-semibold">
+                    Entrada
+                  </div>
+                  <code className="text-base font-mono block bg-black/20 p-2 rounded break-all whitespace-pre-wrap">
+                    {tc.input}
+                  </code>
+                </div>
+                <div>
+                  <div className="text-sm text-muted mb-2 font-semibold">
+                    Saída
+                  </div>
+                  <code className="text-base font-mono block text-emerald-400 bg-black/20 p-2 rounded break-all whitespace-pre-wrap">
+                    {tc.expectedOutput}
+                  </code>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {isOwner && displayProblem && problemStats.length > 0 && (
+            <div className="mt-10 pt-8 border-t border-border">
+              <h4 className="text-base font-bold uppercase tracking-wider text-muted mb-6 flex items-center gap-2">
+                <BarChartIcon size={20} /> Estatísticas
+              </h4>
+              <div className="h-64 w-full bg-surface border border-border rounded-lg p-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={problemStats}
+                    layout="vertical"
+                    margin={{ left: 10, right: 10 }}
+                  >
+                    <XAxis type="number" hide />
+                    <YAxis
+                      dataKey="name"
+                      type="category"
+                      width={100}
+                      tick={{ fontSize: 14, fill: "#a1a1aa" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "transparent" }}
+                      contentStyle={{
+                        backgroundColor: "#18181b",
+                        borderColor: "#27272a",
+                        borderRadius: "6px",
+                        fontSize: "14px",
+                      }}
+                    />
+                    <Bar
+                      dataKey="value"
+                      barSize={20}
+                      radius={[0, 4, 4, 0]}
+                      shape={(props: any) => {
+                        const { fill, ...rest } = props;
+                        const color =
+                          props.payload.name === "Acertos"
+                            ? "#10b981"
+                            : "#ef4444";
+                        return (
+                          <Rectangle
+                            {...rest}
+                            fill={color}
+                            radius={[0, 4, 4, 0]}
+                          />
+                        );
+                      }}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="flex flex-col items-center justify-center h-full text-muted space-y-4">
+          <FileCode size={48} className="opacity-20" />
+          <p className="text-lg text-center">
+            Selecione um exercício no menu superior para começar.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+
+  const consoleContent = (
+    <div className="h-full overflow-y-auto bg-background p-6">
+      {verdict ? (
+        <div
+          className={cn(
+            "rounded-xl border p-6 mb-8 mt-2 shadow-sm",
+            verdict === "Accepted"
+              ? "bg-emerald-900/10 border-emerald-500/30"
+              : "bg-red-900/10 border-red-500/30",
+          )}
+        >
+          <div className="flex items-center gap-3 font-bold mb-4 text-xl">
+            {verdict === "Accepted" ? (
+              <CheckCircle className="text-emerald-500" size={24} />
+            ) : (
+              <XCircle className="text-red-500" size={24} />
+            )}
+            <span
+              className={
+                verdict === "Accepted" ? "text-emerald-500" : "text-red-500"
+              }
+            >
+              {verdict}
+            </span>
+          </div>
+
+          {lastSubmission && (
+            <div className="grid grid-cols-2 gap-4 mt-6">
+              <div className="bg-background p-4 rounded-lg border border-border">
+                <div className="text-sm text-muted mb-2 flex items-center gap-2 font-medium">
+                  <Clock size={16} /> Tempo
+                </div>
+                <div className="font-mono text-xl text-white">
+                  {lastSubmission.executionTime}ms
+                </div>
+              </div>
+              <div className="bg-background p-4 rounded-lg border border-border">
+                <div className="text-sm text-muted mb-2 flex items-center gap-2 font-medium">
+                  <Cpu size={16} /> Memória
+                </div>
+                <div className="font-mono text-xl text-white">
+                  {lastSubmission.memoryUsage}KB
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-6">
+            <div className="text-sm font-bold text-muted mb-3 uppercase tracking-wider">
+              LOGS DO SISTEMA
+            </div>
+            <LogViewer
+              logs={lastSubmission?.output || lastSubmission?.stderr || ""}
+              status={(lastSubmission?.status as any) || "Pending"}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center h-full text-muted space-y-4">
+          <Terminal size={48} className="opacity-20" />
+          <p>Execute seu código para ver os resultados aqui.</p>
+        </div>
+      )}
+    </div>
   );
 
   return (
     <div className="flex flex-col h-screen bg-background text-zinc-100 overflow-hidden font-sans selection:bg-primary/20">
-      <header className="flex-none border-b border-border bg-surface px-6 py-4">
+      <header className="flex-none border-b border-border bg-surface px-4 py-3 md:px-6 md:py-4">
         <div className="flex items-center gap-4 mb-4">
           <Link
             to="/dashboard"
@@ -1103,12 +1391,12 @@ export default function ClassroomView() {
           >
             <ArrowLeft size={24} />
           </Link>
-          <h2 className="text-2xl font-semibold tracking-tight text-white">
+          <h2 className="text-xl md:text-2xl font-semibold tracking-tight text-white truncate">
             {classroom.name}
           </h2>
         </div>
 
-        <nav className="flex gap-8 text-base font-medium">
+        <nav className="flex gap-6 text-base font-medium overflow-x-auto no-scrollbar">
           {[
             { id: "stream", label: "Mural" },
             { id: "classwork", label: "Atividades" },
@@ -1121,7 +1409,7 @@ export default function ClassroomView() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
                 className={cn(
-                  "pb-2 border-b-2 transition-colors px-1",
+                  "pb-2 border-b-2 transition-colors px-1 whitespace-nowrap",
                   activeTab === tab.id
                     ? "border-primary text-primary"
                     : "border-transparent text-muted hover:text-zinc-100",
@@ -1136,8 +1424,8 @@ export default function ClassroomView() {
       <main className="flex-1 overflow-hidden relative">
         {/* -- STREAMS -- */}
         {activeTab === "stream" && (
-          <div className="h-full overflow-y-auto p-8">
-            <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-8">
+          <div className="h-full overflow-y-auto p-4 md:p-8">
+            <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6 md:gap-8">
               {/* Sidebar do Stream */}
               <aside className="lg:col-span-1 space-y-4">
                 <Card className="p-5 bg-surface border-border">
@@ -1165,12 +1453,12 @@ export default function ClassroomView() {
               </aside>
 
               {/* Main Feed */}
-              <div className="lg:col-span-3 space-y-8">
-                <div className="bg-gradient-to-r from-emerald-900/50 to-zinc-900 p-8 rounded-xl border border-primary/20 shadow-lg">
-                  <h1 className="text-4xl font-bold mb-3 text-white">
+              <div className="lg:col-span-3 space-y-6 md:space-y-8">
+                <div className="bg-gradient-to-r from-emerald-900/50 to-zinc-900 p-6 md:p-8 rounded-xl border border-primary/20 shadow-lg">
+                  <h1 className="text-2xl md:text-4xl font-bold mb-3 text-white">
                     {classroom.name}
                   </h1>
-                  <div className="text-base text-emerald-200/80 font-mono">
+                  <div className="text-sm md:text-base text-emerald-200/80 font-mono">
                     Código: {classroom.code}
                   </div>
                 </div>
@@ -1245,7 +1533,7 @@ export default function ClassroomView() {
 
         {/* -- PEOPLE -- */}
         {activeTab === "people" && (
-          <div className="h-full overflow-y-auto p-8">
+          <div className="h-full overflow-y-auto p-4 md:p-8">
             <div className="max-w-4xl mx-auto space-y-10">
               {/* Seção Professores */}
               <section>
@@ -1256,11 +1544,20 @@ export default function ClassroomView() {
                 <Card className="bg-surface border-border">
                   <div className="flex items-center gap-5 p-4">
                     <div className="w-12 h-12 rounded-full bg-emerald-900/50 text-emerald-400 flex items-center justify-center font-bold border border-emerald-500/20 text-lg">
-                      {classroom.owner.email.charAt(0).toUpperCase()}
+                      {(classroom.owner.name || classroom.owner.email)
+                        .charAt(0)
+                        .toUpperCase()}
                     </div>
-                    <span className="text-zinc-200 font-medium text-lg">
-                      {classroom.owner.email}
-                    </span>
+                    <div className="flex flex-col">
+                      <span className="text-zinc-200 font-medium text-lg truncate">
+                        {classroom.owner.name || classroom.owner.email}
+                      </span>
+                      {classroom.owner.name && (
+                        <span className="text-xs text-muted truncate">
+                          {classroom.owner.email}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </Card>
               </section>
@@ -1276,14 +1573,13 @@ export default function ClassroomView() {
                   </h3>
                 </div>
 
-                {/* Barra de Busca de Alunos */}
                 <div className="mb-6 relative">
                   <Search
                     className="absolute left-4 top-3 text-muted"
                     size={20}
                   />
                   <Input
-                    placeholder="Buscar estudante por email..."
+                    placeholder="Buscar estudante por nome ou email..."
                     value={studentSearch}
                     onChange={(e) => setStudentSearch(e.target.value)}
                     className="bg-surface pl-12 h-12 text-base"
@@ -1298,10 +1594,17 @@ export default function ClassroomView() {
                         className="flex items-center gap-5 p-4 hover:bg-surface-hover transition-colors"
                       >
                         <div className="w-10 h-10 rounded-full bg-zinc-800 text-zinc-400 flex items-center justify-center font-bold text-base">
-                          {s.email.charAt(0).toUpperCase()}
+                          {(s.name || s.email).charAt(0).toUpperCase()}
                         </div>
-                        <div className="flex-1 text-base text-zinc-200">
-                          {s.email}
+                        <div className="flex-1 flex flex-col justify-center">
+                          <div className="text-base text-zinc-200 font-medium truncate">
+                            {s.name || s.email}
+                          </div>
+                          {s.name && (
+                            <div className="text-xs text-muted truncate">
+                              {s.email}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))
@@ -1320,12 +1623,12 @@ export default function ClassroomView() {
         {activeTab === "classwork" && (
           <div className="flex flex-col h-full">
             {/* Toolbar da IDE */}
-            <div className="flex-none flex items-center justify-between p-4 border-b border-border bg-surface">
-              <div className="flex items-center gap-4">
+            <div className="flex-none flex items-center justify-between p-4 border-b border-border bg-surface gap-4">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
                 <Select
                   value={selectedProblemId || ""}
                   onChange={(e) => setSelectedProblemId(e.target.value)}
-                  className="w-72 h-11 text-base" // Aumentado para h-11
+                  className="w-full sm:w-72 h-11 text-base"
                 >
                   <option value="">Selecione um exercício...</option>
                   {dropdownOptions.map((p) => (
@@ -1339,7 +1642,7 @@ export default function ClassroomView() {
                 {isExam && currentProblem?.timeLimit && (
                   <div
                     className={cn(
-                      "px-4 py-2 rounded text-sm font-bold flex items-center gap-2 h-11", // Fixada altura
+                      "px-4 py-2 rounded text-sm font-bold flex items-center gap-2 h-11 whitespace-nowrap",
                       examStatus === "RUNNING"
                         ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
                         : examStatus === "FINISHED"
@@ -1348,16 +1651,18 @@ export default function ClassroomView() {
                     )}
                   >
                     <Clock size={18} />
-                    {examStatus === "WAITING"
-                      ? "Aguardando Início"
-                      : examStatus === "FINISHED"
-                        ? "Encerrado"
-                        : timeLeft}
+                    <span className="hidden sm:inline">
+                      {examStatus === "WAITING"
+                        ? "Aguardando"
+                        : examStatus === "FINISHED"
+                          ? "Encerrado"
+                          : timeLeft}
+                    </span>
                     {isOwner && examStatus === "WAITING" && (
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 ml-3 text-xs"
+                        className="h-7 ml-2 text-xs"
                         onClick={handleStartExam}
                       >
                         Iniciar
@@ -1367,28 +1672,33 @@ export default function ClassroomView() {
                 )}
               </div>
 
-              <div className="flex items-center gap-3">
+              {/* Toolbar Desktop (lg+) */}
+              <div className="hidden lg:flex items-center gap-3">
                 {isOwner && selectedProblemId && (
                   <>
                     <Button
                       variant="secondary"
                       size="sm"
-                      className="h-11 px-5 text-base"
+                      className="h-11 px-3"
                       onClick={() =>
                         navigate(
                           `/class/${id}/problem/${selectedProblemId}/edit`,
                         )
                       }
+                      title="Configurações"
                     >
-                      <Settings size={18} className="mr-2" /> Editar
+                      <Settings size={18} />
                     </Button>
+
+                    {/* BOTÃO DE EXCLUIR AUMENTADO */}
                     <Button
                       variant="danger"
-                      size="icon"
-                      className="h-11 w-11" // Aumentado para h-11
+                      className="h-11 px-4 flex items-center gap-2 flex-none"
                       onClick={handleDeleteProblem}
+                      title="Excluir este exercício"
                     >
-                      <Trash size={20} />
+                      <Trash size={18} />
+                      <span className="hidden xl:inline">Excluir</span>
                     </Button>
                   </>
                 )}
@@ -1423,7 +1733,7 @@ export default function ClassroomView() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-11 w-11" // Aumentado
+                  className="h-11 w-11"
                   onClick={handleResetCode}
                   title="Resetar Código"
                 >
@@ -1433,7 +1743,7 @@ export default function ClassroomView() {
                 <Select
                   value={languageId}
                   onChange={(e) => setLanguageId(Number(e.target.value))}
-                  className="w-48 h-11 text-base" // Aumentado
+                  className="w-48 h-11 text-base"
                 >
                   {LANGUAGES.map((l) => (
                     <option key={l.id} value={l.id}>
@@ -1442,290 +1752,241 @@ export default function ClassroomView() {
                   ))}
                 </Select>
 
-                <Button
-                  onClick={submitSolution}
-                  disabled={loading || !selectedProblemId || isBlocked}
-                  isLoading={loading}
-                  // CORREÇÃO: whitespace-nowrap impede quebra de linha, h-11 aumenta altura
-                  className="h-11 px-8 text-base font-semibold whitespace-nowrap min-w-[140px]"
-                >
-                  {!loading && (isBlocked ? "Bloqueado" : "Enviar Solução")}
-                </Button>
+                {/* BOTÃO DE ENVIAR: Apenas para Alunos */}
+                {!isOwner && (
+                  <Button
+                    onClick={submitSolution}
+                    disabled={loading || !selectedProblemId || isBlocked}
+                    isLoading={loading}
+                    className="h-11 px-8 text-base font-semibold whitespace-nowrap min-w-[140px]"
+                  >
+                    {!loading && (isBlocked ? "Bloqueado" : "Enviar Solução")}
+                  </Button>
+                )}
+              </div>
+
+              {/* Toolbar Mobile (Hamburguer + Submit Conditional) */}
+              <div className="lg:hidden flex items-center gap-2">
+                {/* Botão de Enviar (Apenas na aba Editor e para Alunos) */}
+                {mobileIdeTab === "editor" && !isOwner && (
+                  <Button
+                    onClick={submitSolution}
+                    disabled={loading || !selectedProblemId || isBlocked}
+                    isLoading={loading}
+                    size="icon"
+                    className="h-11 w-11 bg-primary text-white"
+                  >
+                    <div className="flex items-center justify-center">
+                      <Plus className="rotate-45" size={24} />
+                    </div>
+                  </Button>
+                )}
+
+                {/* Menu Hambúrguer */}
+                <div className="relative">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-11 w-11"
+                    onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  >
+                    <Menu size={20} />
+                  </Button>
+
+                  {isMobileMenuOpen && (
+                    <div className="absolute right-0 top-14 w-56 bg-surface border border-border rounded-lg shadow-xl z-50 py-2 animate-in fade-in zoom-in-95">
+                      {isOwner && (
+                        <>
+                          <button
+                            onClick={() =>
+                              navigate(`/class/${id}/create-problem`)
+                            }
+                            className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center gap-2"
+                          >
+                            <Plus size={16} /> Novo Problema
+                          </button>
+                          {selectedProblemId && (
+                            <>
+                              <button
+                                onClick={() =>
+                                  navigate(
+                                    `/class/${id}/problem/${selectedProblemId}/edit`,
+                                  )
+                                }
+                                className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center gap-2"
+                              >
+                                <Settings size={16} /> Editar
+                              </button>
+                              <button
+                                onClick={handleDeleteProblem}
+                                className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover text-red-400 hover:text-red-300 flex items-center gap-3 transition-colors font-medium"
+                              >
+                                <Trash size={18} /> Excluir Exercício
+                              </button>
+                            </>
+                          )}
+                          <div className="h-px bg-border my-1" />
+                        </>
+                      )}
+
+                      {selectedProblemId && (
+                        <button
+                          onClick={() => {
+                            setShowSubmissions(true);
+                            setIsMobileMenuOpen(false);
+                          }}
+                          className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center gap-2"
+                        >
+                          <History size={16} />{" "}
+                          {isOwner ? "Ver Turma" : "Meu Histórico"}
+                        </button>
+                      )}
+
+                      <button
+                        onClick={handleResetCode}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center gap-2"
+                      >
+                        <RefreshCw size={16} /> Resetar Código
+                      </button>
+
+                      <div className="px-4 py-2 border-t border-border mt-1">
+                        <label className="text-xs text-muted block mb-1">
+                          Linguagem
+                        </label>
+                        <select
+                          value={languageId}
+                          onChange={(e) =>
+                            setLanguageId(Number(e.target.value))
+                          }
+                          className="w-full bg-background border border-border rounded p-2 text-sm"
+                        >
+                          {LANGUAGES.map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {l.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Painéis Redimensionáveis */}
-            <div className="flex-1 min-h-0">
-              <PanelGroup direction="horizontal">
-                {/* Editor */}
-                <Panel defaultSize={60} minSize={30}>
-                  <div className="flex flex-col h-full">
-                    {/* Tabs de Arquivos */}
-                    <div className="flex-none flex bg-surface border-b border-border overflow-x-auto">
-                      {files.map((file, idx) => (
-                        <div
-                          key={idx}
-                          onClick={() => setActiveFileIndex(idx)}
-                          className={cn(
-                            "px-5 py-3 text-sm cursor-pointer flex items-center gap-3 border-r border-border border-t-2",
-                            activeFileIndex === idx
-                              ? "bg-background text-zinc-100 border-t-primary"
-                              : "bg-surface text-muted border-t-transparent hover:bg-surface-hover",
-                          )}
-                        >
-                          <FileCode size={16} />
-                          {file.name}
-                          {files.length > 1 && (
-                            <Trash
-                              size={14}
-                              className="hover:text-destructive ml-2"
-                              onClick={(e) => handleRemoveFile(idx, e)}
-                            />
-                          )}
-                        </div>
-                      ))}
-                      <div className="flex items-center px-3">
-                        <input
-                          className="bg-transparent border-none text-sm text-zinc-100 w-24 focus:outline-none placeholder:text-muted/50"
-                          placeholder="+ Novo..."
-                          value={newFileName}
-                          onChange={(e) => setNewFileName(e.target.value)}
-                          onKeyDown={(e) =>
-                            e.key === "Enter" && handleAddFile()
-                          }
-                        />
+            {/* ÁREA PRINCIPAL DA IDE */}
+            <div className="flex-1 min-h-0 relative">
+              {/* DESKTOP LAYOUT (Resizable Panels) - Visible only on large screens */}
+              <div className="hidden lg:block h-full w-full">
+                <PanelGroup direction="horizontal">
+                  <Panel defaultSize={60} minSize={30}>
+                    {editorContent}
+                  </Panel>
+                  <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 transition-colors cursor-col-resize" />
+                  <Panel defaultSize={40} minSize={20}>
+                    {isOwner ? (
+                      // Se for professor, ocupa todo o painel direito com detalhes, sem console
+                      <div className="h-full flex flex-col">
+                        {problemDetailsContent}
                       </div>
-                    </div>
-
-                    <div className="flex-1 relative">
-                      <Editor
-                        key={`${languageId}-${displayProblem?.id}-${activeFileIndex}`}
-                        height="100%"
-                        theme="vs-dark"
-                        language={LANGUAGE_MAP[languageId] || "plaintext"}
-                        value={files[activeFileIndex]?.content || ""}
-                        onChange={handleCodeChange}
-                        onMount={handleEditorDidMount}
-                        options={{
-                          minimap: { enabled: false },
-                          automaticLayout: true,
-                          fontSize: 16, // Aumento da fonte do editor
-                        }}
-                      />
-                    </div>
-                  </div>
-                </Panel>
-
-                <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 transition-colors cursor-col-resize" />
-
-                {/* Painel Direito (Info + Output) */}
-                <Panel defaultSize={40} minSize={20}>
-                  <div className="h-full overflow-y-auto bg-background p-8">
-                    {displayProblem ? (
-                      <>
-                        <h1 className="text-3xl font-bold mb-6">
-                          {displayProblem.title}
-                        </h1>
-                        <div className="prose prose-invert prose-base max-w-none mb-10">
-                          <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
-                            {displayProblem.description}
-                          </ReactMarkdown>
-                        </div>
-
-                        {/* Test Cases */}
-                        <div className="space-y-4 mb-10">
-                          <h4 className="text-base font-bold uppercase tracking-wider text-muted">
-                            Exemplos
-                          </h4>
-                          {displayProblem.testCases?.map((tc, idx) => (
-                            <div
-                              key={idx}
-                              className="grid grid-cols-2 gap-6 bg-surface p-4 rounded-lg border border-border"
-                            >
-                              <div>
-                                <div className="text-sm text-muted mb-2 font-semibold">
-                                  Entrada
-                                </div>
-                                <code className="text-base font-mono block bg-black/20 p-2 rounded">
-                                  {tc.input}
-                                </code>
-                              </div>
-                              <div>
-                                <div className="text-sm text-muted mb-2 font-semibold">
-                                  Saída
-                                </div>
-                                <code className="text-base font-mono block text-emerald-400 bg-black/20 p-2 rounded">
-                                  {tc.expectedOutput}
-                                </code>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Estatísticas do Exercício (Visível apenas para o Professor) */}
-                        {isOwner &&
-                          displayProblem &&
-                          problemStats.length > 0 && (
-                            <div className="mt-10 pt-8 border-t border-border">
-                              <h4 className="text-base font-bold uppercase tracking-wider text-muted mb-6 flex items-center gap-2">
-                                <BarChartIcon size={20} /> Estatísticas deste
-                                Exercício
-                              </h4>
-                              <div className="h-64 w-full bg-surface border border-border rounded-lg p-4">
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <BarChart
-                                    data={problemStats}
-                                    layout="vertical"
-                                    margin={{ left: 10, right: 10 }}
-                                  >
-                                    <XAxis type="number" hide />
-                                    <YAxis
-                                      dataKey="name"
-                                      type="category"
-                                      width={100}
-                                      tick={{ fontSize: 14, fill: "#a1a1aa" }}
-                                      axisLine={false}
-                                      tickLine={false}
-                                    />
-                                    <Tooltip
-                                      cursor={{ fill: "transparent" }}
-                                      contentStyle={{
-                                        backgroundColor: "#18181b",
-                                        borderColor: "#27272a",
-                                        borderRadius: "6px",
-                                        color: "#fff",
-                                        fontSize: "14px",
-                                      }}
-                                      itemStyle={{
-                                        color: "#fff",
-                                        fontSize: "14px",
-                                      }}
-                                    />
-                                    <Bar
-                                      dataKey="value"
-                                      barSize={20}
-                                      radius={[0, 4, 4, 0]}
-                                      shape={(props: any) => {
-                                        const { fill, ...rest } = props;
-                                        const color =
-                                          props.payload.name === "Acertos"
-                                            ? "#10b981"
-                                            : "#ef4444";
-                                        return (
-                                          <Rectangle
-                                            {...rest}
-                                            fill={color}
-                                            radius={[0, 4, 4, 0]}
-                                          />
-                                        );
-                                      }}
-                                    />
-                                  </BarChart>
-                                </ResponsiveContainer>
-                              </div>
-                            </div>
-                          )}
-
-                        {/* Feedback Area */}
-                        {verdict && (
-                          <div
-                            className={cn(
-                              "rounded-xl border p-6 mb-8 mt-8 shadow-sm",
-                              verdict === "Accepted"
-                                ? "bg-emerald-900/10 border-emerald-500/30"
-                                : "bg-red-900/10 border-red-500/30",
-                            )}
-                          >
-                            <div className="flex items-center gap-3 font-bold mb-4 text-xl">
-                              {verdict === "Accepted" ? (
-                                <CheckCircle
-                                  className="text-emerald-500"
-                                  size={24}
-                                />
-                              ) : (
-                                <XCircle className="text-red-500" size={24} />
-                              )}
-                              <span
-                                className={
-                                  verdict === "Accepted"
-                                    ? "text-emerald-500"
-                                    : "text-red-500"
-                                }
-                              >
-                                {verdict}
-                              </span>
-                            </div>
-
-                            {lastSubmission && (
-                              <div className="grid grid-cols-2 gap-6 mt-6">
-                                <div className="bg-background p-4 rounded-lg border border-border">
-                                  <div className="text-sm text-muted mb-2 flex items-center gap-2 font-medium">
-                                    <Clock size={16} /> Tempo
-                                  </div>
-                                  <div className="font-mono text-xl text-white">
-                                    {lastSubmission.executionTime}ms
-                                  </div>
-                                </div>
-                                <div className="bg-background p-4 rounded-lg border border-border">
-                                  <div className="text-sm text-muted mb-2 flex items-center gap-2 font-medium">
-                                    <Cpu size={16} /> Memória
-                                  </div>
-                                  <div className="font-mono text-xl text-white">
-                                    {lastSubmission.memoryUsage}KB
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            <div className="mt-6">
-                              <div className="text-sm font-bold text-muted mb-3 uppercase tracking-wider">
-                                LOGS DO SISTEMA
-                              </div>
-                              <LogViewer
-                                logs={
-                                  lastSubmission?.output ||
-                                  lastSubmission?.stderr ||
-                                  ""
-                                }
-                                status={
-                                  (lastSubmission?.status as any) || "Pending"
-                                }
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </>
                     ) : (
-                      <div className="flex flex-col items-center justify-center h-full text-muted space-y-4">
-                        <FileCode size={48} className="opacity-20" />
-                        <p className="text-lg">
-                          Selecione um exercício no menu superior para começar.
-                        </p>
-                      </div>
+                      // Se for aluno, divide entre Detalhes e Console
+                      <>
+                        <div className="h-[60%] flex flex-col border-b border-border">
+                          {problemDetailsContent}
+                        </div>
+                        <div className="h-[40%] flex flex-col">
+                          {consoleContent}
+                        </div>
+                      </>
                     )}
-                  </div>
-                </Panel>
-              </PanelGroup>
+                  </Panel>
+                </PanelGroup>
+              </div>
+
+              {/* MOBILE LAYOUT (Tabs) - Visible only on small screens */}
+              <div className="lg:hidden h-full flex flex-col">
+                <div className="flex-1 min-h-0">
+                  {mobileIdeTab === "problem" && problemDetailsContent}
+                  {mobileIdeTab === "editor" && editorContent}
+                  {mobileIdeTab === "console" && !isOwner && consoleContent}
+                </div>
+
+                {/* Mobile IDE Navigation Bar */}
+                <div className="flex-none h-14 bg-surface border-t border-border flex items-center justify-around px-2">
+                  <button
+                    onClick={() => setMobileIdeTab("problem")}
+                    className={cn(
+                      "flex flex-col items-center justify-center w-full h-full text-xs font-medium transition-colors",
+                      mobileIdeTab === "problem"
+                        ? "text-primary"
+                        : "text-muted hover:text-white",
+                    )}
+                  >
+                    <BookOpen size={20} className="mb-1" />
+                    Problema
+                  </button>
+                  <button
+                    onClick={() => setMobileIdeTab("editor")}
+                    className={cn(
+                      "flex flex-col items-center justify-center w-full h-full text-xs font-medium transition-colors",
+                      mobileIdeTab === "editor"
+                        ? "text-primary"
+                        : "text-muted hover:text-white",
+                    )}
+                  >
+                    <Code2 size={20} className="mb-1" />
+                    Editor
+                  </button>
+
+                  {/* Botão Console: Oculto para Professor */}
+                  {!isOwner && (
+                    <button
+                      onClick={() => setMobileIdeTab("console")}
+                      className={cn(
+                        "flex flex-col items-center justify-center w-full h-full text-xs font-medium transition-colors",
+                        mobileIdeTab === "console"
+                          ? "text-primary"
+                          : "text-muted hover:text-white",
+                      )}
+                    >
+                      <div className="relative">
+                        <Terminal size={20} className="mb-1" />
+                        {verdict && (
+                          <span
+                            className={cn(
+                              "absolute -top-1 -right-1 w-2 h-2 rounded-full",
+                              verdict === "Accepted"
+                                ? "bg-emerald-500"
+                                : "bg-red-500",
+                            )}
+                          />
+                        )}
+                      </div>
+                      Console
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
 
         {/* -- ANALYTICS -- */}
         {activeTab === "analytics" && isOwner && (
-          <div className="h-full overflow-y-auto p-8">
+          <div className="h-full overflow-y-auto p-4 md:p-8">
             <div className="max-w-7xl mx-auto space-y-8">
-              <div className="flex items-center justify-between">
-                <h2 className="text-3xl font-bold text-zinc-100">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <h2 className="text-2xl md:text-3xl font-bold text-zinc-100">
                   Desempenho da Turma
                 </h2>
 
                 {/* Botão de Exportar */}
-                <div className="relative">
+                <div className="relative w-full md:w-auto">
                   <Button
                     variant="outline"
                     size="md"
                     onClick={() => setShowReportMenu(!showReportMenu)}
-                    className="flex items-center h-10 px-4 text-sm"
+                    className="flex items-center justify-center h-10 px-4 text-sm w-full"
                   >
                     <Download size={18} className="mr-2" />
                     Exportar Relatório
@@ -1733,7 +1994,7 @@ export default function ClassroomView() {
                   </Button>
 
                   {showReportMenu && (
-                    <div className="absolute right-0 mt-2 w-56 bg-surface border border-border rounded-lg shadow-xl z-50 py-1">
+                    <div className="absolute right-0 mt-2 w-full md:w-56 bg-surface border border-border rounded-lg shadow-xl z-50 py-1">
                       <button
                         onClick={() => handleExport("csv")}
                         className="w-full text-left px-5 py-3 text-base text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-3 transition-colors"
@@ -1752,17 +2013,17 @@ export default function ClassroomView() {
               </div>
 
               <div className="grid grid-cols-1 gap-8">
-                <Card className="p-8 bg-surface border-border h-[600px] flex flex-col shadow-md">
+                <Card className="p-4 md:p-8 bg-surface border-border h-[500px] md:h-[600px] flex flex-col shadow-md">
                   <h3 className="text-base font-medium text-muted uppercase tracking-wider mb-8">
                     Submissões por Exercício
                   </h3>
 
-                  {stats.length > 0 ? (
+                  {aggregatedStats.length > 0 ? (
                     <div className="flex-1 min-h-0">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart
-                          data={stats}
-                          margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                          data={aggregatedStats}
+                          margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
                         >
                           <CartesianGrid
                             strokeDasharray="3 3"
@@ -1772,7 +2033,7 @@ export default function ClassroomView() {
                           <XAxis
                             dataKey="name"
                             stroke="#a1a1aa"
-                            tick={{ fontSize: 14 }}
+                            tick={{ fontSize: 12 }}
                             tickLine={false}
                             axisLine={false}
                             dy={10}
@@ -1780,7 +2041,7 @@ export default function ClassroomView() {
                           <YAxis
                             stroke="#a1a1aa"
                             allowDecimals={false}
-                            tick={{ fontSize: 14 }}
+                            tick={{ fontSize: 12 }}
                             tickLine={false}
                             axisLine={false}
                           />
@@ -1798,18 +2059,23 @@ export default function ClassroomView() {
                           />
                           <Legend wrapperStyle={{ paddingTop: "30px" }} />
                           <Bar
-                            dataKey="Accepted"
-                            name="Sucesso"
-                            fill="#10b981"
+                            dataKey="value"
+                            barSize={60}
                             radius={[6, 6, 0, 0]}
-                            barSize={50}
-                          />
-                          <Bar
-                            dataKey="Error"
-                            name="Erros / Falhas"
-                            fill="#ef4444"
-                            radius={[6, 6, 0, 0]}
-                            barSize={50}
+                            shape={(props: any) => {
+                              const { fill, ...rest } = props;
+                              const color =
+                                props.payload.name === "Acertos"
+                                  ? "#10b981"
+                                  : "#ef4444";
+                              return (
+                                <Rectangle
+                                  {...rest}
+                                  fill={color}
+                                  radius={[6, 6, 0, 0]}
+                                />
+                              );
+                            }}
                           />
                         </BarChart>
                       </ResponsiveContainer>
@@ -1817,7 +2083,7 @@ export default function ClassroomView() {
                   ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-muted space-y-4">
                       <BarChartIcon size={64} className="opacity-20" />
-                      <p className="text-lg">
+                      <p className="text-lg text-center">
                         Ainda não há dados suficientes para gerar gráficos.
                       </p>
                     </div>
@@ -1831,11 +2097,11 @@ export default function ClassroomView() {
 
       {/* --- OVERLAYS --- */}
       {showSubmissions && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 md:p-6">
           <div className="bg-[#09090b] w-full max-w-5xl max-h-[90vh] rounded-xl border border-zinc-800 flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Header Modal */}
-            <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-surface">
-              <h3 className="text-2xl font-semibold text-white flex items-center gap-3">
+            <div className="flex items-center justify-between p-4 md:p-6 border-b border-zinc-800 bg-surface">
+              <h3 className="text-xl md:text-2xl font-semibold text-white flex items-center gap-3">
                 <Clock size={24} className="text-primary" />
                 Histórico de Envios
               </h3>
@@ -1850,13 +2116,15 @@ export default function ClassroomView() {
             </div>
 
             {/* Filtros */}
-            {isOwner && (
-              <div className="p-4 border-b border-zinc-800 bg-surface/50 flex items-center gap-4">
-                <div className="flex items-center gap-2 text-sm text-muted font-medium uppercase tracking-wider">
-                  <Filter size={16} /> Filtros:
-                </div>
+            <div className="p-4 border-b border-zinc-800 bg-surface/50 flex flex-col sm:flex-row items-center gap-4">
+              <div className="flex items-center gap-2 text-sm text-muted font-medium uppercase tracking-wider whitespace-nowrap">
+                <Filter size={16} /> Filtros:
+              </div>
+
+              {/* Filtro de Aluno (Apenas Professor) */}
+              {isOwner && (
                 <Select
-                  className="w-72 h-10 text-base"
+                  className="w-full sm:w-64 h-10 text-base"
                   value={selectedStudentFilter || ""}
                   onChange={(e) =>
                     setSelectedStudentFilter(Number(e.target.value) || null)
@@ -1865,99 +2133,121 @@ export default function ClassroomView() {
                   <option value="">Todos os Alunos</option>
                   {classroom?.students.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.email}
+                      {s.name ? `${s.name} (${s.email})` : s.email}
                     </option>
                   ))}
                 </Select>
-              </div>
-            )}
+              )}
 
-            {/* Lista */}
-            <div className="flex-1 overflow-y-auto p-0">
-              <table className="w-full text-base text-left">
-                <thead className="text-sm text-muted uppercase bg-surface sticky top-0">
-                  <tr>
-                    <th className="px-6 py-4 font-semibold">Status</th>
-                    <th className="px-6 py-4 font-semibold">Data</th>
-                    <th className="px-6 py-4 font-semibold">Tempo</th>
-                    <th className="px-6 py-4 font-semibold">Memória</th>
-                    {isOwner && (
-                      <th className="px-6 py-4 font-semibold">Aluno</th>
-                    )}
-                    <th className="px-6 py-4 text-right font-semibold">Ação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800">
-                  {submissions
-                    .filter(
-                      (s) =>
-                        !selectedStudentFilter ||
-                        s.user.id === selectedStudentFilter,
-                    )
-                    .map((sub) => (
-                      <tr
-                        key={sub.id}
-                        className="hover:bg-zinc-900/50 transition-colors"
-                      >
-                        <td className="px-6 py-4">
-                          <span
-                            className={cn(
-                              "px-3 py-1.5 rounded-full text-xs font-bold border",
-                              sub.status === "Accepted"
-                                ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                                : sub.status.includes("Error")
-                                  ? "bg-red-500/10 text-red-500 border-red-500/20"
-                                  : "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-                            )}
-                          >
-                            {sub.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-zinc-300">
-                          {new Date(sub.createdAt).toLocaleString()}
-                        </td>
-                        <td className="px-6 py-4 text-zinc-400 font-mono">
-                          {sub.executionTime}ms
-                        </td>
-                        <td className="px-6 py-4 text-zinc-400 font-mono">
-                          {sub.memoryUsage}KB
-                        </td>
-                        {isOwner && (
-                          <td className="px-6 py-4 text-zinc-300">
-                            <div className="flex items-center gap-3">
-                              <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold">
-                                {sub.user.email.charAt(0).toUpperCase()}
-                              </div>
-                              <span className="truncate max-w-[180px]">
-                                {sub.user.email}
-                              </span>
-                            </div>
+              {/* Filtro de Status (Novo) */}
+              <Select
+                className="w-full sm:w-48 h-10 text-base"
+                value={selectedStatusFilter || ""}
+                onChange={(e) =>
+                  setSelectedStatusFilter(e.target.value || null)
+                }
+              >
+                <option value="">Todos os Status</option>
+                <option value="Accepted">Accepted</option>
+                <option value="Wrong Answer">Wrong Answer</option>
+                <option value="Runtime Error">Runtime Error</option>
+                <option value="Time Limit Exceeded">Time Limit Exceeded</option>
+                <option value="Compilation Error">Compilation Error</option>
+              </Select>
+            </div>
+
+            {/* Lista com Scroll Horizontal no Mobile */}
+            <div className="flex-1 overflow-auto p-0">
+              <div className="min-w-[600px] md:min-w-full">
+                <table className="w-full text-base text-left">
+                  <thead className="text-sm text-muted uppercase bg-surface sticky top-0">
+                    <tr>
+                      <th className="px-6 py-4 font-semibold">Status</th>
+                      <th className="px-6 py-4 font-semibold">Data</th>
+                      <th className="px-6 py-4 font-semibold">Tempo</th>
+                      <th className="px-6 py-4 font-semibold">Memória</th>
+                      {isOwner && (
+                        <th className="px-6 py-4 font-semibold">Aluno</th>
+                      )}
+                      <th className="px-6 py-4 text-right font-semibold">
+                        Ação
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800">
+                    {submissions
+                      .filter(
+                        (s) =>
+                          (!selectedStudentFilter ||
+                            s.user.id === selectedStudentFilter) &&
+                          (!selectedStatusFilter ||
+                            s.status === selectedStatusFilter),
+                      )
+                      .map((sub) => (
+                        <tr
+                          key={sub.id}
+                          className="hover:bg-zinc-900/50 transition-colors"
+                        >
+                          <td className="px-6 py-4">
+                            <span
+                              className={cn(
+                                "px-3 py-1.5 rounded-full text-xs font-bold border whitespace-nowrap",
+                                sub.status === "Accepted"
+                                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                  : sub.status.includes("Error")
+                                    ? "bg-red-500/10 text-red-500 border-red-500/20"
+                                    : "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+                              )}
+                            >
+                              {sub.status}
+                            </span>
                           </td>
-                        )}
-                        <td className="px-6 py-4 text-right">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="h-8 text-sm"
-                            onClick={() => handleStartInspection(sub)}
-                          >
-                            {isOwner ? "Avaliar" : "Detalhes"}
-                          </Button>
+                          <td className="px-6 py-4 text-zinc-300 whitespace-nowrap">
+                            {new Date(sub.createdAt).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 text-zinc-400 font-mono">
+                            {sub.executionTime}ms
+                          </td>
+                          <td className="px-6 py-4 text-zinc-400 font-mono">
+                            {sub.memoryUsage}KB
+                          </td>
+                          {isOwner && (
+                            <td className="px-6 py-4 text-zinc-300">
+                              <div className="flex items-center gap-3">
+                                <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold">
+                                  {sub.user.email.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="truncate max-w-[180px]">
+                                  {sub.user.name || sub.user.email}
+                                </span>
+                              </div>
+                            </td>
+                          )}
+                          <td className="px-6 py-4 text-right">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="h-8 text-sm"
+                              onClick={() => handleStartInspection(sub)}
+                            >
+                              {isOwner ? "Avaliar" : "Detalhes"}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    {submissions.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="px-6 py-12 text-center text-muted text-base"
+                        >
+                          Nenhuma submissão encontrada.
                         </td>
                       </tr>
-                    ))}
-                  {submissions.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-6 py-12 text-center text-muted text-base"
-                      >
-                        Nenhuma submissão encontrada.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -1965,14 +2255,14 @@ export default function ClassroomView() {
 
       {/* --- MODAL: DETALHES/NOTAS (OVERLAY) --- */}
       {(inspectingUser || showModal) && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-6">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 md:p-6">
           <div className="bg-[#09090b] w-full max-w-7xl h-[90vh] rounded-xl border border-zinc-800 flex flex-col shadow-2xl overflow-hidden">
             {/* Header Inspeção */}
-            <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-surface">
+            <div className="flex items-center justify-between p-4 md:p-6 border-b border-zinc-800 bg-surface">
               <div>
-                <h2 className="text-2xl font-bold text-white mb-1">
+                <h2 className="text-xl md:text-2xl font-bold text-white mb-1">
                   {isOwner && inspectingUser
-                    ? `Avaliando: ${inspectingUser.email}`
+                    ? `Avaliando: ${inspectingUser.name || inspectingUser.email}`
                     : "Detalhes da Submissão"}
                 </h2>
                 <p className="text-sm text-muted">
@@ -1997,9 +2287,9 @@ export default function ClassroomView() {
               </Button>
             </div>
 
-            <div className="flex-1 flex min-h-0">
+            <div className="flex-1 flex flex-col lg:flex-row min-h-0">
               {/* Lado Esquerdo: Código */}
-              <div className="flex-1 border-r border-zinc-800 flex flex-col">
+              <div className="flex-1 lg:border-r border-zinc-800 flex flex-col min-h-[300px]">
                 <div className="bg-zinc-900 p-3 border-b border-zinc-800 text-sm text-muted flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <FileCode size={18} />
@@ -2042,7 +2332,7 @@ export default function ClassroomView() {
                     options={{
                       readOnly: true,
                       minimap: { enabled: false },
-                      fontSize: 16, // Fonte aumentada
+                      fontSize: 16,
                       scrollBeyondLastLine: false,
                       automaticLayout: true,
                     }}
@@ -2051,7 +2341,7 @@ export default function ClassroomView() {
               </div>
 
               {/* Lado Direito: Feedback e Notas */}
-              <div className="w-[450px] bg-surface flex flex-col p-6 overflow-y-auto border-l border-zinc-800">
+              <div className="w-full lg:w-[450px] bg-surface flex flex-col p-6 overflow-y-auto border-t lg:border-t-0 lg:border-l border-zinc-800 h-1/2 lg:h-full">
                 <div className="space-y-8">
                   {/* Status Card */}
                   <Card className="bg-zinc-900 border-zinc-800 p-5">
@@ -2133,6 +2423,40 @@ export default function ClassroomView() {
                       </Button>
                     </div>
                   )}
+
+                  {/* Área de Visualização do Feedback (Apenas Aluno) */}
+                  {!isOwner &&
+                    (selectedSubmission?.grade != null ||
+                      selectedSubmission?.teacherComment) && (
+                      <div className="pt-8 border-t border-zinc-800 space-y-6">
+                        <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                          <GraduationCap size={20} className="text-primary" />{" "}
+                          Feedback do Professor
+                        </h4>
+
+                        {selectedSubmission.grade != null && (
+                          <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg flex items-center justify-between">
+                            <span className="text-sm text-muted uppercase font-bold tracking-wider">
+                              Nota Final
+                            </span>
+                            <span className="text-3xl font-bold text-primary">
+                              {selectedSubmission.grade}
+                            </span>
+                          </div>
+                        )}
+
+                        {selectedSubmission.teacherComment && (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm text-muted font-medium">
+                              <MessageSquare size={16} /> Comentários:
+                            </div>
+                            <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">
+                              {selectedSubmission.teacherComment}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                 </div>
               </div>
             </div>

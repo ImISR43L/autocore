@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../../../lib/utils";
+import { Button } from "../../ui/Button";
+import { Card } from "../../ui/Card";
 
 const Editor = lazy(() => import("@monaco-editor/react"));
 
@@ -168,10 +170,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
     if (fields.length > 0) {
       setValue(
         getName(`starterCode.0`),
-        {
-          name: template.name,
-          content: template.content,
-        },
+        { name: template.name, content: template.content },
         { shouldDirty: true },
       );
       setActiveIndex(0);
@@ -193,123 +192,105 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
 
   return (
     <div
-      className={`flex flex-col gap-4 transition-all duration-300 ${
+      className={cn(
+        "flex flex-col gap-4 transition-all duration-300 h-full",
         isFullscreen
-          ? "fixed inset-0 z-50 bg-[#0d1117] p-6 h-screen w-screen"
-          : "w-full h-full animate-in fade-in slide-in-from-bottom-4 duration-500"
-      }`}
+          ? "fixed inset-0 z-50 bg-background p-4 h-screen w-screen"
+          : "relative",
+      )}
     >
       {showConfirmModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full m-4 animate-in zoom-in-95 duration-200">
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-3 text-amber-500">
-                <div className="p-2 bg-amber-500/10 rounded-full">
-                  <AlertTriangle size={24} />
-                </div>
-                <h3 className="text-lg font-bold text-white">
-                  Alterar Linguagem?
-                </h3>
-              </div>
-              <p className="text-sm text-muted leading-relaxed">
-                Você editou o código. Trocar para{" "}
-                <strong className="text-white">
-                  {" "}
-                  {pendingLang?.toUpperCase()}{" "}
-                </strong>{" "}
-                irá resetar o arquivo atual.
-              </p>
-              <div className="flex gap-3 mt-2 justify-end">
-                <button
-                  onClick={() => setShowConfirmModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-muted hover:text-white hover:bg-white/5 rounded-lg transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={() =>
-                    pendingLang && applyLanguageSwitch(pendingLang)
-                  }
-                  className="px-4 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-500 text-white rounded-lg shadow-lg transition-all"
-                >
-                  Confirmar
-                </button>
-              </div>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
+          <Card className="p-6 max-w-sm w-full space-y-4 bg-surface border-border">
+            <div className="flex items-center gap-3 text-amber-500">
+              <AlertTriangle size={24} />
+              <h3 className="text-lg font-bold text-white">
+                Alterar Linguagem?
+              </h3>
             </div>
-          </div>
+            <p className="text-sm text-muted">
+              Isso substituirá seu código atual pelo template.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button
+                variant="ghost"
+                onClick={() => setShowConfirmModal(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => pendingLang && applyLanguageSwitch(pendingLang)}
+              >
+                Confirmar
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
 
-      <div className="flex justify-between items-center border-b border-border pb-2 flex-none">
-        <div className="flex items-center gap-3">
+      {/* Toolbar Responsiva */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-border pb-2 flex-none">
+        <div className="flex items-center gap-3 flex-wrap">
           <h3 className="text-lg font-semibold text-white flex items-center gap-2">
             <FileCode className="text-primary" size={20} />
-            {isFullscreen
-              ? "Modo de Edição Focada"
-              : "Código Base (Scaffolding)"}
+            {isFullscreen ? "Modo Focado" : "Código Base"}
           </h3>
           {parameters.length > 0 && (
-            <button
-              type="button"
+            <Button
+              size="sm"
+              variant="outline"
               onClick={handleSyncParams}
               disabled={!isParamsOutOfSync}
-              className={cn(
-                "flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-all border",
-                isParamsOutOfSync
-                  ? "bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20"
-                  : "bg-surface-hover text-muted border-transparent opacity-50 cursor-default",
-              )}
+              className="h-7 text-xs px-2"
             >
-              <RefreshCw size={12} />{" "}
-              {isParamsOutOfSync ? "Sincronizar Params" : "Sincronizado"}
-            </button>
+              <RefreshCw size={12} className="mr-1" />
+              {isParamsOutOfSync ? "Sincronizar" : "Sincronizado"}
+            </Button>
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="relative flex-1 sm:flex-none">
+            <select
+              value={currentLang}
+              onChange={(e) => handleLanguageChange(e.target.value as LangKey)}
+              className="h-9 w-full appearance-none bg-surface border border-border rounded-md px-3 pr-8 text-sm text-zinc-100 focus:ring-1 focus:ring-primary outline-none cursor-pointer"
+            >
+              <option value="python">Python</option>
+              <option value="javascript">JavaScript</option>
+              <option value="cpp">C++</option>
+            </select>
+            <ChevronDown
+              size={14}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
+            />
+          </div>
+
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleAddFile}
+            className="h-9"
+          >
+            <Plus size={14} />{" "}
+            <span className="hidden xs:inline ml-1">Arquivo</span>
+          </Button>
+
           <button
-            type="button"
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className="text-muted hover:text-white p-1.5 rounded hover:bg-white/10 transition-colors"
+            className="p-2 text-muted hover:text-white transition-colors"
           >
             {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </button>
-
-          {/* DROPDOWN DE LINGUAGEM COM FONTE AUMENTADA (text-sm) */}
-          <div className="flex items-center bg-background rounded-md p-0.5 border border-border">
-            <div className="relative">
-              <select
-                value={currentLang}
-                onChange={(e) =>
-                  handleLanguageChange(e.target.value as LangKey)
-                }
-                className="appearance-none bg-transparent text-sm font-medium text-zinc-300 pl-3 pr-7 py-1.5 outline-none cursor-pointer hover:text-white"
-              >
-                <option value="python">Python</option>
-                <option value="javascript">JavaScript</option>
-                <option value="cpp">C++</option>
-              </select>
-              <ChevronDown
-                size={14}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
-              />
-            </div>
-            <div className="w-[1px] h-4 bg-border mx-1"></div>
-            <button
-              type="button"
-              onClick={handleAddFile}
-              className="text-sm font-medium text-white px-3 py-1.5 rounded hover:bg-surface-hover flex items-center gap-1 transition-colors"
-            >
-              <Plus size={16} /> Novo Arquivo
-            </button>
-          </div>
         </div>
       </div>
 
       <div
-        className={`border border-border rounded-md overflow-hidden bg-surface flex flex-col w-full shadow-lg ${
-          isFullscreen ? "flex-1" : "flex-1 min-h-[500px]"
-        }`}
+        className={cn(
+          "border border-border rounded-md overflow-hidden bg-surface flex flex-col shadow-lg",
+          isFullscreen ? "flex-1" : "flex-1 min-h-[400px]", // Garante altura mínima mas permite flexibilidade
+        )}
       >
         <div className="flex bg-background/50 overflow-x-auto no-scrollbar flex-none border-b border-border">
           {fields.map((field, index) => (
@@ -317,10 +298,10 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
               key={field.id}
               onClick={() => setActiveIndex(index)}
               className={cn(
-                "group flex items-center gap-2 px-4 py-2 text-sm cursor-pointer border-r border-border select-none min-w-[120px] justify-between transition-colors",
+                "group flex items-center gap-2 px-4 py-2.5 text-sm cursor-pointer border-r border-border select-none min-w-[120px] justify-between transition-colors",
                 index === activeIndex
                   ? "bg-surface text-white border-t-2 border-t-primary"
-                  : "text-muted hover:bg-surface-hover hover:text-zinc-300",
+                  : "text-muted hover:bg-surface-hover",
               )}
             >
               <div className="flex items-center gap-2">
@@ -334,7 +315,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                   render={({ field: inputField }) => (
                     <input
                       {...inputField}
-                      className="bg-transparent outline-none w-24 truncate"
+                      className="bg-transparent outline-none w-20 sm:w-24 truncate text-sm"
                       onClick={(e) => e.stopPropagation()}
                       onBlur={() => {
                         if (!inputField.value) inputField.onChange("file.txt");
@@ -344,18 +325,16 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                 />
               </div>
               {fields.length > 1 && (
-                <button
-                  type="button"
+                <Trash2
+                  size={14}
+                  className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
                   onClick={(e) => {
                     e.stopPropagation();
                     const newIndex = index === 0 ? 0 : index - 1;
                     remove(index);
                     setActiveIndex(newIndex);
                   }}
-                  className="opacity-0 group-hover:opacity-100 hover:bg-zinc-700 rounded p-0.5 text-muted hover:text-destructive transition-all"
-                >
-                  <Trash2 size={12} />
-                </button>
+                />
               )}
             </div>
           ))}
@@ -364,8 +343,8 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
         <div className="flex-1 relative min-h-0">
           <Suspense
             fallback={
-              <div className="absolute inset-0 flex items-center justify-center text-muted gap-2">
-                <Loader2 className="animate-spin" /> Carregando Editor...
+              <div className="flex items-center justify-center h-full text-muted">
+                <Loader2 className="animate-spin mr-2" /> Carregando...
               </div>
             }
           >
@@ -380,9 +359,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                       height="100%"
                       width="100%"
                       theme="vs-dark"
-                      path={`${basePath ? basePath + "-" : ""}${
-                        fields[activeIndex].id
-                      }-${currentLang}-${activeIndex}`}
+                      path={`${basePath ? basePath + "-" : ""}${fields[activeIndex].id}-${currentLang}-${activeIndex}`}
                       language={currentLang}
                       value={field.value}
                       onChange={(value) => field.onChange(value)}
