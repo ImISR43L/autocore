@@ -7,8 +7,7 @@ export default function CreateProblem() {
   const navigate = useNavigate();
 
   const handleCreate = async (rawData: any) => {
-    // CLONAGEM E SANITIZAÇÃO
-    // Remove strings vazias de datas para evitar erro de validação ISO8601
+    // Sanitização
     const data = {
       ...rawData,
       startDate: rawData.startDate === "" ? null : rawData.startDate,
@@ -26,7 +25,6 @@ export default function CreateProblem() {
       }
     } catch (error: any) {
       console.error(error);
-      // Exibe erros de validação retornados pelo backend se houver
       const message = error.response?.data?.message;
       if (Array.isArray(message)) {
         message.forEach((msg) => toast.error(msg));
@@ -37,9 +35,17 @@ export default function CreateProblem() {
   };
 
   return (
-    <div className="page-container h-screen p-4">
-      <h1 className="text-2xl font-bold mb-4">Novo Problema</h1>
-      <div className="bg-gray-900 border border-gray-800 rounded-lg h-[calc(100%-3rem)]">
+    <div className="min-h-screen bg-background text-zinc-100 p-6 flex flex-col font-sans">
+      <header className="mb-6">
+        <h1 className="text-3xl font-bold tracking-tight text-white">
+          Novo Problema
+        </h1>
+        <p className="text-muted text-sm mt-1">
+          Crie um exercício ou prova para sua turma.
+        </p>
+      </header>
+
+      <div className="flex-1 bg-surface border border-border rounded-xl shadow-2xl overflow-hidden">
         <ProblemWizard onSubmit={handleCreate} />
       </div>
     </div>

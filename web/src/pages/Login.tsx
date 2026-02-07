@@ -109,14 +109,29 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
+
+    // CORREÇÃO: Pegar valores diretamente do elemento DOM garante que
+    // o autocomplete do navegador seja capturado, mesmo se o state do React falhar.
+    const form = e.currentTarget;
+    const emailInput = form.elements.namedItem("email") as HTMLInputElement;
+    const passwordInput = form.elements.namedItem(
+      "password",
+    ) as HTMLInputElement;
+
+    const emailValue = emailInput.value;
+    const passwordValue = passwordInput.value;
+
     try {
       const { data } = await axios.post(`${API_URL}/auth/login`, {
-        email: email.trim(),
-        password,
+        email: emailValue.trim(), // Usa o valor direto do input
+        password: passwordValue, // Usa o valor direto do input
       });
+
       localStorage.setItem("token", data.access_token);
-      localStorage.setItem("userName", data.user.name);
-      toast.success(`Bem-vindo de volta, ${data.user.name}!`);
+      // Nota: Verifique se o backend retorna 'user.name' dentro de 'data.user' conforme seu AuthService
+      localStorage.setItem("userName", data.user?.name || "Usuário");
+
+      toast.success(`Bem-vindo de volta!`);
       navigate("/dashboard");
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Email ou senha incorretos.");

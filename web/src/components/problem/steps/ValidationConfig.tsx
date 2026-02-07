@@ -14,9 +14,11 @@ import {
   Maximize2,
   Minimize2,
   RefreshCw,
+  EyeOff,
 } from "lucide-react";
 import { dryRunProblem } from "../../../lib/api";
 import { toast } from "sonner";
+import { cn } from "../../../lib/utils";
 
 const Editor = lazy(() => import("@monaco-editor/react"));
 
@@ -35,7 +37,14 @@ const getLanguageFromExt = (filename: string) => {
 };
 
 export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
-  const { register, control, getValues, setValue, watch } = useFormContext();
+  const {
+    register,
+    control,
+    getValues,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useFormContext();
 
   const [isRunning, setIsRunning] = useState(false);
   const [runResults, setRunResults] = useState<any>(null);
@@ -43,6 +52,8 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
   const [isSolutionFullscreen, setIsSolutionFullscreen] = useState(false);
 
   const getName = (name: string) => (basePath ? `${basePath}.${name}` : name);
+  const getError = (path: string) =>
+    path.split(".").reduce((obj, key) => obj?.[key], errors as any);
 
   const {
     fields: testFields,
@@ -69,20 +80,17 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     );
   };
 
-  // --- SINCRONIZAÇÃO SCADFFOLDING -> VALIDATION ---
   useEffect(() => {
     const currentStarter = starterCode || [];
     if (currentStarter.length === 0) return;
 
     const currentSolution = getValues(getName("solutionCode")) || [];
 
-    // 1. Inicializa se estiver vazio
     if (currentSolution.length === 0) {
       replaceSolution(cleanCopy(currentStarter));
       return;
     }
 
-    // 2. Verifica Mismatches
     const starterLang = getLanguageFromExt(currentStarter[0]?.name || "");
     const solutionLang = getLanguageFromExt(currentSolution[0]?.name || "");
     const hasLangMismatch = starterLang !== solutionLang;
@@ -95,17 +103,13 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
         );
       });
 
-    // 3. Aplica sincronização se necessário
     if (hasLangMismatch || hasStructureMismatch) {
       replaceSolution(cleanCopy(currentStarter));
-
       if (hasLangMismatch) {
         toast.info(`Gabarito atualizado para ${starterLang} (Sincronizado).`);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(starterCode), replaceSolution, getValues, getName]);
-  // ^^^ O JSON.stringify aqui é OBRIGATÓRIO para detectar a mudança feita pelo setValue no outro componente.
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -116,7 +120,6 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     return () => window.removeEventListener("keydown", handleEsc);
   }, [isSolutionFullscreen]);
 
-  // Lógica de DryRun e Parâmetros (inalterada)
   const currentLang = useMemo(
     () => getLanguageFromExt(firstSolutionName || ""),
     [firstSolutionName],
@@ -183,7 +186,8 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
   const handleExportTests = () => {
     const tests = getValues(getName("testCases"));
     if (tests && tests.length > 0) {
-      navigator.clipboard.writeText(JSON.stringify(tests, null, 2));
+      const cleanTests = tests.map(({ id, ...rest }: any) => rest);
+      navigator.clipboard.writeText(JSON.stringify(cleanTests, null, 2));
       toast.success("JSON copiado!");
     }
   };
@@ -193,25 +197,33 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     const testCases = getValues(getName("testCases"));
     const parameters = getValues(getName("parameters"));
     const returnType = getValues(getName("returnType"));
+
     if (!solutionCode?.length)
       return toast.error("Escreva uma solução de referência.");
     if (!testCases?.length) return toast.error("Adicione casos de teste.");
+
     setIsRunning(true);
     setRunResults(null);
+
+    const sanitize = (list: any[]) =>
+      list?.map(({ id, ...rest }: any) => rest) || [];
+
     try {
       const result = await dryRunProblem({
-        starterCode: solutionCode,
-        testCases,
-        parameters,
+        starterCode: sanitize(solutionCode),
+        testCases: sanitize(testCases),
+        parameters: sanitize(parameters),
         returnType,
         language: getLanguageFromExt(solutionCode[0].name),
       });
+
       setRunResults(result);
       if (result.success) toast.success("Solução válida!");
       else toast.warning("Solução falhou em alguns testes.");
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Erro na execução.");
+      const msg = error.response?.data?.message || "Erro na execução.";
+      toast.error(Array.isArray(msg) ? msg.join(", ") : msg);
     } finally {
       setIsRunning(false);
     }
@@ -219,29 +231,37 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
 
   return (
     <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-10 w-full">
+      {/* SEÇÃO 1: EDITOR DO GABARITO */}
       <div
-        className={`flex flex-col gap-3 transition-all duration-300 ${isSolutionFullscreen ? "fixed inset-0 z-50 bg-[#0d1117] p-6 h-screen w-screen" : "w-full"}`}
+        className={`flex flex-col gap-3 transition-all duration-300 ${
+          isSolutionFullscreen
+            ? "fixed inset-0 z-50 bg-[#0d1117] p-6 h-screen w-screen"
+            : "w-full"
+        }`}
       >
-        <div className="border-b border-gray-800 pb-2 flex justify-between items-end flex-none">
+        <div className="border-b border-border pb-2 flex justify-between items-end flex-none">
           <div className="flex items-center gap-3">
             <div>
               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Code2 className="text-green-500" size={20} />
+                <Code2 className="text-primary" size={20} />
                 {isSolutionFullscreen
                   ? "Edição: Gabarito"
                   : "Solução de Referência"}
               </h3>
               {!isSolutionFullscreen && (
-                <p className="text-sm text-gray-400">
-                  Código validador (oculto).
-                </p>
+                <p className="text-sm text-muted">Código validador (oculto).</p>
               )}
             </div>
             {parameters.length > 0 && (
               <button
                 onClick={handleSyncParams}
                 disabled={!isParamsOutOfSync}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] border ${isParamsOutOfSync ? "bg-amber-500/10 text-amber-400 border-amber-500/30" : "bg-gray-800 text-gray-500 border-transparent opacity-50"}`}
+                className={cn(
+                  "flex items-center gap-1 px-2 py-1 rounded text-[10px] border",
+                  isParamsOutOfSync
+                    ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                    : "bg-surface-hover text-muted border-transparent opacity-50",
+                )}
               >
                 <RefreshCw size={12} />{" "}
                 {isParamsOutOfSync ? "Sincronizar" : "Sincronizado"}
@@ -251,7 +271,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsSolutionFullscreen(!isSolutionFullscreen)}
-              className="text-gray-400 hover:text-white p-1.5 rounded hover:bg-white/10"
+              className="text-muted hover:text-white p-1.5 rounded hover:bg-white/10"
             >
               {isSolutionFullscreen ? (
                 <Minimize2 size={18} />
@@ -261,21 +281,28 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
             </button>
             <button
               onClick={handleResetSolution}
-              className="text-xs text-gray-500 hover:text-white flex items-center gap-1 px-2 py-1 rounded hover:bg-white/5"
+              className="text-xs text-muted hover:text-white flex items-center gap-1 px-2 py-1 rounded hover:bg-white/5"
             >
               <RotateCcw size={12} /> Restaurar
             </button>
           </div>
         </div>
         <div
-          className={`border border-gray-800 rounded-md overflow-hidden bg-[#1e1e1e] flex flex-col w-full shadow-lg ${isSolutionFullscreen ? "flex-1" : "h-[500px]"}`}
+          className={`border border-border rounded-md overflow-hidden bg-surface flex flex-col w-full shadow-lg ${
+            isSolutionFullscreen ? "flex-1" : "h-[500px]"
+          }`}
         >
-          <div className="flex bg-[#252526] overflow-x-auto flex-none">
+          <div className="flex bg-background/50 overflow-x-auto flex-none">
             {solutionFields.map((field, index) => (
               <div
                 key={field.id}
                 onClick={() => setActiveSolutionTab(index)}
-                className={`px-4 py-2 text-sm cursor-pointer border-r border-gray-800 select-none ${index === activeSolutionTab ? "bg-[#1e1e1e] text-white border-t-2 border-t-green-500" : "text-gray-500 hover:bg-[#2a2d2e]"}`}
+                className={cn(
+                  "px-4 py-2 text-sm cursor-pointer border-r border-border select-none",
+                  index === activeSolutionTab
+                    ? "bg-surface text-white border-t-2 border-t-primary"
+                    : "text-muted hover:bg-surface-hover",
+                )}
               >
                 {watch(getName(`solutionCode.${index}.name`))}
               </div>
@@ -284,7 +311,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
           <div className="flex-1 relative min-h-0">
             <Suspense
               fallback={
-                <div className="absolute inset-0 flex items-center justify-center text-gray-500 gap-2">
+                <div className="absolute inset-0 flex items-center justify-center text-muted gap-2">
                   <Loader2 className="animate-spin" /> Carregando...
                 </div>
               }
@@ -297,7 +324,9 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                     render={({ field }) => (
                       <div className="absolute inset-0">
                         <Editor
-                          key={`${solutionFields[activeSolutionTab].id}-${watch(getName(`solutionCode.${activeSolutionTab}.name`))}`}
+                          key={`${solutionFields[activeSolutionTab].id}-${watch(
+                            getName(`solutionCode.${activeSolutionTab}.name`),
+                          )}`}
                           height="100%"
                           width="100%"
                           theme="vs-dark"
@@ -323,23 +352,29 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
           </div>
         </div>
       </div>
-      {/* (Código de testes mantido, apenas encurtado na visualização) */}
+
+      {/* SEÇÃO 2: CASOS DE TESTE */}
       <div className="flex flex-col gap-4 w-full">
-        <div className="flex justify-between items-end border-b border-gray-800 pb-2">
+        <div className="flex justify-between items-end border-b border-border pb-2">
           <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-            <FlaskConical className="text-orange-500" size={20} /> Testes
+            <FlaskConical className="text-primary" size={20} /> Testes
           </h3>
           <div className="flex gap-2">
             <button
               onClick={handleExportTests}
-              className="px-3 py-1.5 border border-gray-700 rounded text-gray-400 hover:text-white"
+              className="px-3 py-1.5 border border-border rounded text-muted hover:text-white"
             >
               <FileJson size={16} />
             </button>
             <button
               onClick={handleDryRun}
               disabled={isRunning}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded border ${isRunning ? "bg-gray-800 border-gray-700 text-gray-500" : "bg-green-600/10 border-green-600 text-green-500 hover:bg-green-600 hover:text-white"}`}
+              className={cn(
+                "flex items-center gap-2 px-4 py-1.5 rounded border transition-colors",
+                isRunning
+                  ? "bg-surface border-border text-muted"
+                  : "bg-primary/10 border-primary text-primary hover:bg-primary hover:text-primary-foreground",
+              )}
             >
               {isRunning ? (
                 <Loader2 size={16} className="animate-spin" />
@@ -352,15 +387,22 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
               onClick={() =>
                 appendTest({ input: "", expectedOutput: "", isHidden: false })
               }
-              className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded flex items-center gap-1"
+              className="bg-surface hover:bg-surface-hover text-white px-3 py-1.5 rounded flex items-center gap-1 border border-border transition-colors"
             >
               <Plus size={16} /> Add
             </button>
           </div>
         </div>
+
+        {/* RESULTADOS DA EXECUÇÃO */}
         {runResults && (
           <div
-            className={`border rounded p-3 ${runResults.success ? "border-green-800 bg-green-950/20 text-green-400" : "border-red-800 bg-red-950/20 text-red-400"}`}
+            className={cn(
+              "border rounded p-3",
+              runResults.success
+                ? "border-primary/50 bg-primary/10 text-primary"
+                : "border-destructive/50 bg-destructive/10 text-destructive",
+            )}
           >
             <div className="flex items-center gap-2 font-bold mb-2">
               {runResults.success ? (
@@ -370,40 +412,122 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
               )}
               {runResults.success ? "Sucesso!" : "Falha nos testes."}
             </div>
+            {!runResults.success && runResults.results && (
+              <div className="flex flex-col gap-2 mt-2">
+                {runResults.results
+                  .filter((r: any) => r.status !== "ACCEPTED")
+                  .map((res: any, i: number) => (
+                    <div
+                      key={i}
+                      className="bg-black/40 p-2 rounded text-xs border border-destructive/30"
+                    >
+                      <div className="font-mono text-muted mb-1">
+                        Input: {res.input}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          Esperado:{" "}
+                          <span className="text-primary">
+                            {res.expectedOutput}
+                          </span>
+                        </div>
+                        <div>
+                          Obtido:{" "}
+                          <span className="text-destructive">
+                            {res.actualOutput}
+                          </span>
+                        </div>
+                      </div>
+                      {res.error && (
+                        <div className="text-destructive mt-1 font-mono">
+                          {res.error}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         )}
-        {testFields.map((field, index) => (
-          <div
-            key={field.id}
-            className="bg-gray-900 border border-gray-800 rounded-lg p-4 relative group"
-          >
-            <div className="flex justify-between mb-2">
-              <span className="text-xs bg-gray-800 px-2 py-0.5 rounded text-gray-500">
-                Case #{index + 1}
-              </span>
-              <button
-                onClick={() => removeTest(index)}
-                className="text-gray-600 hover:text-red-500"
-              >
-                <Trash2 size={16} />
-              </button>
+
+        {/* LISTA DE TESTES (Fonte Aumentada) */}
+        {testFields.map((field, index) => {
+          const expectedError = getError(
+            getName(`testCases.${index}.expectedOutput`),
+          );
+
+          return (
+            <div
+              key={field.id}
+              className="bg-surface border border-border rounded-lg p-4 relative group"
+            >
+              <div className="flex justify-between mb-2">
+                <span className="text-sm bg-background px-2 py-0.5 rounded text-muted font-medium">
+                  Case #{index + 1}
+                </span>
+                <button
+                  onClick={() => removeTest(index)}
+                  className="text-muted hover:text-destructive"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs uppercase font-bold text-muted">
+                    Input
+                  </label>
+                  <textarea
+                    {...register(getName(`testCases.${index}.input`))}
+                    className="bg-background border border-border rounded p-2 text-base text-zinc-300 font-mono w-full resize-none outline-none focus:border-primary transition-all"
+                    placeholder="Input"
+                    rows={2}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs uppercase font-bold text-muted">
+                    Output
+                  </label>
+                  <textarea
+                    {...register(getName(`testCases.${index}.expectedOutput`))}
+                    className={cn(
+                      "bg-background border rounded p-2 text-base text-zinc-300 font-mono w-full resize-none outline-none transition-all",
+                      expectedError
+                        ? "border-destructive focus:border-destructive"
+                        : "border-border focus:border-primary",
+                    )}
+                    placeholder="Output"
+                    rows={2}
+                  />
+                  {expectedError && (
+                    <span className="text-destructive text-xs">
+                      {expectedError.message as string}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-2 flex items-center">
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-muted hover:text-zinc-300 select-none">
+                  <input
+                    type="checkbox"
+                    {...register(getName(`testCases.${index}.isHidden`))}
+                    className="rounded bg-background border-border text-primary focus:ring-0 focus:ring-offset-0 w-3 h-3"
+                  />
+                  <span>Ocultar este caso de teste dos alunos?</span>
+                  {watch(getName(`testCases.${index}.isHidden`)) && (
+                    <EyeOff size={12} className="text-yellow-500" />
+                  )}
+                </label>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <textarea
-                {...register(getName(`testCases.${index}.input`))}
-                className="bg-black/20 border border-gray-700 rounded p-2 text-sm text-gray-300 font-mono w-full"
-                placeholder="Input"
-                rows={2}
-              />
-              <textarea
-                {...register(getName(`testCases.${index}.expectedOutput`))}
-                className="bg-black/20 border border-gray-700 rounded p-2 text-sm text-gray-300 font-mono w-full"
-                placeholder="Output"
-                rows={2}
-              />
-            </div>
+          );
+        })}
+        {testFields.length === 0 && (
+          <div className="text-center py-8 text-muted border border-dashed border-border rounded-lg">
+            Nenhum caso de teste adicionado.
           </div>
-        ))}
+        )}
       </div>
     </div>
   );

@@ -20,7 +20,8 @@ import {
   ChevronLeft,
   Loader2,
 } from "lucide-react";
-import "./Stepper.css";
+import { Button } from "./ui/Button"; // Importando componente Button padronizado
+import { cn } from "../lib/utils";
 
 // --- Tipos & Interfaces ---
 
@@ -120,6 +121,7 @@ export function Stepper<T extends FieldValues>({
   };
 
   const goToStep = async (index: number) => {
+    // Permite voltar, mas valida ao avançar se necessário
     if (index < activeStepIndex) {
       setActiveStepIndex(index);
     }
@@ -148,27 +150,27 @@ export function Stepper<T extends FieldValues>({
     ],
   );
 
-  // --- CORREÇÃO DE LÓGICA DE ÍNDICE ---
-  // Contador mutável para rastrear apenas os Steps
-  let stepCounter = 0;
+  // Lógica segura para indexar Steps sem duplicar no StrictMode
+  const childrenArray = React.Children.toArray(children);
+  let stepIndexCounter = 0;
+
+  const processedChildren = childrenArray.map((child) => {
+    if (React.isValidElement(child) && child.type === Step) {
+      return React.cloneElement(child as any, {
+        __index: stepIndexCounter++,
+      });
+    }
+    return child;
+  });
 
   return (
     <StepperContext.Provider value={contextValue}>
-      <div className="stepper-container">
-        {React.Children.map(children, (child) => {
-          if (React.isValidElement(child)) {
-            // Verifica se o filho é do tipo Step
-            if (child.type === Step) {
-              const indexToAssign = stepCounter++;
-              return React.cloneElement(child as any, {
-                __index: indexToAssign,
-              });
-            }
-            // Retorna Navigation e Controls sem modificar
-            return child;
-          }
-          return child;
-        })}
+      {/* CORREÇÃO DE LAYOUT: 
+          flex flex-col h-full permite que o conteudo ocupe 100% da altura do pai
+          e distribua o header, conteudo e footer corretamente.
+      */}
+      <div className="flex flex-col h-full overflow-hidden w-full relative">
+        {processedChildren}
       </div>
     </StepperContext.Provider>
   );
@@ -182,49 +184,87 @@ function Navigation() {
   const { activeStepIndex, orderedSteps, formState, goToStep } = context;
 
   return (
-    <div className="stepper-nav">
-      {orderedSteps.map((step, index) => {
-        const isActive = index === activeStepIndex;
-        const isCompleted = index < activeStepIndex;
+    <div className="w-full flex items-center justify-center px-4">
+      <div className="flex items-center w-full max-w-3xl">
+        {orderedSteps.map((step, index) => {
+          const isActive = index === activeStepIndex;
+          const isCompleted = index < activeStepIndex;
+          const isLast = index === orderedSteps.length - 1;
 
-        const hasError = step.validationFields.some((field) => {
-          const fieldParts = field.split(".");
-          let currentError: any = formState.errors;
-          for (const part of fieldParts) {
-            if (currentError?.[part]) currentError = currentError[part];
-            else {
-              currentError = undefined;
-              break;
+          const hasError = step.validationFields.some((field) => {
+            const fieldParts = field.split(".");
+            let currentError: any = formState.errors;
+            for (const part of fieldParts) {
+              if (currentError?.[part]) currentError = currentError[part];
+              else {
+                currentError = undefined;
+                break;
+              }
             }
-          }
-          return !!currentError;
-        });
+            return !!currentError;
+          });
 
-        return (
-          <React.Fragment key={step.id}>
-            <button
-              type="button"
-              onClick={() => goToStep(index)}
-              disabled={index > activeStepIndex}
-              className={`nav-item ${isActive ? "active" : ""} ${
-                isCompleted ? "completed" : ""
-              } ${hasError ? "error" : ""}`}
-            >
-              <div className="nav-indicator">
-                {hasError ? (
-                  <AlertCircle size={14} className="text-red-500" />
-                ) : isCompleted ? (
-                  <Check size={14} strokeWidth={3} />
-                ) : (
-                  <span>{index + 1}</span>
+          return (
+            <React.Fragment key={step.id}>
+              {/* Item do Passo */}
+              <button
+                type="button"
+                onClick={() => goToStep(index)}
+                disabled={index > activeStepIndex}
+                className={cn(
+                  "flex items-center gap-2 relative z-10 group focus:outline-none transition-all flex-none",
+                  index > activeStepIndex && "cursor-not-allowed opacity-50",
                 )}
-              </div>
-              <span className="nav-label">{step.label}</span>
-            </button>
-            {index < orderedSteps.length - 1 && <div className="nav-line" />}
-          </React.Fragment>
-        );
-      })}
+              >
+                <div
+                  className={cn(
+                    "w-8 h-8 rounded-full flex items-center justify-center border-2 text-xs font-bold transition-all duration-300",
+                    hasError
+                      ? "border-destructive text-destructive bg-destructive/10"
+                      : isActive
+                        ? "border-primary bg-primary text-primary-foreground scale-110 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                        : isCompleted
+                          ? "border-primary text-primary bg-background"
+                          : "border-border text-muted bg-surface",
+                  )}
+                >
+                  {hasError ? (
+                    <AlertCircle size={16} />
+                  ) : isCompleted ? (
+                    <Check size={16} strokeWidth={3} />
+                  ) : (
+                    <span>{index + 1}</span>
+                  )}
+                </div>
+
+                {/* Texto do Passo (Escondido em mobile muito pequeno) */}
+                <span
+                  className={cn(
+                    "text-sm font-medium hidden sm:block transition-colors whitespace-nowrap",
+                    isActive
+                      ? "text-white"
+                      : "text-muted group-hover:text-zinc-300",
+                  )}
+                >
+                  {step.label}
+                </span>
+              </button>
+
+              {/* Linha Conectora (Flexível) */}
+              {!isLast && (
+                <div className="flex-1 mx-2 sm:mx-4 h-[2px] bg-border relative">
+                  <div
+                    className={cn(
+                      "absolute inset-0 bg-primary transition-all duration-500 ease-in-out origin-left",
+                      isCompleted ? "scale-x-100" : "scale-x-0",
+                    )}
+                  />
+                </div>
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -234,7 +274,7 @@ function Step<T extends FieldValues>({
   validationFields = [],
   children,
   className = "",
-  // @ts-ignore - Injetado pelo React.cloneElement no Pai
+  // @ts-ignore
   __index,
 }: StepProps<T> & { __index?: number }) {
   const context = useContext(StepperContext);
@@ -245,14 +285,12 @@ function Step<T extends FieldValues>({
 
   useEffect(() => {
     if (__index === undefined) return;
-
     registerStep({
       id,
       label,
       index: __index,
       validationFields: validationFields as string[],
     });
-
     return () => unregisterStep(id);
   }, [
     id,
@@ -265,7 +303,14 @@ function Step<T extends FieldValues>({
 
   if (activeStepIndex !== __index) return null;
 
-  return <div className={`step-content fade-in ${className}`}>{children}</div>;
+  // CORREÇÃO: h-full e overflow-hidden para garantir que o conteúdo interno gerencie o scroll
+  return (
+    <div
+      className={`flex-1 h-full overflow-hidden animate-in fade-in slide-in-from-right-8 duration-300 ${className}`}
+    >
+      {children}
+    </div>
+  );
 }
 
 function Controls() {
@@ -278,37 +323,35 @@ function Controls() {
   const isFirstStep = activeStepIndex === 0;
 
   return (
-    <div className="stepper-controls">
-      <button
+    <div className="flex-none border-t border-border bg-surface p-4 flex justify-between items-center z-20 shadow-[-1px_-5px_20px_rgba(0,0,0,0.2)]">
+      <Button
         type="button"
+        variant="secondary"
         onClick={prevStep}
         disabled={isFirstStep || isSubmitting}
-        className="btn-secondary"
+        className="w-32"
       >
-        <ChevronLeft size={16} />
-        Voltar
-      </button>
+        <ChevronLeft size={16} className="mr-2" /> Voltar
+      </Button>
 
-      <button
+      <Button
         type="button"
+        variant="primary"
         onClick={nextStep}
         disabled={isSubmitting}
-        className="btn-primary"
+        isLoading={isSubmitting}
+        className="w-32"
       >
         {isSubmitting ? (
-          <>
-            <Loader2 size={16} className="animate-spin" />
-            Processando...
-          </>
+          "Salvando..."
         ) : isLastStep ? (
-          "Concluir Criação"
+          "Concluir"
         ) : (
           <>
-            Próximo
-            <ChevronRight size={16} />
+            Próximo <ChevronRight size={16} className="ml-2" />
           </>
         )}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -316,7 +359,7 @@ function Controls() {
 Stepper.Navigation = Navigation;
 Stepper.Step = Step;
 Stepper.Content = ({ children }: { children: ReactNode }) => (
-  <div className="step-viewport">{children}</div>
+  <div className="h-full flex flex-col">{children}</div>
 );
 Stepper.Controls = Controls;
 

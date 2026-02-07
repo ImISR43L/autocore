@@ -92,7 +92,7 @@ export default function EditProblem() {
         <div>
           <h1 className="text-lg font-bold flex items-center gap-2">
             Editando:{" "}
-            <span className="text-blue-400">{problemData?.title}</span>
+            <span className="text-emerald-400">{problemData?.title}</span>
           </h1>
           <p className="text-xs text-gray-500">
             Todas as alterações são salvas ao clicar em "Salvar Alterações".

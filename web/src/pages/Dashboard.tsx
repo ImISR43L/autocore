@@ -12,9 +12,14 @@ import {
   School,
   ArrowRight,
   Clock,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
-import "../App.css";
+
+// UI Components
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { cn } from "../lib/utils";
 
 // Interfaces
 interface Problem {
@@ -124,7 +129,6 @@ export default function Dashboard() {
     problemId: string,
   ) => {
     e.stopPropagation();
-    // Esta rota já estava correta (/class/), mantivemos igual.
     navigate(`/class/${classId}`, { state: { problemId: problemId } });
   };
 
@@ -132,8 +136,6 @@ export default function Dashboard() {
     if (!newClassName.trim()) return toast.warning("Nome inválido");
     try {
       const token = localStorage.getItem("token");
-      // A lógica de criação estava correta (POST /classrooms).
-      // O problema era apenas na navegação pós-criação/listagem.
       await axios.post(
         `${API_URL}/classrooms`,
         { name: newClassName },
@@ -178,176 +180,87 @@ export default function Dashboard() {
   );
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#0a0a0a",
-        color: "#e0e0e0",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
+    <div className="min-h-screen bg-background text-zinc-100 flex flex-col font-sans selection:bg-primary/20">
       {/* NAVBAR */}
-      <nav
-        style={{
-          borderBottom: "1px solid #333",
-          padding: "15px 40px",
-          background: "#161616",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <div
-            style={{
-              background: "#2e7d32",
-              padding: "6px",
-              borderRadius: "8px",
-            }}
-          >
-            <GraduationCap size={24} color="#fff" />
+      <nav className="sticky top-0 z-10 border-b border-border bg-surface/80 backdrop-blur-md px-6 py-4 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <div className="bg-primary/10 p-2 rounded-lg border border-primary/20">
+            <GraduationCap size={28} className="text-primary" />
           </div>
-          <span
-            style={{
-              fontWeight: "bold",
-              fontSize: "1.2rem",
-              letterSpacing: "-0.5px",
-            }}
-          >
+          <span className="font-bold text-xl tracking-tight text-white">
             AutoCore
           </span>
         </div>
-        <button
+        <Button
+          variant="ghost"
           onClick={handleLogout}
-          className="btn-ghost"
-          style={{
-            color: "#f44336",
-            display: "flex",
-            gap: "8px",
-            alignItems: "center",
-          }}
+          className="text-red-400 hover:text-red-300 hover:bg-red-500/10 text-sm"
         >
-          <LogOut size={18} /> Sair
-        </button>
+          <LogOut size={20} className="mr-2" /> Sair
+        </Button>
       </nav>
 
       {/* CONTEÚDO PRINCIPAL */}
-      <main
-        style={{
-          flex: 1,
-          padding: "40px",
-          maxWidth: "1200px",
-          margin: "0 auto",
-          width: "100%",
-        }}
-      >
+      <main className="flex-1 w-full max-w-7xl mx-auto p-6 md:p-10">
         {/* CABEÇALHO */}
-        <header
-          style={{
-            marginBottom: "40px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-end",
-            flexWrap: "wrap",
-            gap: "20px",
-          }}
-        >
+        <header className="flex flex-col md:flex-row justify-between items-end gap-6 mb-10">
           <div>
-            <h1 style={{ fontSize: "2.2rem", margin: "0 0 10px 0" }}>
-              Olá, <span style={{ color: "#4caf50" }}>{userName}</span>!
+            <h1 className="text-4xl font-bold text-white mb-3">
+              Olá, <span className="text-primary">{userName}</span>!
             </h1>
-            <p style={{ color: "#888", fontSize: "1rem", margin: 0 }}>
+            <p className="text-muted text-lg">
               Aqui está o resumo das suas atividades acadêmicas.
             </p>
           </div>
 
-          <div style={{ display: "flex", gap: "10px" }}>
-            <button
+          <div className="flex gap-4">
+            <Button
+              variant="secondary"
               onClick={() => setShowJoinModal(true)}
-              className="btn-secondary"
-              style={{
-                display: "flex",
-                gap: "8px",
-                alignItems: "center",
-                padding: "10px 20px",
-              }}
+              className="shadow-sm h-11 px-6 text-base"
             >
-              <Users size={18} /> Entrar em Turma
-            </button>
-            <button
+              <Users size={20} className="mr-2" /> Entrar em Turma
+            </Button>
+            <Button
+              variant="primary"
               onClick={() => setShowCreateModal(true)}
-              className="btn-primary"
-              style={{
-                display: "flex",
-                gap: "8px",
-                alignItems: "center",
-                padding: "10px 20px",
-              }}
+              className="shadow-md shadow-primary/20 h-11 px-6 text-base"
             >
-              <Plus size={18} /> Criar Nova Turma
-            </button>
+              <Plus size={20} className="mr-2" /> Criar Nova Turma
+            </Button>
           </div>
         </header>
 
         {/* BARRA DE FERRAMENTAS */}
-        <div
-          style={{
-            marginBottom: "20px",
-            display: "flex",
-            alignItems: "center",
-            gap: "15px",
-          }}
-        >
-          <div style={{ position: "relative", flex: 1, maxWidth: "400px" }}>
+        <div className="flex flex-col sm:flex-row items-center gap-4 mb-8">
+          <div className="relative flex-1 w-full max-w-md">
             <Search
-              size={18}
-              style={{
-                position: "absolute",
-                left: "12px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: "#666",
-              }}
+              size={20}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
             />
-            <input
+            <Input
               type="text"
               placeholder="Buscar turmas por nome ou código..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              style={{
-                width: "100%",
-                background: "#1e1e1e",
-                border: "1px solid #333",
-                borderRadius: "8px",
-                padding: "12px 12px 12px 40px",
-                color: "white",
-                fontSize: "0.95rem",
-                outline: "none",
-              }}
+              className="pl-10 bg-surface border-border focus:border-primary/50 h-12 text-base"
             />
           </div>
-          <div style={{ fontSize: "0.9rem", color: "#666" }}>
-            Mostrando <strong>{filteredClassrooms.length}</strong> turmas
+          <div className="text-base text-muted">
+            Mostrando{" "}
+            <strong className="text-white">{filteredClassrooms.length}</strong>{" "}
+            turmas
           </div>
         </div>
 
         {/* GRID DE TURMAS */}
         {loading ? (
-          <div style={{ textAlign: "center", padding: "50px", color: "#666" }}>
-            Carregando turmas...
+          <div className="flex flex-col items-center justify-center py-20 text-muted">
+            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary mb-4"></div>
+            <span className="text-lg">Carregando turmas...</span>
           </div>
         ) : filteredClassrooms.length > 0 ? (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))",
-              gap: "20px",
-            }}
-          >
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredClassrooms.map((c) => {
               const isOwner = c.owner.id === myUserId;
               const pendingWork = getPendingForClass(c);
@@ -355,204 +268,82 @@ export default function Dashboard() {
               return (
                 <div
                   key={c.id}
-                  // CORREÇÃO AQUI: Mudado de '/classroom/' para '/class/' para bater com o Router
                   onClick={() => navigate(`/class/${c.id}`)}
-                  className="classroom-card"
-                  style={{
-                    background: "#1e1e1e",
-                    border: "1px solid #333",
-                    borderRadius: "12px",
-                    overflow: "hidden",
-                    cursor: "pointer",
-                    transition: "transform 0.2s, box-shadow 0.2s",
-                    display: "flex",
-                    flexDirection: "column",
-                    minHeight: "220px",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = "translateY(-4px)";
-                    e.currentTarget.style.boxShadow =
-                      "0 10px 20px rgba(0,0,0,0.3)";
-                    e.currentTarget.style.borderColor = "#4caf50";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.boxShadow = "none";
-                    e.currentTarget.style.borderColor = "#333";
-                  }}
+                  className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface transition-all hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5 cursor-pointer"
                 >
                   {/* Banner do Card */}
                   <div
-                    style={{
-                      height: "60px",
-                      background: isOwner
-                        ? "linear-gradient(135deg, #1b5e20 0%, #0d3b10 100%)"
-                        : "linear-gradient(135deg, #263238 0%, #101518 100%)",
-                      padding: "15px 20px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
+                    className={cn(
+                      "h-20 px-6 flex items-center justify-between border-b border-white/5",
+                      isOwner
+                        ? "bg-gradient-to-r from-emerald-900/40 to-surface"
+                        : "bg-gradient-to-r from-zinc-800/40 to-surface",
+                    )}
                   >
                     {isOwner ? (
-                      <span
-                        className="badge-prof"
-                        style={{
-                          background: "rgba(0,0,0,0.3)",
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          fontSize: "0.75rem",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "5px",
-                          color: "#a5d6a7",
-                        }}
-                      >
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-3 py-1.5 text-sm font-medium text-emerald-400 border border-emerald-500/20">
                         <Crown size={14} /> Professor
                       </span>
                     ) : (
-                      <span
-                        className="badge-aluno"
-                        style={{
-                          background: "rgba(0,0,0,0.3)",
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          fontSize: "0.75rem",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "5px",
-                          color: "#b0bec5",
-                        }}
-                      >
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-zinc-700/30 px-3 py-1.5 text-sm font-medium text-zinc-400 border border-zinc-700/50">
                         <School size={14} /> Aluno
                       </span>
                     )}
-                    <span
-                      style={{
-                        fontSize: "0.8rem",
-                        color: "rgba(255,255,255,0.6)",
-                        fontFamily: "monospace",
-                      }}
-                    >
+                    <span className="font-mono text-sm text-muted/80 tracking-wider">
                       {c.code}
                     </span>
                   </div>
 
                   {/* Corpo do Card */}
-                  <div
-                    style={{
-                      padding: "20px",
-                      flex: 1,
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
-                    <h3
-                      style={{
-                        margin: "0 0 15px 0",
-                        fontSize: "1.2rem",
-                        color: "#fff",
-                        lineHeight: "1.4",
-                      }}
-                    >
+                  <div className="flex flex-1 flex-col p-6">
+                    <h3 className="text-2xl font-semibold text-white mb-6 line-clamp-1 group-hover:text-primary transition-colors">
                       {c.name}
                     </h3>
 
                     {/* SEÇÃO DE PENDÊNCIAS */}
-                    {pendingWork.length > 0 ? (
-                      <div style={{ marginBottom: "15px", flex: 1 }}>
-                        <div
-                          style={{
-                            fontSize: "0.75rem",
-                            color: "#888",
-                            marginBottom: "8px",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "5px",
-                          }}
-                        >
-                          <Clock size={12} /> PRÓXIMAS ENTREGAS
-                        </div>
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: "8px",
-                          }}
-                        >
-                          {pendingWork.map((work) => (
-                            <div
-                              key={work.id}
-                              onClick={(e) =>
-                                navigateToAssignment(e, c.id, work.id)
-                              }
-                              className="pending-item"
-                              style={{
-                                fontSize: "0.85rem",
-                                color: "#ccc",
-                                padding: "6px 8px",
-                                background: "#252526",
-                                borderRadius: "4px",
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                transition: "background 0.2s",
-                              }}
-                              onMouseEnter={(e) =>
-                                (e.currentTarget.style.background = "#333")
-                              }
-                              onMouseLeave={(e) =>
-                                (e.currentTarget.style.background = "#252526")
-                              }
-                            >
-                              <span
-                                style={{
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                  maxWidth: "160px",
-                                }}
+                    <div className="flex-1 mb-6">
+                      {pendingWork.length > 0 ? (
+                        <>
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-muted uppercase tracking-wider mb-3">
+                            <Clock size={12} /> Próximas Entregas
+                          </div>
+                          <div className="space-y-3">
+                            {pendingWork.map((work) => (
+                              <div
+                                key={work.id}
+                                onClick={(e) =>
+                                  navigateToAssignment(e, c.id, work.id)
+                                }
+                                className="flex items-center justify-between rounded-md bg-background/50 p-3 text-sm text-zinc-300 border border-border/50 hover:border-primary/30 hover:bg-background transition-colors"
                               >
-                                {work.title}
-                              </span>
-                              <span
-                                style={{ fontSize: "0.7rem", color: "#f44336" }}
-                              >
-                                {formatDeadline(work.deadline)}
-                              </span>
-                            </div>
-                          ))}
+                                <span
+                                  className="truncate max-w-[160px]"
+                                  title={work.title}
+                                >
+                                  {work.title}
+                                </span>
+                                <span className="text-red-400 whitespace-nowrap ml-2 text-xs font-medium">
+                                  {formatDeadline(work.deadline)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="h-full flex items-center text-base text-muted italic">
+                          Nenhuma entrega pendente para esta semana.
                         </div>
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          flex: 1,
-                          display: "flex",
-                          alignItems: "center",
-                          color: "#555",
-                          fontSize: "0.9rem",
-                          fontStyle: "italic",
-                        }}
-                      >
-                        Nenhuma entrega pendente para esta semana.
-                      </div>
-                    )}
+                      )}
+                    </div>
 
-                    <div
-                      style={{
-                        marginTop: "15px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        borderTop: "1px solid #333",
-                        paddingTop: "15px",
-                      }}
-                    >
-                      <span style={{ fontSize: "0.85rem", color: "#666" }}>
+                    <div className="mt-auto flex items-center justify-between border-t border-border pt-5 text-sm text-muted group-hover:text-zinc-200 transition-colors">
+                      <span>
                         {isOwner ? "Gerenciar Turma" : "Ver Todas Atividades"}
                       </span>
-                      <ArrowRight size={18} color="#4caf50" />
+                      <ArrowRight
+                        size={18}
+                        className="text-primary opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all"
+                      />
                     </div>
                   </div>
                 </div>
@@ -561,44 +352,26 @@ export default function Dashboard() {
           </div>
         ) : (
           /* EMPTY STATE */
-          <div
-            style={{
-              textAlign: "center",
-              padding: "60px 20px",
-              background: "#161616",
-              borderRadius: "12px",
-              border: "1px dashed #444",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "15px",
-            }}
-          >
-            <div
-              style={{
-                background: "#222",
-                padding: "20px",
-                borderRadius: "50%",
-              }}
-            >
-              <BookOpen size={40} className="text-gray-500" />
+          <div className="flex flex-col items-center justify-center py-24 bg-surface/30 border border-dashed border-border rounded-xl">
+            <div className="bg-surface p-6 rounded-full mb-6 border border-border">
+              <BookOpen size={48} className="text-muted" />
             </div>
-            <h3 style={{ margin: 0, color: "#e0e0e0" }}>
+            <h3 className="text-xl font-medium text-white mb-2">
               Nenhuma turma encontrada
             </h3>
-            <p style={{ color: "#888", maxWidth: "400px" }}>
+            <p className="text-muted text-base text-center max-w-md mb-8">
               {search
                 ? `Não encontramos nenhuma turma com o nome "${search}".`
                 : "Você ainda não participa de nenhuma turma. Crie uma nova para ensinar ou entre em uma existente."}
             </p>
             {!search && (
-              <button
+              <Button
                 onClick={() => setShowJoinModal(true)}
-                className="btn-primary"
-                style={{ marginTop: "10px" }}
+                size="md"
+                className="h-12 px-8 text-base"
               >
                 Começar Agora
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -606,43 +379,48 @@ export default function Dashboard() {
 
       {/* MODAL: CRIAR TURMA */}
       {showCreateModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: "400px" }}>
-            <h3>Criar Nova Turma</h3>
-            <p
-              style={{
-                color: "#888",
-                fontSize: "0.9rem",
-                marginBottom: "20px",
-              }}
-            >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-lg bg-surface border border-border rounded-xl shadow-2xl p-8 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-white">
+                Criar Nova Turma
+              </h3>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="text-muted hover:text-white transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <p className="text-base text-muted mb-8">
               Defina um nome para sua turma. O código de acesso será gerado
               automaticamente.
             </p>
-            <input
-              className="modern-input"
-              value={newClassName}
-              onChange={(e) => setNewClassName(e.target.value)}
-              placeholder="Ex: Introdução a Python 2026"
-              autoFocus
-            />
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "10px",
-                marginTop: "20px",
-              }}
-            >
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="btn-secondary"
-              >
-                Cancelar
-              </button>
-              <button onClick={handleCreateClassroom} className="btn-primary">
-                Criar
-              </button>
+
+            <div className="space-y-8">
+              <Input
+                label="Nome da Turma"
+                value={newClassName}
+                onChange={(e) => setNewClassName(e.target.value)}
+                placeholder="Ex: Introdução a Python 2026"
+                autoFocus
+                className="h-12 text-base"
+              />
+              <div className="flex justify-end gap-4">
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowCreateModal(false)}
+                  className="h-12 text-base px-6"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleCreateClassroom}
+                  className="h-12 text-base px-6"
+                >
+                  Criar Turma
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -650,80 +428,51 @@ export default function Dashboard() {
 
       {/* MODAL: ENTRAR EM TURMA */}
       {showJoinModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: "400px" }}>
-            <h3>Entrar em uma Turma</h3>
-            <p
-              style={{
-                color: "#888",
-                fontSize: "0.9rem",
-                marginBottom: "20px",
-              }}
-            >
-              Insira o código de 6 caracteres fornecido pelo seu professor.
-            </p>
-            <input
-              className="modern-input"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-              placeholder="Ex: X9J2K1"
-              maxLength={6}
-              autoFocus
-              style={{
-                textAlign: "center",
-                letterSpacing: "5px",
-                textTransform: "uppercase",
-                fontSize: "1.2rem",
-              }}
-            />
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "10px",
-                marginTop: "20px",
-              }}
-            >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-lg bg-surface border border-border rounded-xl shadow-2xl p-8 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-white">
+                Entrar em uma Turma
+              </h3>
               <button
                 onClick={() => setShowJoinModal(false)}
-                className="btn-secondary"
+                className="text-muted hover:text-white transition-colors"
               >
-                Cancelar
+                <X size={24} />
               </button>
-              <button onClick={handleJoinClassroom} className="btn-primary">
-                Entrar
-              </button>
+            </div>
+            <p className="text-base text-muted mb-8">
+              Insira o código de 6 caracteres fornecido pelo seu professor.
+            </p>
+
+            <div className="space-y-8">
+              <Input
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                placeholder="Ex: X9J2K1"
+                maxLength={6}
+                autoFocus
+                className="text-center text-3xl tracking-[0.5em] uppercase h-16 font-mono font-bold placeholder:tracking-normal placeholder:text-lg placeholder:font-sans"
+              />
+              <div className="flex justify-end gap-4">
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowJoinModal(false)}
+                  className="h-12 text-base px-6"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleJoinClassroom}
+                  className="h-12 text-base px-6"
+                >
+                  Entrar
+                </Button>
+              </div>
             </div>
           </div>
         </div>
       )}
-
-      {/* ESTILOS LOCAIS DE INPUT */}
-      <style>{`
-        .modern-input {
-          width: 100%;
-          padding: 12px;
-          background: #0a0a0a;
-          border: 1px solid #333;
-          border-radius: 8px;
-          color: white;
-          outline: none;
-          transition: border-color 0.2s;
-        }
-        .modern-input:focus {
-          border-color: #4caf50;
-        }
-        .btn-ghost {
-          background: transparent;
-          border: none;
-          color: #888;
-          cursor: pointer;
-          transition: color 0.2s;
-        }
-        .btn-ghost:hover {
-          color: #fff;
-        }
-      `}</style>
     </div>
   );
 }

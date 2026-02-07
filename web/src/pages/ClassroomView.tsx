@@ -15,7 +15,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  Cell,
+  Rectangle,
 } from "recharts";
 import {
   ArrowLeft,
@@ -35,6 +35,7 @@ import {
   Filter,
   Cpu,
   Settings,
+  BarChart as BarChartIcon,
 } from "lucide-react";
 import {
   Panel,
@@ -44,13 +45,18 @@ import {
 const PanelGroup = PanelGroupOriginal as any;
 
 import { io } from "socket.io-client";
-import { DiffViewer } from "../components/DiffViewer";
 import LogViewer from "../components/LogViewer";
+
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { Select } from "../components/ui/Select";
+import { Card } from "../components/ui/Card";
+import { cn } from "../lib/utils";
 
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
 
-// --- INTERFACES ---
+// --- INTERFACES (Mantidas) ---
 interface Announcement {
   id: string;
   content: string;
@@ -214,21 +220,17 @@ export default function ClassroomView() {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
 
-  // UI & Execução
   const [verdict, setVerdict] = useState<string | null>(null);
-
   const [loading, setLoading] = useState<boolean>(false);
   const loadingRef = useRef(false);
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
 
-  // --- FILTRO DE SUBMISSÕES ---
   const [selectedStudentFilter, setSelectedStudentFilter] = useState<
     number | null
   >(null);
   const [studentSearch, setStudentSearch] = useState("");
 
-  // INSPEÇÃO
   const [inspectingUser, setInspectingUser] = useState<{
     id: number;
     email: string;
@@ -238,13 +240,7 @@ export default function ClassroomView() {
   >({});
   const [activeInspectionIndex, setActiveInspectionIndex] = useState(0);
   const [inspectFileIndex, setInspectFileIndex] = useState(0);
-  const [filterStatus, setFilterStatus] = useState<string[]>([]);
-  const [filterActivity, setFilterActivity] = useState<string[]>([]);
-  const [showFilterMenu, setShowFilterMenu] = useState<
-    "status" | "activity" | null
-  >(null);
 
-  // Modal de Detalhes
   const [selectedSubmission, setSelectedSubmission] =
     useState<Submission | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -319,7 +315,6 @@ export default function ClassroomView() {
 
   useEffect(() => {
     localStorage.setItem(`languageId`, String(languageId));
-    // Re-validar ao mudar linguagem
     if (files[activeFileIndex]?.content) {
       validateCode(files[activeFileIndex].content, languageId);
     }
@@ -329,7 +324,7 @@ export default function ClassroomView() {
     if (!monacoRef.current || !editorRef.current) return;
 
     const model = editorRef.current.getModel();
-    if (!model) return; // Segurança extra
+    if (!model) return;
 
     const markers: any[] = [];
     const lang = LANGUAGE_MAP[langId] || "plaintext";
@@ -342,7 +337,6 @@ export default function ClassroomView() {
       if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#"))
         return;
 
-      // --- LÓGICA PYTHON ---
       if (lang === "python") {
         const keywords = [
           "def ",
@@ -356,11 +350,7 @@ export default function ClassroomView() {
           "finally",
           "class ",
         ];
-        // Nota: "else" e "try" no array original não tinham espaço, o que podia causar falsos positivos
-        // Ajustei para garantir consistência, mas sua lógica 'startsWith' ajuda.
-
         const startsWithKeyword = keywords.some((k) => trimmed.startsWith(k));
-        // Correção para 'else' e 'try' que podem não ter espaço depois (ex: "else:")
         const isExactKeyword = ["else", "try", "finally"].includes(
           trimmed.replace(":", ""),
         );
@@ -377,7 +367,6 @@ export default function ClassroomView() {
         }
       }
 
-      // --- LÓGICA C / C++ / JAVA ---
       if (["c", "cpp", "java"].includes(lang)) {
         const isStatement =
           (trimmed.includes("=") ||
@@ -415,7 +404,6 @@ export default function ClassroomView() {
 
   useEffect(() => {
     if (files.length > 0 && files[activeFileIndex]) {
-      // Pequeno timeout para garantir que o editor processou a mudança de valor
       const timer = setTimeout(() => {
         validateCode(files[activeFileIndex].content, languageId);
       }, 100);
@@ -537,7 +525,6 @@ export default function ClassroomView() {
           submission.problemId === currentProb.id)
       ) {
         setVerdict(submission.status);
-        // REMOVIDO: setters de executionOutput/Error
         setLoading(false);
         loadingRef.current = false;
 
@@ -689,7 +676,6 @@ export default function ClassroomView() {
 
   useEffect(() => {
     setVerdict(null);
-    // REMOVIDO: setters de executionOutput/Error
     setLoading(false);
     loadingRef.current = false;
   }, [displayProblem?.id]);
@@ -750,14 +736,11 @@ export default function ClassroomView() {
     toast.success("Restaurado.");
   };
 
-  // Esta função agora é usada tanto para inspecionar quanto para abrir o modal de detalhes
   const handleStartInspection = async (targetSubmission: Submission) => {
-    // Se for dono (professor), abre o fluxo de inspeção
     if (isOwner) {
       setInspectingUser(targetSubmission.user);
       setStudentSubmissions({});
       setInspectFileIndex(0);
-      // ... lógica de inspeção existente ...
       const targetProblemId = targetSubmission.problem?.id
         ? String(targetSubmission.problem.id)
         : targetSubmission.problemId
@@ -808,27 +791,8 @@ export default function ClassroomView() {
         }
       }
     } else {
-      // Se for aluno, abre o modal de detalhes simples
       setSelectedSubmission(targetSubmission);
       setShowModal(true);
-    }
-  };
-
-  const handleInspectionTabChange = (index: number) => {
-    setActiveInspectionIndex(index);
-    setInspectFileIndex(0);
-    if (!currentProblem || !inspectingUser) return;
-    const targetProb =
-      currentProblem.children && currentProblem.children.length > 0
-        ? currentProblem.children[index]
-        : currentProblem;
-    const sub = studentSubmissions[targetProb.id];
-    if (sub) {
-      setGradingGrade(sub.grade ?? "");
-      setGradingComment(sub.teacherComment ?? "");
-    } else {
-      setGradingGrade("");
-      setGradingComment("");
     }
   };
 
@@ -917,13 +881,12 @@ export default function ClassroomView() {
   const submitSolution = async (e?: React.SyntheticEvent) => {
     if (e) e.preventDefault();
 
-    // Verificações movidas para DENTRO da função para garantir que os atalhos respeitem o estado
     if (!displayProblem) {
       toast.warning("Selecione um exercício!");
       return;
     }
     if (loading) {
-      return; // Previne duplo envio
+      return;
     }
     if (isBlocked) {
       toast.error("O envio está bloqueado para esta atividade.");
@@ -976,14 +939,12 @@ export default function ClassroomView() {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
-    // FEATURE: Atalho Ctrl+Enter DENTRO do Editor
-    // 'addAction' é mais robusto que 'addCommand' para ações que devem aparecer no Command Palette
     editor.addAction({
       id: "submit-code-action",
       label: "Enviar Solução",
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
       run: () => {
-        console.log("Atalho Monaco acionado!"); // Debug
+        console.log("Atalho Monaco acionado!");
         if (submitSolutionRef.current) {
           submitSolutionRef.current();
         }
@@ -997,12 +958,8 @@ export default function ClassroomView() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Se o foco estiver no editor, o Monaco trata.
-      // Aqui tratamos quando o foco está na página (ex: clicou fora)
       if (activeTab === "classwork" && selectedProblemId) {
         if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-          // Verifica se o alvo não é uma caixa de texto padrão (opcional, para não bloquear enter em textareas)
-          // Mas como é Ctrl+Enter, geralmente queremos enviar mesmo.
           console.log("Atalho Global acionado!");
           e.preventDefault();
           submitSolution();
@@ -1092,7 +1049,6 @@ export default function ClassroomView() {
 
   const lastSubmission = useMemo(() => {
     if (!submissions || submissions.length === 0) return null;
-    // Pega a última submissão (ordenada por data decrescente pelo backend geralmente, mas podemos garantir aqui)
     return (
       submissions
         .filter((s) => s.user?.id === myUserId)
@@ -1103,7 +1059,12 @@ export default function ClassroomView() {
     );
   }, [submissions, myUserId]);
 
-  if (!classroom) return <div className="container">Carregando...</div>;
+  if (!classroom)
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-background text-muted">
+        <RefreshCw className="animate-spin mr-2" /> Carregando turma...
+      </div>
+    );
 
   const isExam = currentProblem?.type === "EXAM";
   const hasLimit = currentProblem?.maxAttempts != null;
@@ -1133,1918 +1094,1049 @@ export default function ClassroomView() {
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <header className="classroom-header">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            padding: "15px 0",
-            borderBottom: "1px solid #333",
-          }}
-        >
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="btn btn-ghost"
-            style={{ marginRight: "10px" }}
+    <div className="flex flex-col h-screen bg-background text-zinc-100 overflow-hidden font-sans selection:bg-primary/20">
+      <header className="flex-none border-b border-border bg-surface px-6 py-4">
+        <div className="flex items-center gap-4 mb-4">
+          <Link
+            to="/dashboard"
+            className="p-2 hover:bg-white/10 rounded-full text-muted hover:text-white transition-colors"
           >
-            <ArrowLeft size={20} />
-          </button>
-          <h2 style={{ margin: 0, fontSize: "1.2rem" }}>{classroom.name}</h2>
+            <ArrowLeft size={24} />
+          </Link>
+          <h2 className="text-2xl font-semibold tracking-tight text-white">
+            {classroom.name}
+          </h2>
         </div>
-        <nav className="classroom-tabs">
-          <button
-            onClick={() => setActiveTab("stream")}
-            className={`tab-btn ${activeTab === "stream" ? "active" : ""}`}
-          >
-            Mural
-          </button>
-          <button
-            onClick={() => setActiveTab("classwork")}
-            className={`tab-btn ${activeTab === "classwork" ? "active" : ""}`}
-          >
-            Atividades
-          </button>
-          <button
-            onClick={() => setActiveTab("people")}
-            className={`tab-btn ${activeTab === "people" ? "active" : ""}`}
-          >
-            Alunos
-          </button>
-          {isOwner && (
-            <button
-              onClick={() => setActiveTab("analytics")}
-              className={`tab-btn ${activeTab === "analytics" ? "active" : ""}`}
-            >
-              📊 Estatísticas
-            </button>
-          )}
+
+        <nav className="flex gap-8 text-base font-medium">
+          {[
+            { id: "stream", label: "Mural" },
+            { id: "classwork", label: "Atividades" },
+            { id: "people", label: "Pessoas" },
+            isOwner ? { id: "analytics", label: "Estatísticas" } : null,
+          ]
+            .filter(Boolean)
+            .map((tab: any) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={cn(
+                  "pb-2 border-b-2 transition-colors px-1",
+                  activeTab === tab.id
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted hover:text-zinc-100",
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
         </nav>
       </header>
 
-      {/* -- STREAMS, PEOPLE -- */}
-      {activeTab === "stream" && (
-        <div className="stream-container">
-          <div className="stream-wrapper">
-            <aside className="stream-sidebar">
-              <div className="upcoming-card">
-                <div className="upcoming-title">Próximas atividades</div>
-                {upcomingWork.length > 0 ? (
-                  <>
-                    {upcomingWork.map((work) => (
-                      <div
-                        key={work.id}
-                        className="upcoming-link"
-                        onClick={() => handleGoToProblem(work.id)}
-                        title={work.title}
-                      >
-                        {work.title}
-                      </div>
-                    ))}
-                    <div
-                      className="view-all-link"
-                      onClick={() => setActiveTab("classwork")}
-                    >
-                      Ver tudo
-                    </div>
-                  </>
-                ) : (
-                  <div className="upcoming-empty">
-                    Nenhuma atividade para a próxima semana!
-                  </div>
-                )}
-              </div>
-            </aside>
-            <main className="stream-main">
-              <div className="stream-banner">
-                <h1 className="stream-title">{classroom.name}</h1>
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "10px" }}
-                >
-                  <strong>Código:</strong>
-                  <span className="stream-code-box">{classroom.code}</span>
-                </div>
-              </div>
-              {isOwner && (
-                <div className="stream-input-card">
-                  <form onSubmit={handlePostAnnouncement}>
-                    <textarea
-                      className="stream-textarea"
-                      placeholder="Anuncie algo para a turma..."
-                      value={newAnnouncement}
-                      onChange={(e) => setNewAnnouncement(e.target.value)}
-                    />
-                    <div className="stream-actions">
-                      <button
-                        type="submit"
-                        disabled={posting || !newAnnouncement.trim()}
-                        className="btn btn-primary"
-                      >
-                        {posting ? "..." : "Postar"}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              )}
-              <div className="announcements-list">
-                {classroom.announcements?.map((a) => (
-                  <div key={a.id} className="announcement-card">
-                    <div className="announcement-header">
-                      <div className="announcement-avatar">
-                        {a.author?.email.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="announcement-meta">
-                        <span className="announcement-author">
-                          {a.author?.email}
-                        </span>
-                        <span className="announcement-date">
-                          {new Date(a.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                      {isOwner && (
-                        <button
-                          onClick={() => handleDeleteAnnouncement(a.id)}
-                          className="options-btn"
-                        >
-                          ⋮
-                        </button>
-                      )}
-                    </div>
-                    <div className="announcement-body">{a.content}</div>
-                  </div>
-                ))}
-              </div>
-            </main>
-          </div>
-        </div>
-      )}
-      {activeTab === "people" && (
-        <div className="people-container">
-          <div className="section-header">
-            <span>Professores</span>
-          </div>
-          <div className="person-item">
-            <div className="person-avatar">
-              {classroom.owner.email.charAt(0).toUpperCase()}
-            </div>
-            <span>{classroom.owner.email}</span>
-          </div>
-          <div className="section-header">
-            <span>Estudantes</span>
-          </div>
-          {classroom.students?.map((s) => (
-            <div key={s.id} className="person-item">
-              <div className="person-avatar">
-                {s.email.charAt(0).toUpperCase()}
-              </div>
-              <span>{s.email}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* -- CLASSWORK (IDE COM ABAS) -- */}
-      {activeTab === "classwork" && (
-        <div className="ide-container" style={{ flex: 1, borderTop: "none" }}>
-          <div className="ide-toolbar">
-            <select
-              className="form-select"
-              style={{ width: "auto", minWidth: "250px" }}
-              value={selectedProblemId || ""}
-              onChange={(e) => setSelectedProblemId(e.target.value)}
-            >
-              {dropdownOptions.length === 0 && (
-                <option value="">Sem exercícios</option>
-              )}
-              {dropdownOptions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
-                </option>
-              ))}
-            </select>
-
-            {currentProblem?.type === "EXAM" && currentProblem.timeLimit && (
-              <div
-                style={{
-                  margin: "0 15px",
-                  padding: "5px 15px",
-                  borderRadius: "4px",
-                  background:
-                    examStatus === "RUNNING"
-                      ? "#2e7d32"
-                      : examStatus === "FINISHED"
-                        ? "#c62828"
-                        : "#f57f17",
-                  color: "#fff",
-                  fontWeight: "bold",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                }}
-              >
-                <span>
-                  {examStatus === "WAITING" ? (
-                    "⏳ Aguardando"
-                  ) : examStatus === "FINISHED" ? (
-                    "🛑 Encerrado"
-                  ) : (
-                    <>
-                      <Clock size={16} /> Tempo Restante:
-                    </>
-                  )}
-                </span>
-                {examStatus !== "WAITING" && (
-                  <span style={{ fontFamily: "monospace", fontSize: "1.1rem" }}>
-                    {timeLeft}
-                  </span>
-                )}
-                {isOwner && examStatus === "WAITING" && (
-                  <button
-                    onClick={handleStartExam}
-                    className="btn btn-sm"
-                    style={{
-                      background: "#fff",
-                      color: "#000",
-                      border: "none",
-                      marginLeft: "10px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    ▶ Iniciar Agora
-                  </button>
-                )}
-              </div>
-            )}
-
-            {isOwner && (
-              <div style={{ display: "flex", gap: "5px", marginLeft: "10px" }}>
-                {selectedProblemId && (
-                  <>
-                    <Link
-                      to={`/class/${id}/problem/${selectedProblemId}/edit`}
-                      className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 px-3 py-1.5 rounded-md text-xs font-medium border border-gray-700 transition-all hover:border-gray-600"
-                    >
-                      <Settings size={14} />
-                      Editar Atividade
-                    </Link>
-                    <button
-                      onClick={handleDeleteProblem}
-                      className="btn btn-danger"
-                      title="Excluir"
-                    >
-                      🗑️
-                    </button>
-                  </>
-                )}
-                <button
-                  onClick={() =>
-                    navigate(`/class/${id}/create-problem`, {
-                      state: { classroomId: classroom.id },
-                    })
-                  }
-                  className="btn btn-primary"
-                  style={{ marginLeft: selectedProblemId ? "10px" : "0" }}
-                >
-                  + Novo
-                </button>
-              </div>
-            )}
-            {selectedProblemId && (
-              <button
-                onClick={() => {
-                  setShowSubmissions(true);
-                  setSelectedStudentFilter(null);
-                }}
-                className="btn btn-secondary"
-                style={{ marginLeft: "10px", backgroundColor: "#444" }}
-                title={
-                  isOwner ? "Ver submissões da turma" : "Ver meu histórico"
-                }
-              >
-                📊 {isOwner ? "Turma" : "Histórico"}
-              </button>
-            )}
-
-            {isOwner && (
-              <div
-                style={{
-                  position: "relative",
-                  display: "inline-block",
-                  marginLeft: "10px",
-                }}
-              >
-                <button
-                  onClick={() => setShowReportMenu(!showReportMenu)}
-                  className="btn"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    backgroundColor: "#2e7d32",
-                    color: "white",
-                    padding: "8px 16px",
-                    border: "none",
-                    borderRadius: "4px",
-                    cursor: "pointer",
-                    fontWeight: 500,
-                  }}
-                >
-                  <Download size={16} />
-                  Gerar Relatório
-                  <ChevronDown size={16} />
-                </button>
-
-                {showReportMenu && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "100%",
-                      right: 0,
-                      marginTop: "5px",
-                      backgroundColor: "#1e1e1e",
-                      border: "1px solid #444",
-                      borderRadius: "6px",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
-                      zIndex: 1000,
-                      minWidth: "160px",
-                      overflow: "hidden",
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
-                    <button
-                      onClick={() => handleExport("xlsx")}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "10px",
-                        padding: "12px 16px",
-                        background: "transparent",
-                        border: "none",
-                        color: "#e0e0e0",
-                        cursor: "pointer",
-                        textAlign: "left",
-                        borderBottom: "1px solid #333",
-                        fontSize: "0.9rem",
-                      }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "#2d2d30")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "transparent")
-                      }
-                    >
-                      <FileSpreadsheet size={16} className="text-green-500" />
-                      Excel (.xlsx)
-                    </button>
-
-                    <button
-                      onClick={() => handleExport("csv")}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "10px",
-                        padding: "12px 16px",
-                        background: "transparent",
-                        border: "none",
-                        color: "#e0e0e0",
-                        cursor: "pointer",
-                        textAlign: "left",
-                        fontSize: "0.9rem",
-                      }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "#2d2d30")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "transparent")
-                      }
-                    >
-                      <FileText size={16} className="text-gray-400" />
-                      CSV (.csv)
-                    </button>
-                  </div>
-                )}
-                {showReportMenu && (
-                  <div
-                    style={{
-                      position: "fixed",
-                      top: 0,
-                      left: 0,
-                      width: "100vw",
-                      height: "100vh",
-                      zIndex: 999,
-                    }}
-                    onClick={() => setShowReportMenu(false)}
-                  />
-                )}
-              </div>
-            )}
-
-            <div
-              style={{
-                marginLeft: "auto",
-                marginRight: "10px",
-                display: "flex",
-                gap: "10px",
-              }}
-            >
-              {currentProblem?.deadline && !isOwner && (
-                <div
-                  style={{
-                    padding: "5px 12px",
-                    background: isDeadlinePassed
-                      ? "rgba(244,67,54,0.2)"
-                      : "#2d2d30",
-                    borderRadius: "4px",
-                    border: `1px solid ${
-                      isDeadlinePassed ? "#f44336" : "#444"
-                    }`,
-                    color: isDeadlinePassed ? "#f44336" : "#ccc",
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  {isDeadlinePassed
-                    ? "🔒 Encerrado"
-                    : `🕒 Até ${new Date(
-                        currentProblem.deadline,
-                      ).toLocaleDateString()}`}
-                </div>
-              )}
-              {isExam && !isOwner && hasLimit && (
-                <div
-                  style={{
-                    padding: "5px 12px",
-                    background:
-                      attemptsLeft === 0 ? "rgba(244,67,54,0.2)" : "#2d2d30",
-                    borderRadius: "4px",
-                    border: `1px solid ${
-                      attemptsLeft === 0 ? "#f44336" : "#444"
-                    }`,
-                    color: attemptsLeft === 0 ? "#f44336" : "#ccc",
-                    fontSize: "0.85rem",
-                    fontWeight: "bold",
-                  }}
-                >
-                  {attemptsLeft === 0
-                    ? "🚫 Esgotadas"
-                    : `⚠️ ${attemptsLeft} restam`}
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button
-                onClick={handleResetCode}
-                className="btn btn-secondary"
-                title="Resetar código"
-              >
-                ↺
-              </button>
-              <select
-                className="form-select"
-                style={{ width: "auto" }}
-                value={languageId}
-                onChange={(e) => setLanguageId(Number(e.target.value))}
-              >
-                {LANGUAGES.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={(e) => submitSolution(e)}
-                disabled={loading || !selectedProblemId || isBlocked}
-                className="btn btn-primary"
-                style={
-                  isBlocked
-                    ? { opacity: 0.5, cursor: "not-allowed" }
-                    : { display: "flex", alignItems: "center", gap: "8px" }
-                }
-              >
-                {/* Ícone de Loading Animado */}
-                {loading && <RefreshCw className="animate-spin" size={16} />}
-                {loading ? "Processando..." : isBlocked ? "🔒" : "▶ Enviar"}
-              </button>
-            </div>
-          </div>
-
-          {/* MAIN IDE AREA with REACT-RESIZABLE-PANELS */}
-          {/* FIX: Garantindo flex-grow e altura total em todos os níveis */}
-          <div
-            className="ide-main"
-            style={{
-              flex: 1,
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-              height: "100%",
-            }}
-          >
-            <PanelGroup
-              direction="horizontal"
-              style={{ height: "100%", width: "100%", display: "flex" }}
-            >
-              {/* PAINEL ESQUERDO: EDITOR */}
-              <Panel
-                defaultSize={60}
-                minSize={20}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  height: "100%",
-                }}
-              >
-                <div
-                  className="ide-editor-panel"
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    height: "100%",
-                    width: "100%", // Garantir largura total dentro do painel
-                  }}
-                >
-                  {/* TABS DE ARQUIVOS */}
-                  <div
-                    style={{
-                      display: "flex",
-                      background: "#252526",
-                      borderBottom: "1px solid #333",
-                      overflowX: "auto",
-                      alignItems: "center",
-                      flexShrink: 0, // Impede que as abas encolham
-                    }}
-                  >
-                    {files.map((file, idx) => (
-                      <div
-                        key={idx}
-                        onClick={() => setActiveFileIndex(idx)}
-                        style={{
-                          padding: "8px 16px",
-                          cursor: "pointer",
-                          background:
-                            activeFileIndex === idx ? "#1e1e1e" : "transparent",
-                          color: activeFileIndex === idx ? "#fff" : "#888",
-                          borderTop:
-                            activeFileIndex === idx
-                              ? "2px solid #4caf50"
-                              : "2px solid transparent",
-                          fontSize: "0.9rem",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          borderRight: "1px solid #333",
-                        }}
-                      >
-                        <FileCode size={14} />
-                        {file.name}
-                        {files.length > 1 && (
-                          <Trash
-                            size={12}
-                            className="hover:text-red-500"
-                            onClick={(e) => handleRemoveFile(idx, e)}
-                          />
-                        )}
-                      </div>
-                    ))}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        padding: "0 8px",
-                        gap: "5px",
-                      }}
-                    >
-                      <input
-                        style={{
-                          background: "#333",
-                          border: "none",
-                          color: "white",
-                          padding: "4px",
-                          fontSize: "0.8rem",
-                          width: "100px",
-                          borderRadius: "4px",
-                        }}
-                        placeholder="Novo..."
-                        value={newFileName}
-                        onChange={(e) => setNewFileName(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleAddFile()}
-                      />
-                      <Plus
-                        size={16}
-                        className="text-emerald-500 cursor-pointer hover:text-emerald-400"
-                        onClick={handleAddFile}
-                      />
-                    </div>
-                  </div>
-
-                  {/* MONACO EDITOR */}
-                  <div style={{ flex: 1, minHeight: 0 }}>
-                    {" "}
-                    {/* minHeight: 0 é crucial para flexbox scrollável */}
-                    <Editor
-                      key={`${languageId}-${displayProblem?.id || "empty"}-${activeFileIndex}`}
-                      height="100%"
-                      language={
-                        files[activeFileIndex]?.name.endsWith(".js")
-                          ? "javascript"
-                          : files[activeFileIndex]?.name.endsWith(".java")
-                            ? "java"
-                            : files[activeFileIndex]?.name.endsWith(".c")
-                              ? "c"
-                              : files[activeFileIndex]?.name.endsWith(".cpp")
-                                ? "cpp"
-                                : files[activeFileIndex]?.name.endsWith(".go")
-                                  ? "go"
-                                  : LANGUAGE_MAP[languageId] || "plaintext"
-                      }
-                      theme="vs-dark"
-                      value={files[activeFileIndex]?.content || ""}
-                      onChange={handleCodeChange}
-                      onMount={handleEditorDidMount}
-                      options={{
-                        minimap: { enabled: false },
-                        automaticLayout: true,
-                        scrollBeyondLastLine: false,
-                      }}
-                    />
-                  </div>
-                </div>
-              </Panel>
-
-              {/* HANDLE (A BARRA DE ARRASTAR) */}
-              <PanelResizeHandle
-                style={{
-                  width: "10px",
-                  background: "#1e1e1e",
-                  borderLeft: "1px solid #333",
-                  borderRight: "1px solid #333",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "col-resize",
-                  zIndex: 10,
-                  outline: "none",
-                  flexShrink: 0, // Handle não deve encolher
-                }}
-              >
-                <div
-                  style={{
-                    height: "30px",
-                    width: "4px",
-                    backgroundColor: "#444",
-                    borderRadius: "2px",
-                  }}
-                />
-              </PanelResizeHandle>
-
-              {/* PAINEL DIREITO: INFORMAÇÕES */}
-              <Panel
-                defaultSize={40}
-                minSize={20}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  height: "100%",
-                }}
-              >
-                <div
-                  className="ide-info-panel"
-                  style={{
-                    height: "100%",
-                    width: "100%",
-                    overflowY: "auto",
-                    padding: "20px",
-                  }}
-                >
-                  {currentProblem?.children &&
-                    currentProblem.children.length > 0 && (
-                      <div
-                        className="question-nav"
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          marginBottom: "20px",
-                        }}
-                      >
-                        <button
-                          className="btn btn-sm btn-secondary"
-                          disabled={activeChildIndex <= 0}
-                          onClick={() =>
-                            setActiveChildIndex((prev) => prev - 1)
-                          }
-                        >
-                          Anterior
-                        </button>
-                        <span>Questão {activeChildIndex + 1}</span>
-                        <button
-                          className="btn btn-sm btn-secondary"
-                          disabled={
-                            activeChildIndex >=
-                            currentProblem.children.length - 1
-                          }
-                          onClick={() =>
-                            setActiveChildIndex((prev) => prev + 1)
-                          }
-                        >
-                          Próxima
-                        </button>
-                      </div>
-                    )}
-
-                  {displayProblem ? (
-                    <>
-                      <h3 className="ide-info-title">{displayProblem.title}</h3>
-                      <div className="ide-description markdown-body">
-                        <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
-                          {displayProblem.description}
-                        </ReactMarkdown>
-                      </div>
-                      {displayProblem.testCases &&
-                        displayProblem.testCases.length > 0 && (
-                          <div style={{ marginTop: "20px" }}>
-                            <h4>Exemplos de Teste</h4>
-                            {displayProblem.testCases.map((tc, index) => (
-                              <div
-                                key={index}
-                                style={{
-                                  background: "#252526",
-                                  padding: "10px",
-                                  marginBottom: "10px",
-                                  borderLeft: "3px solid #4caf50",
-                                }}
-                              >
-                                <div>
-                                  <strong>Entrada:</strong>{" "}
-                                  <pre>{tc.input}</pre>
-                                </div>
-                                <div>
-                                  <strong>Saída:</strong>{" "}
-                                  <pre>{tc.expectedOutput}</pre>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                      {/* ESTATÍSTICAS PARA O DONO */}
-                      {isOwner && problemStats.length > 0 && (
+      <main className="flex-1 overflow-hidden relative">
+        {/* -- STREAMS -- */}
+        {activeTab === "stream" && (
+          <div className="h-full overflow-y-auto p-8">
+            <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-8">
+              {/* Sidebar do Stream */}
+              <aside className="lg:col-span-1 space-y-4">
+                <Card className="p-5 bg-surface border-border">
+                  <h3 className="font-semibold mb-4 text-sm uppercase tracking-wide text-muted">
+                    Próximas Entregas
+                  </h3>
+                  {upcomingWork.length > 0 ? (
+                    <div className="space-y-3">
+                      {upcomingWork.map((work) => (
                         <div
-                          style={{
-                            marginTop: "30px",
-                            padding: "15px",
-                            background: "#252526",
-                            borderRadius: "8px",
-                            border: "1px solid #444",
-                          }}
+                          key={work.id}
+                          onClick={() => handleGoToProblem(work.id)}
+                          className="text-base cursor-pointer hover:underline truncate text-zinc-300 hover:text-primary transition-colors"
                         >
-                          <h4
-                            style={{
-                              margin: "0 0 15px 0",
-                              fontSize: "0.9rem",
-                              color: "#ccc",
-                            }}
-                          >
-                            📈 Estatísticas deste Exercício
-                          </h4>
-                          <div style={{ width: "100%", height: 250 }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart
-                                data={problemStats}
-                                margin={{
-                                  top: 10,
-                                  right: 30,
-                                  left: 0,
-                                  bottom: 0,
-                                }}
-                              >
-                                <CartesianGrid
-                                  strokeDasharray="3 3"
-                                  stroke="#333"
-                                  vertical={false}
-                                />
-                                <XAxis dataKey="name" stroke="#888" />
-                                <YAxis stroke="#888" allowDecimals={false} />
-                                <Tooltip
-                                  contentStyle={{
-                                    backgroundColor: "#1e1e1e",
-                                    borderColor: "#444",
-                                    color: "#fff",
-                                  }}
-                                  cursor={{ fill: "rgba(255,255,255,0.05)" }}
-                                />
-                                <Bar dataKey="value" barSize={40}>
-                                  {problemStats.map((entry, index) => (
-                                    <Cell
-                                      key={`cell-${index}`}
-                                      fill={entry.fill}
-                                    />
-                                  ))}
-                                </Bar>
-                              </BarChart>
-                            </ResponsiveContainer>
+                          {work.title}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted">
+                      Nenhuma atividade pendente.
+                    </p>
+                  )}
+                </Card>
+              </aside>
+
+              {/* Main Feed */}
+              <div className="lg:col-span-3 space-y-8">
+                <div className="bg-gradient-to-r from-emerald-900/50 to-zinc-900 p-8 rounded-xl border border-primary/20 shadow-lg">
+                  <h1 className="text-4xl font-bold mb-3 text-white">
+                    {classroom.name}
+                  </h1>
+                  <div className="text-base text-emerald-200/80 font-mono">
+                    Código: {classroom.code}
+                  </div>
+                </div>
+
+                {isOwner && (
+                  <Card className="p-6 bg-surface border-border">
+                    <form
+                      onSubmit={handlePostAnnouncement}
+                      className="space-y-4"
+                    >
+                      <textarea
+                        className="w-full bg-background border border-border rounded-lg p-4 text-base focus:outline-none focus:border-primary transition-colors resize-none"
+                        placeholder="Anuncie algo para a turma..."
+                        rows={3}
+                        value={newAnnouncement}
+                        onChange={(e) => setNewAnnouncement(e.target.value)}
+                      />
+                      <div className="flex justify-end">
+                        <Button
+                          type="submit"
+                          disabled={posting || !newAnnouncement.trim()}
+                          isLoading={posting}
+                          className="px-6"
+                        >
+                          Postar
+                        </Button>
+                      </div>
+                    </form>
+                  </Card>
+                )}
+
+                <div className="space-y-6">
+                  {classroom.announcements?.map((a) => (
+                    <Card key={a.id} className="bg-surface border-border p-6">
+                      <div className="flex items-start justify-between mb-4 border-b border-border pb-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-sm">
+                            {a.author?.email.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="text-base font-medium text-white">
+                              {a.author?.email}
+                            </div>
+                            <div className="text-sm text-muted">
+                              {new Date(a.createdAt).toLocaleDateString()}
+                            </div>
                           </div>
                         </div>
-                      )}
-                    </>
-                  ) : (
-                    <p className="ide-description">Selecione um exercício.</p>
-                  )}
-
-                  {/* FEEDBACK DA SUBMISSÃO */}
-                  {verdict && (
-                    <div
-                      className={`ide-feedback-box ${
-                        verdict === "Accepted"
-                          ? "success"
-                          : ["Queued", "Processing"].includes(verdict)
-                            ? "warning"
-                            : "error"
-                      }`}
-                    >
-                      <div className="feedback-header">
-                        {lastSubmission && (
-                          <div
-                            className={`mt-4 p-4 rounded-lg border ${
-                              lastSubmission.status === "Accepted"
-                                ? "border-green-500 bg-green-900/20"
-                                : "border-red-500 bg-red-900/20"
-                            }`}
+                        {isOwner && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteAnnouncement(a.id)}
                           >
-                            <h3 className="font-bold mb-2">
-                              Resultado: {lastSubmission.status}
-                            </h3>
-                            {lastSubmission.status === "Wrong Answer" &&
-                            lastSubmission.stdout ? (
-                              <DiffViewer
-                                expected="Esperado..."
-                                actual={lastSubmission.stdout}
-                              />
-                            ) : null}
-                          </div>
+                            <Trash
+                              size={18}
+                              className="text-muted hover:text-destructive"
+                            />
+                          </Button>
                         )}
                       </div>
+                      <div className="text-base whitespace-pre-wrap text-zinc-300 leading-relaxed">
+                        {a.content}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
-                      {/* LAYOUT GRID: 2 Colunas (Tempo e Memória) */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-[#161616] p-4 rounded-lg border border-[#333]">
-                          <div className="text-gray-500 text-xs font-bold flex items-center gap-2">
-                            <Clock size={12} /> Tempo
-                          </div>
-                          <div className="text-2xl font-mono text-white">
-                            {lastSubmission?.executionTime ?? 0} ms
-                          </div>
+        {/* -- PEOPLE -- */}
+        {activeTab === "people" && (
+          <div className="h-full overflow-y-auto p-8">
+            <div className="max-w-4xl mx-auto space-y-10">
+              {/* Seção Professores */}
+              <section>
+                <h3 className="text-emerald-500 font-semibold text-xl mb-6 px-2 border-b border-border pb-3 flex items-center justify-between">
+                  Professores
+                  <User size={20} />
+                </h3>
+                <Card className="bg-surface border-border">
+                  <div className="flex items-center gap-5 p-4">
+                    <div className="w-12 h-12 rounded-full bg-emerald-900/50 text-emerald-400 flex items-center justify-center font-bold border border-emerald-500/20 text-lg">
+                      {classroom.owner.email.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="text-zinc-200 font-medium text-lg">
+                      {classroom.owner.email}
+                    </span>
+                  </div>
+                </Card>
+              </section>
+
+              {/* Seção Estudantes */}
+              <section>
+                <div className="flex items-center justify-between mb-6 px-2 border-b border-border pb-3">
+                  <h3 className="text-emerald-500 font-semibold text-xl flex items-center gap-3">
+                    Estudantes
+                    <span className="text-sm bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded-full">
+                      {classroom.students.length}
+                    </span>
+                  </h3>
+                </div>
+
+                {/* Barra de Busca de Alunos */}
+                <div className="mb-6 relative">
+                  <Search
+                    className="absolute left-4 top-3 text-muted"
+                    size={20}
+                  />
+                  <Input
+                    placeholder="Buscar estudante por email..."
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                    className="bg-surface pl-12 h-12 text-base"
+                  />
+                </div>
+
+                <Card className="bg-surface border-border divide-y divide-border">
+                  {filteredStudents.length > 0 ? (
+                    filteredStudents.map((s) => (
+                      <div
+                        key={s.id}
+                        className="flex items-center gap-5 p-4 hover:bg-surface-hover transition-colors"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-zinc-800 text-zinc-400 flex items-center justify-center font-bold text-base">
+                          {s.email.charAt(0).toUpperCase()}
                         </div>
-                        <div className="bg-[#161616] p-4 rounded-lg border border-[#333]">
-                          <div className="text-gray-500 text-xs font-bold flex items-center gap-2">
-                            <Cpu size={12} /> Memória
-                          </div>
-                          <div className="text-2xl font-mono text-white">
-                            {lastSubmission?.memoryUsage ?? 0} KB
-                          </div>
+                        <div className="flex-1 text-base text-zinc-200">
+                          {s.email}
                         </div>
                       </div>
+                    ))
+                  ) : (
+                    <div className="p-10 text-center text-muted text-base">
+                      Nenhum estudante encontrado.
+                    </div>
+                  )}
+                </Card>
+              </section>
+            </div>
+          </div>
+        )}
 
-                      <div>
-                        <h4 className="text-sm font-bold text-gray-400 mb-3">
-                          LOGS DE EXECUÇÃO
-                        </h4>
-                        <LogViewer
-                          logs={
-                            lastSubmission?.output ||
-                            lastSubmission?.stderr ||
-                            lastSubmission?.stdout ||
-                            ""
-                          }
-                          status={
-                            !lastSubmission ||
-                            lastSubmission.status === "Processing" ||
-                            lastSubmission.status === "Internal Error"
-                              ? "Pending"
-                              : (lastSubmission.status as any)
+        {/* -- CLASSWORK (IDE COM ABAS) -- */}
+        {activeTab === "classwork" && (
+          <div className="flex flex-col h-full">
+            {/* Toolbar da IDE */}
+            <div className="flex-none flex items-center justify-between p-4 border-b border-border bg-surface">
+              <div className="flex items-center gap-4">
+                <Select
+                  value={selectedProblemId || ""}
+                  onChange={(e) => setSelectedProblemId(e.target.value)}
+                  className="w-72 h-11 text-base" // Aumentado para h-11
+                >
+                  <option value="">Selecione um exercício...</option>
+                  {dropdownOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}
+                    </option>
+                  ))}
+                </Select>
+
+                {/* Status do Exame */}
+                {isExam && currentProblem?.timeLimit && (
+                  <div
+                    className={cn(
+                      "px-4 py-2 rounded text-sm font-bold flex items-center gap-2 h-11", // Fixada altura
+                      examStatus === "RUNNING"
+                        ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                        : examStatus === "FINISHED"
+                          ? "bg-red-500/10 text-red-500 border border-red-500/20"
+                          : "bg-orange-500/10 text-orange-500 border border-orange-500/20",
+                    )}
+                  >
+                    <Clock size={18} />
+                    {examStatus === "WAITING"
+                      ? "Aguardando Início"
+                      : examStatus === "FINISHED"
+                        ? "Encerrado"
+                        : timeLeft}
+                    {isOwner && examStatus === "WAITING" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 ml-3 text-xs"
+                        onClick={handleStartExam}
+                      >
+                        Iniciar
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                {isOwner && selectedProblemId && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-11 px-5 text-base"
+                      onClick={() =>
+                        navigate(
+                          `/class/${id}/problem/${selectedProblemId}/edit`,
+                        )
+                      }
+                    >
+                      <Settings size={18} className="mr-2" /> Editar
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="icon"
+                      className="h-11 w-11" // Aumentado para h-11
+                      onClick={handleDeleteProblem}
+                    >
+                      <Trash size={20} />
+                    </Button>
+                  </>
+                )}
+
+                {isOwner && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="h-11 px-5 text-base"
+                    onClick={() => navigate(`/class/${id}/create-problem`)}
+                  >
+                    <Plus size={20} className="mr-2" /> Novo
+                  </Button>
+                )}
+
+                {selectedProblemId && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-11 px-5 text-base whitespace-nowrap"
+                    onClick={() => {
+                      setShowSubmissions(true);
+                      setSelectedStudentFilter(null);
+                    }}
+                  >
+                    {isOwner ? "Ver Turma" : "Meu Histórico"}
+                  </Button>
+                )}
+
+                <div className="w-px h-8 bg-border mx-2" />
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-11 w-11" // Aumentado
+                  onClick={handleResetCode}
+                  title="Resetar Código"
+                >
+                  <RefreshCw size={20} />
+                </Button>
+
+                <Select
+                  value={languageId}
+                  onChange={(e) => setLanguageId(Number(e.target.value))}
+                  className="w-48 h-11 text-base" // Aumentado
+                >
+                  {LANGUAGES.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </Select>
+
+                <Button
+                  onClick={submitSolution}
+                  disabled={loading || !selectedProblemId || isBlocked}
+                  isLoading={loading}
+                  // CORREÇÃO: whitespace-nowrap impede quebra de linha, h-11 aumenta altura
+                  className="h-11 px-8 text-base font-semibold whitespace-nowrap min-w-[140px]"
+                >
+                  {!loading && (isBlocked ? "Bloqueado" : "Enviar Solução")}
+                </Button>
+              </div>
+            </div>
+
+            {/* Painéis Redimensionáveis */}
+            <div className="flex-1 min-h-0">
+              <PanelGroup direction="horizontal">
+                {/* Editor */}
+                <Panel defaultSize={60} minSize={30}>
+                  <div className="flex flex-col h-full">
+                    {/* Tabs de Arquivos */}
+                    <div className="flex-none flex bg-surface border-b border-border overflow-x-auto">
+                      {files.map((file, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => setActiveFileIndex(idx)}
+                          className={cn(
+                            "px-5 py-3 text-sm cursor-pointer flex items-center gap-3 border-r border-border border-t-2",
+                            activeFileIndex === idx
+                              ? "bg-background text-zinc-100 border-t-primary"
+                              : "bg-surface text-muted border-t-transparent hover:bg-surface-hover",
+                          )}
+                        >
+                          <FileCode size={16} />
+                          {file.name}
+                          {files.length > 1 && (
+                            <Trash
+                              size={14}
+                              className="hover:text-destructive ml-2"
+                              onClick={(e) => handleRemoveFile(idx, e)}
+                            />
+                          )}
+                        </div>
+                      ))}
+                      <div className="flex items-center px-3">
+                        <input
+                          className="bg-transparent border-none text-sm text-zinc-100 w-24 focus:outline-none placeholder:text-muted/50"
+                          placeholder="+ Novo..."
+                          value={newFileName}
+                          onChange={(e) => setNewFileName(e.target.value)}
+                          onKeyDown={(e) =>
+                            e.key === "Enter" && handleAddFile()
                           }
                         />
                       </div>
                     </div>
-                  )}
-                </div>
-              </Panel>
-            </PanelGroup>
-          </div>
 
-          {/* --- MODAIS DE INSPEÇÃO E LISTAGEM --- */}
-          {showSubmissions && (
-            <div className="modal-overlay">
-              <div
-                className="modal-content large"
-                style={{
-                  height: "80vh",
-                  display: "flex",
-                  flexDirection: "column",
-                  padding: 0,
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  className="modal-header"
-                  style={{
-                    padding: "15px 20px",
-                    borderBottom: "1px solid #333",
-                  }}
-                >
-                  <h2>
-                    {isOwner ? "Correção e Acompanhamento" : "Meu Histórico"}
-                  </h2>
-                  <button
-                    onClick={() => setShowSubmissions(false)}
-                    className="btn btn-secondary"
-                  >
-                    Fechar
-                  </button>
-                </div>
-
-                {isOwner ? (
-                  /* --- VISÃO DO PROFESSOR: SPLIT VIEW (LISTA DE ALUNOS | DETALHES) --- */
-                  <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-                    {/* COLUNA DA ESQUERDA: LISTA DE ALUNOS */}
-                    <div
-                      style={{
-                        width: "300px",
-                        borderRight: "1px solid #333",
-                        background: "#1e1e1e",
-                        display: "flex",
-                        flexDirection: "column",
-                      }}
-                    >
-                      <div
-                        style={{
-                          padding: "10px",
-                          borderBottom: "1px solid #333",
+                    <div className="flex-1 relative">
+                      <Editor
+                        key={`${languageId}-${displayProblem?.id}-${activeFileIndex}`}
+                        height="100%"
+                        theme="vs-dark"
+                        language={LANGUAGE_MAP[languageId] || "plaintext"}
+                        value={files[activeFileIndex]?.content || ""}
+                        onChange={handleCodeChange}
+                        onMount={handleEditorDidMount}
+                        options={{
+                          minimap: { enabled: false },
+                          automaticLayout: true,
+                          fontSize: 16, // Aumento da fonte do editor
                         }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "5px",
-                            background: "#333",
-                            padding: "5px 10px",
-                            borderRadius: "4px",
-                          }}
-                        >
-                          <Search size={16} color="#888" />
-                          <input
-                            placeholder="Buscar aluno..."
-                            value={studentSearch}
-                            onChange={(e) => setStudentSearch(e.target.value)}
-                            style={{
-                              background: "transparent",
-                              border: "none",
-                              color: "white",
-                              width: "100%",
-                              outline: "none",
-                            }}
-                          />
-                        </div>
-                      </div>
-                      <div style={{ flex: 1, overflowY: "auto" }}>
-                        {filteredStudents.map((student) => {
-                          const studentSubs = submissions.filter(
-                            (s) => s.user.id === student.id,
-                          );
-                          const hasAccepted = studentSubs.some(
-                            (s) => s.status === "Accepted",
-                          );
-                          const hasError =
-                            studentSubs.length > 0 && !hasAccepted;
-                          const hasNone = studentSubs.length === 0;
+                      />
+                    </div>
+                  </div>
+                </Panel>
 
-                          return (
+                <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 transition-colors cursor-col-resize" />
+
+                {/* Painel Direito (Info + Output) */}
+                <Panel defaultSize={40} minSize={20}>
+                  <div className="h-full overflow-y-auto bg-background p-8">
+                    {displayProblem ? (
+                      <>
+                        <h1 className="text-3xl font-bold mb-6">
+                          {displayProblem.title}
+                        </h1>
+                        <div className="prose prose-invert prose-base max-w-none mb-10">
+                          <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+                            {displayProblem.description}
+                          </ReactMarkdown>
+                        </div>
+
+                        {/* Test Cases */}
+                        <div className="space-y-4 mb-10">
+                          <h4 className="text-base font-bold uppercase tracking-wider text-muted">
+                            Exemplos
+                          </h4>
+                          {displayProblem.testCases?.map((tc, idx) => (
                             <div
-                              key={student.id}
-                              onClick={() =>
-                                setSelectedStudentFilter(student.id)
-                              }
-                              style={{
-                                padding: "12px 15px",
-                                cursor: "pointer",
-                                background:
-                                  selectedStudentFilter === student.id
-                                    ? "#2d2d30"
-                                    : "transparent",
-                                borderLeft:
-                                  selectedStudentFilter === student.id
-                                    ? "3px solid #4caf50"
-                                    : "3px solid transparent",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                transition: "background 0.2s",
-                              }}
-                              className="hover:bg-white/5"
+                              key={idx}
+                              className="grid grid-cols-2 gap-6 bg-surface p-4 rounded-lg border border-border"
                             >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "10px",
-                                  overflow: "hidden",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    width: "30px",
-                                    height: "30px",
-                                    borderRadius: "50%",
-                                    background: "#444",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    fontSize: "0.8rem",
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  {student.email.charAt(0).toUpperCase()}
+                              <div>
+                                <div className="text-sm text-muted mb-2 font-semibold">
+                                  Entrada
                                 </div>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    overflow: "hidden",
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      fontSize: "0.9rem",
-                                      color: "#fff",
-                                      whiteSpace: "nowrap",
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                    }}
+                                <code className="text-base font-mono block bg-black/20 p-2 rounded">
+                                  {tc.input}
+                                </code>
+                              </div>
+                              <div>
+                                <div className="text-sm text-muted mb-2 font-semibold">
+                                  Saída
+                                </div>
+                                <code className="text-base font-mono block text-emerald-400 bg-black/20 p-2 rounded">
+                                  {tc.expectedOutput}
+                                </code>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Estatísticas do Exercício (Visível apenas para o Professor) */}
+                        {isOwner &&
+                          displayProblem &&
+                          problemStats.length > 0 && (
+                            <div className="mt-10 pt-8 border-t border-border">
+                              <h4 className="text-base font-bold uppercase tracking-wider text-muted mb-6 flex items-center gap-2">
+                                <BarChartIcon size={20} /> Estatísticas deste
+                                Exercício
+                              </h4>
+                              <div className="h-64 w-full bg-surface border border-border rounded-lg p-4">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart
+                                    data={problemStats}
+                                    layout="vertical"
+                                    margin={{ left: 10, right: 10 }}
                                   >
-                                    {student.email.split("@")[0]}
-                                  </span>
-                                  <span
-                                    style={{
-                                      fontSize: "0.75rem",
-                                      color: "#888",
-                                    }}
-                                  >
-                                    {studentSubs.length} envios
-                                  </span>
+                                    <XAxis type="number" hide />
+                                    <YAxis
+                                      dataKey="name"
+                                      type="category"
+                                      width={100}
+                                      tick={{ fontSize: 14, fill: "#a1a1aa" }}
+                                      axisLine={false}
+                                      tickLine={false}
+                                    />
+                                    <Tooltip
+                                      cursor={{ fill: "transparent" }}
+                                      contentStyle={{
+                                        backgroundColor: "#18181b",
+                                        borderColor: "#27272a",
+                                        borderRadius: "6px",
+                                        color: "#fff",
+                                        fontSize: "14px",
+                                      }}
+                                      itemStyle={{
+                                        color: "#fff",
+                                        fontSize: "14px",
+                                      }}
+                                    />
+                                    <Bar
+                                      dataKey="value"
+                                      barSize={20}
+                                      radius={[0, 4, 4, 0]}
+                                      shape={(props: any) => {
+                                        const { fill, ...rest } = props;
+                                        const color =
+                                          props.payload.name === "Acertos"
+                                            ? "#10b981"
+                                            : "#ef4444";
+                                        return (
+                                          <Rectangle
+                                            {...rest}
+                                            fill={color}
+                                            radius={[0, 4, 4, 0]}
+                                          />
+                                        );
+                                      }}
+                                    />
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </div>
+                          )}
+
+                        {/* Feedback Area */}
+                        {verdict && (
+                          <div
+                            className={cn(
+                              "rounded-xl border p-6 mb-8 mt-8 shadow-sm",
+                              verdict === "Accepted"
+                                ? "bg-emerald-900/10 border-emerald-500/30"
+                                : "bg-red-900/10 border-red-500/30",
+                            )}
+                          >
+                            <div className="flex items-center gap-3 font-bold mb-4 text-xl">
+                              {verdict === "Accepted" ? (
+                                <CheckCircle
+                                  className="text-emerald-500"
+                                  size={24}
+                                />
+                              ) : (
+                                <XCircle className="text-red-500" size={24} />
+                              )}
+                              <span
+                                className={
+                                  verdict === "Accepted"
+                                    ? "text-emerald-500"
+                                    : "text-red-500"
+                                }
+                              >
+                                {verdict}
+                              </span>
+                            </div>
+
+                            {lastSubmission && (
+                              <div className="grid grid-cols-2 gap-6 mt-6">
+                                <div className="bg-background p-4 rounded-lg border border-border">
+                                  <div className="text-sm text-muted mb-2 flex items-center gap-2 font-medium">
+                                    <Clock size={16} /> Tempo
+                                  </div>
+                                  <div className="font-mono text-xl text-white">
+                                    {lastSubmission.executionTime}ms
+                                  </div>
+                                </div>
+                                <div className="bg-background p-4 rounded-lg border border-border">
+                                  <div className="text-sm text-muted mb-2 flex items-center gap-2 font-medium">
+                                    <Cpu size={16} /> Memória
+                                  </div>
+                                  <div className="font-mono text-xl text-white">
+                                    {lastSubmission.memoryUsage}KB
+                                  </div>
                                 </div>
                               </div>
+                            )}
 
-                              {hasAccepted ? (
-                                <CheckCircle
-                                  size={18}
-                                  className="text-green-500"
-                                />
-                              ) : hasError ? (
-                                <XCircle size={18} className="text-red-500" />
-                              ) : hasNone ? (
-                                <div
-                                  style={{
-                                    width: "8px",
-                                    height: "8px",
-                                    borderRadius: "50%",
-                                    background: "#444",
-                                  }}
-                                  title="Nenhum envio"
-                                />
-                              ) : null}
+                            <div className="mt-6">
+                              <div className="text-sm font-bold text-muted mb-3 uppercase tracking-wider">
+                                LOGS DO SISTEMA
+                              </div>
+                              <LogViewer
+                                logs={
+                                  lastSubmission?.output ||
+                                  lastSubmission?.stderr ||
+                                  ""
+                                }
+                                status={
+                                  (lastSubmission?.status as any) || "Pending"
+                                }
+                              />
                             </div>
-                          );
-                        })}
-                        {filteredStudents.length === 0 && (
-                          <div
-                            style={{
-                              padding: "20px",
-                              textAlign: "center",
-                              color: "#666",
-                              fontSize: "0.9rem",
-                            }}
-                          >
-                            Nenhum aluno encontrado.
                           </div>
                         )}
-                      </div>
-                    </div>
-
-                    {/* COLUNA DA DIREITA: DETALHES DAS SUBMISSÕES */}
-                    <div
-                      style={{
-                        flex: 1,
-                        overflowY: "auto",
-                        background: "#111",
-                        display: "flex",
-                        flexDirection: "column",
-                      }}
-                    >
-                      {selectedStudentFilter ? (
-                        (() => {
-                          const studentRawSubmissions = submissions.filter(
-                            (s) => s.user.id === selectedStudentFilter,
-                          );
-
-                          const uniqueStatuses = Array.from(
-                            new Set(studentRawSubmissions.map((s) => s.status)),
-                          );
-
-                          const uniqueProblemIds = Array.from(
-                            new Set(
-                              studentRawSubmissions.map(
-                                (s) => s.problem?.id || s.problemId || "",
-                              ),
-                            ),
-                          );
-                          const problemMap = new Map<string, string>();
-
-                          if (currentProblem) {
-                            problemMap.set(
-                              currentProblem.id,
-                              currentProblem.title,
-                            );
-                            currentProblem.children?.forEach((child) =>
-                              problemMap.set(child.id, child.title),
-                            );
-                          }
-
-                          const filteredList = studentRawSubmissions.filter(
-                            (sub) => {
-                              const pId =
-                                sub.problem?.id || sub.problemId || "";
-
-                              const matchesStatus =
-                                filterStatus.length === 0 ||
-                                filterStatus.includes(sub.status);
-                              const matchesActivity =
-                                filterActivity.length === 0 ||
-                                filterActivity.includes(pId);
-
-                              return matchesStatus && matchesActivity;
-                            },
-                          );
-
-                          return (
-                            <div
-                              style={{
-                                padding: "20px",
-                                display: "flex",
-                                flexDirection: "column",
-                                height: "100%",
-                              }}
-                            >
-                              <div style={{ marginBottom: "20px" }}>
-                                <h3
-                                  style={{
-                                    marginTop: 0,
-                                    marginBottom: "15px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "10px",
-                                  }}
-                                >
-                                  <User size={20} />
-                                  Submissões de{" "}
-                                  {
-                                    classroom.students.find(
-                                      (s) => s.id === selectedStudentFilter,
-                                    )?.email
-                                  }
-                                </h3>
-
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    gap: "10px",
-                                    flexWrap: "wrap",
-                                  }}
-                                >
-                                  <div style={{ position: "relative" }}>
-                                    <button
-                                      className="btn btn-sm btn-secondary"
-                                      onClick={() =>
-                                        setShowFilterMenu(
-                                          showFilterMenu === "status"
-                                            ? null
-                                            : "status",
-                                        )
-                                      }
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "6px",
-                                        background:
-                                          filterStatus.length > 0
-                                            ? "#2e7d32"
-                                            : "#333",
-                                        color: "white",
-                                      }}
-                                    >
-                                      <Filter size={14} />
-                                      Resultado{" "}
-                                      {filterStatus.length > 0 &&
-                                        `(${filterStatus.length})`}
-                                      <ChevronDown size={14} />
-                                    </button>
-
-                                    {showFilterMenu === "status" && (
-                                      <div
-                                        style={{
-                                          position: "absolute",
-                                          top: "100%",
-                                          left: 0,
-                                          marginTop: "5px",
-                                          background: "#252526",
-                                          border: "1px solid #444",
-                                          borderRadius: "6px",
-                                          padding: "10px",
-                                          zIndex: 10,
-                                          minWidth: "200px",
-                                          boxShadow:
-                                            "0 4px 12px rgba(0,0,0,0.5)",
-                                        }}
-                                      >
-                                        {uniqueStatuses.map((status) => (
-                                          <label
-                                            key={status}
-                                            style={{
-                                              display: "flex",
-                                              alignItems: "center",
-                                              gap: "8px",
-                                              padding: "5px 0",
-                                              cursor: "pointer",
-                                              color: "#ccc",
-                                            }}
-                                          >
-                                            <input
-                                              type="checkbox"
-                                              checked={filterStatus.includes(
-                                                status,
-                                              )}
-                                              onChange={(e) => {
-                                                if (e.target.checked)
-                                                  setFilterStatus([
-                                                    ...filterStatus,
-                                                    status,
-                                                  ]);
-                                                else
-                                                  setFilterStatus(
-                                                    filterStatus.filter(
-                                                      (s) => s !== status,
-                                                    ),
-                                                  );
-                                              }}
-                                            />
-                                            <span
-                                              className={`status-badge ${status === "Accepted" ? "success" : "error"}`}
-                                              style={{
-                                                fontSize: "0.75rem",
-                                                padding: "2px 6px",
-                                              }}
-                                            >
-                                              {status}
-                                            </span>
-                                          </label>
-                                        ))}
-                                        {uniqueStatuses.length === 0 && (
-                                          <span
-                                            style={{
-                                              color: "#666",
-                                              fontSize: "0.8rem",
-                                            }}
-                                          >
-                                            Sem dados
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {uniqueProblemIds.length > 1 && (
-                                    <div style={{ position: "relative" }}>
-                                      <button
-                                        className="btn btn-sm btn-secondary"
-                                        onClick={() =>
-                                          setShowFilterMenu(
-                                            showFilterMenu === "activity"
-                                              ? null
-                                              : "activity",
-                                          )
-                                        }
-                                        style={{
-                                          display: "flex",
-                                          alignItems: "center",
-                                          gap: "6px",
-                                          background:
-                                            filterActivity.length > 0
-                                              ? "#2e7d32"
-                                              : "#333",
-                                          color: "white",
-                                        }}
-                                      >
-                                        <FileCode size={14} />
-                                        Atividade{" "}
-                                        {filterActivity.length > 0 &&
-                                          `(${filterActivity.length})`}
-                                        <ChevronDown size={14} />
-                                      </button>
-
-                                      {showFilterMenu === "activity" && (
-                                        <div
-                                          style={{
-                                            position: "absolute",
-                                            top: "100%",
-                                            left: 0,
-                                            marginTop: "5px",
-                                            background: "#252526",
-                                            border: "1px solid #444",
-                                            borderRadius: "6px",
-                                            padding: "10px",
-                                            zIndex: 10,
-                                            minWidth: "250px",
-                                            boxShadow:
-                                              "0 4px 12px rgba(0,0,0,0.5)",
-                                          }}
-                                        >
-                                          {uniqueProblemIds.map((pId) => (
-                                            <label
-                                              key={pId}
-                                              style={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: "8px",
-                                                padding: "5px 0",
-                                                cursor: "pointer",
-                                                color: "#ccc",
-                                              }}
-                                            >
-                                              <input
-                                                type="checkbox"
-                                                checked={filterActivity.includes(
-                                                  pId,
-                                                )}
-                                                onChange={(e) => {
-                                                  if (e.target.checked)
-                                                    setFilterActivity([
-                                                      ...filterActivity,
-                                                      pId,
-                                                    ]);
-                                                  else
-                                                    setFilterActivity(
-                                                      filterActivity.filter(
-                                                        (id) => id !== pId,
-                                                      ),
-                                                    );
-                                                }}
-                                              />
-                                              <span
-                                                style={{
-                                                  fontSize: "0.85rem",
-                                                  overflow: "hidden",
-                                                  textOverflow: "ellipsis",
-                                                  whiteSpace: "nowrap",
-                                                }}
-                                              >
-                                                {problemMap.get(pId) ||
-                                                  "Desconhecido"}
-                                              </span>
-                                            </label>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {(filterStatus.length > 0 ||
-                                    filterActivity.length > 0) && (
-                                    <button
-                                      className="btn btn-sm btn-ghost"
-                                      onClick={() => {
-                                        setFilterStatus([]);
-                                        setFilterActivity([]);
-                                      }}
-                                      style={{ color: "#f44336" }}
-                                    >
-                                      Limpar
-                                    </button>
-                                  )}
-                                </div>
-
-                                {showFilterMenu && (
-                                  <div
-                                    style={{
-                                      position: "fixed",
-                                      top: 0,
-                                      left: 0,
-                                      width: "100vw",
-                                      height: "100vh",
-                                      zIndex: 5,
-                                    }}
-                                    onClick={() => setShowFilterMenu(null)}
-                                  />
-                                )}
-                              </div>
-
-                              <div style={{ flex: 1, overflowY: "auto" }}>
-                                <table className="custom-table">
-                                  <thead>
-                                    <tr>
-                                      <th>Atividade</th>
-                                      <th>Status</th>
-                                      <th>Nota</th>
-                                      <th>Data</th>
-                                      <th>Ação</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {filteredList.map((sub) => {
-                                      const pId =
-                                        sub.problem?.id || sub.problemId || "";
-                                      const pTitle =
-                                        problemMap.get(pId) || "Principal";
-
-                                      return (
-                                        <tr key={sub.id}>
-                                          <td
-                                            style={{
-                                              maxWidth: "150px",
-                                              overflow: "hidden",
-                                              textOverflow: "ellipsis",
-                                              whiteSpace: "nowrap",
-                                              color: "#aaa",
-                                              fontSize: "0.85rem",
-                                            }}
-                                          >
-                                            {pTitle}
-                                          </td>
-                                          <td>
-                                            <span
-                                              className={`status-badge ${sub.status === "Accepted" ? "success" : "error"}`}
-                                            >
-                                              {sub.status}
-                                            </span>
-                                          </td>
-                                          <td>{sub.grade ?? "-"}</td>
-                                          <td>
-                                            {new Date(
-                                              sub.createdAt,
-                                            ).toLocaleString()}
-                                          </td>
-                                          <td>
-                                            <button
-                                              className="btn btn-sm btn-primary"
-                                              onClick={() =>
-                                                handleStartInspection(sub)
-                                              }
-                                            >
-                                              Inspecionar
-                                            </button>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                    {filteredList.length === 0 && (
-                                      <tr>
-                                        <td
-                                          colSpan={5}
-                                          style={{
-                                            textAlign: "center",
-                                            padding: "30px",
-                                            color: "#666",
-                                          }}
-                                        >
-                                          {studentRawSubmissions.length === 0
-                                            ? "Este aluno ainda não realizou submissões."
-                                            : "Nenhuma submissão corresponde aos filtros."}
-                                        </td>
-                                      </tr>
-                                    )}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          );
-                        })()
-                      ) : (
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            height: "100%",
-                            color: "#444",
-                          }}
-                        >
-                          <User
-                            size={48}
-                            style={{ marginBottom: "15px", opacity: 0.5 }}
-                          />
-                          <p>
-                            Selecione um aluno na lista ao lado para ver o
-                            histórico.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ padding: "20px", overflowY: "auto" }}>
-                    <table className="custom-table">
-                      <thead>
-                        <tr>
-                          <th>Status</th>
-                          <th>Nota</th>
-                          <th>Data</th>
-                          <th>Ação</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {submissions
-                          .filter((sub) => sub.user?.id === myUserId)
-                          .map((sub) => (
-                            <tr key={sub.id}>
-                              <td>
-                                <span
-                                  className={`status-badge ${
-                                    sub.status === "Accepted"
-                                      ? "success"
-                                      : "error"
-                                  }`}
-                                >
-                                  {sub.status}
-                                </span>
-                              </td>
-                              <td>{sub.grade ?? "-"}</td>
-                              <td>
-                                {new Date(sub.createdAt).toLocaleString()}
-                              </td>
-                              <td>
-                                <button
-                                  className="btn btn-sm btn-primary"
-                                  onClick={() => handleStartInspection(sub)}
-                                >
-                                  Ver Código
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {inspectingUser && (
-            <div className="modal-overlay" style={{ zIndex: 1100 }}>
-              <div
-                className="modal-content x-large"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  height: "90vh",
-                  padding: 0,
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  className="modal-header"
-                  style={{
-                    padding: "15px 20px",
-                    borderBottom: "1px solid #333",
-                  }}
-                >
-                  <div style={{ display: "flex", flexDirection: "column" }}>
-                    <h3 style={{ margin: 0 }}>
-                      Inspecionando: {inspectingUser.email}
-                    </h3>
-                    <span style={{ fontSize: "0.8rem", color: "#888" }}>
-                      {currentProblem?.title}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setInspectingUser(null)}
-                    className="btn btn-secondary"
-                  >
-                    Fechar
-                  </button>
-                </div>
-                <div
-                  className="inspection-layout"
-                  style={{ display: "flex", flex: 1, overflow: "hidden" }}
-                >
-                  {currentProblem?.children &&
-                    currentProblem.children.length > 0 && (
-                      <div
-                        className="inspection-sidebar"
-                        style={{
-                          width: "220px",
-                          borderRight: "1px solid #333",
-                          background: "#1e1e1e",
-                          overflowY: "auto",
-                        }}
-                      >
-                        {currentProblem.children.map((child, index) => (
-                          <div
-                            key={child.id}
-                            onClick={() => handleInspectionTabChange(index)}
-                            style={{
-                              padding: "12px 15px",
-                              cursor: "pointer",
-                              background:
-                                activeInspectionIndex === index
-                                  ? "#2d2d30"
-                                  : "transparent",
-                              borderLeft:
-                                activeInspectionIndex === index
-                                  ? "3px solid #4caf50"
-                                  : "3px solid transparent",
-                            }}
-                          >
-                            <div style={{ fontSize: "0.9rem", color: "#fff" }}>
-                              Q{index + 1}: {child.title}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  <div
-                    className="inspection-content"
-                    style={{
-                      flex: 1,
-                      display: "flex",
-                      flexDirection: "column",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {activeSubmission ? (
-                      <>
-                        <div
-                          style={{
-                            display: "flex",
-                            background: "#252526",
-                            borderBottom: "1px solid #333",
-                          }}
-                        >
-                          {activeSubmission.files &&
-                          activeSubmission.files.length > 0 ? (
-                            activeSubmission.files.map((file, idx) => (
-                              <div
-                                key={idx}
-                                onClick={() => setInspectFileIndex(idx)}
-                                style={{
-                                  padding: "8px 16px",
-                                  cursor: "pointer",
-                                  background:
-                                    inspectFileIndex === idx
-                                      ? "#1e1e1e"
-                                      : "transparent",
-                                  color:
-                                    inspectFileIndex === idx ? "#fff" : "#888",
-                                  borderTop:
-                                    inspectFileIndex === idx
-                                      ? "2px solid #4caf50"
-                                      : "2px solid transparent",
-                                  fontSize: "0.85rem",
-                                }}
-                              >
-                                {file.name}
-                              </div>
-                            ))
-                          ) : (
-                            <div style={{ padding: "8px", color: "#666" }}>
-                              Sem arquivos (Legacy)
-                            </div>
-                          )}
-                        </div>
-
-                        <div
-                          style={{ flex: 1, borderBottom: "1px solid #333" }}
-                        >
-                          <Editor
-                            height="100%"
-                            theme="vs-dark"
-                            value={
-                              activeSubmission.files?.[inspectFileIndex]
-                                ?.content || "// Código não disponível"
-                            }
-                            options={{
-                              readOnly: true,
-                              minimap: { enabled: false },
-                            }}
-                          />
-                        </div>
-                        <div
-                          style={{
-                            height: "250px",
-                            background: "#1e1e1e",
-                            padding: "15px",
-                            overflowY: "auto",
-                            display: "flex",
-                            gap: "20px",
-                          }}
-                        >
-                          <div style={{ flex: 1 }}>
-                            <h4
-                              style={{
-                                marginTop: 0,
-                                fontSize: "0.85rem",
-                                color: "#ccc",
-                              }}
-                            >
-                              Output
-                            </h4>
-                            {/* --- CORREÇÃO: Usando LogViewer aqui também --- */}
-                            <LogViewer
-                              logs={
-                                activeSubmission.output ||
-                                activeSubmission.stdout ||
-                                ""
-                              }
-                              status={activeSubmission.status as any}
-                            />
-                          </div>
-                          {(isOwner || activeSubmission.grade != null) && (
-                            <div style={{ width: "300px" }}>
-                              <h4 style={{ marginTop: 0, color: "#4caf50" }}>
-                                Feedback
-                              </h4>
-                              {isOwner ? (
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: "10px",
-                                  }}
-                                >
-                                  <input
-                                    className="form-input"
-                                    type="number"
-                                    value={gradingGrade}
-                                    onChange={(e) =>
-                                      setGradingGrade(e.target.value)
-                                    }
-                                    placeholder="Nota"
-                                  />
-                                  <textarea
-                                    className="form-textarea"
-                                    rows={3}
-                                    value={gradingComment}
-                                    onChange={(e) =>
-                                      setGradingComment(e.target.value)
-                                    }
-                                    placeholder="Comentário"
-                                  />
-                                  <button
-                                    onClick={handleSaveGrade}
-                                    className="btn btn-primary btn-sm"
-                                  >
-                                    Salvar Nota
-                                  </button>
-                                </div>
-                              ) : (
-                                <div>
-                                  <strong>
-                                    {activeSubmission.grade ?? "-"}
-                                  </strong>{" "}
-                                  / 100
-                                  <p>{activeSubmission.teacherComment}</p>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
                       </>
                     ) : (
-                      <div className="flex items-center justify-center h-full text-zinc-500">
-                        Selecione uma submissão
+                      <div className="flex flex-col items-center justify-center h-full text-muted space-y-4">
+                        <FileCode size={48} className="opacity-20" />
+                        <p className="text-lg">
+                          Selecione um exercício no menu superior para começar.
+                        </p>
                       </div>
                     )}
                   </div>
-                </div>
-              </div>
+                </Panel>
+              </PanelGroup>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Modal Simples de Detalhes (Aluno) */}
-          {showModal && selectedSubmission && (
-            <div className="modal-overlay" style={{ zIndex: 1200 }}>
-              <div
-                className="modal-content large"
-                style={{
-                  height: "80vh",
-                  display: "flex",
-                  flexDirection: "column",
-                  padding: 0,
-                  overflow: "hidden",
-                }}
-              >
-                <div className="modal-header" style={{ padding: "15px 20px" }}>
-                  <h3>Detalhes da Submissão</h3>
-                  <button
-                    onClick={() => setShowModal(false)}
-                    className="btn btn-secondary"
+        {/* -- ANALYTICS -- */}
+        {activeTab === "analytics" && isOwner && (
+          <div className="h-full overflow-y-auto p-8">
+            <div className="max-w-7xl mx-auto space-y-8">
+              <div className="flex items-center justify-between">
+                <h2 className="text-3xl font-bold text-zinc-100">
+                  Desempenho da Turma
+                </h2>
+
+                {/* Botão de Exportar */}
+                <div className="relative">
+                  <Button
+                    variant="outline"
+                    size="md"
+                    onClick={() => setShowReportMenu(!showReportMenu)}
+                    className="flex items-center h-10 px-4 text-sm"
                   >
-                    Fechar
-                  </button>
-                </div>
-                <div style={{ padding: "20px", overflowY: "auto", flex: 1 }}>
-                  {/* Reuse metrics logic here if needed */}
-                  <LogViewer
-                    logs={
-                      selectedSubmission.output ||
-                      selectedSubmission.stdout ||
-                      ""
-                    }
-                    status={selectedSubmission.status as any}
-                  />
-                  <div
-                    style={{
-                      marginTop: "20px",
-                      height: "300px",
-                      border: "1px solid #333",
-                    }}
-                  >
-                    <Editor
-                      height="100%"
-                      theme="vs-dark"
-                      value={selectedSubmission.files?.[0]?.content || ""}
-                      options={{ readOnly: true, minimap: { enabled: false } }}
-                    />
-                  </div>
+                    <Download size={18} className="mr-2" />
+                    Exportar Relatório
+                    <ChevronDown size={16} className="ml-2 text-muted" />
+                  </Button>
+
+                  {showReportMenu && (
+                    <div className="absolute right-0 mt-2 w-56 bg-surface border border-border rounded-lg shadow-xl z-50 py-1">
+                      <button
+                        onClick={() => handleExport("csv")}
+                        className="w-full text-left px-5 py-3 text-base text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-3 transition-colors"
+                      >
+                        <FileText size={18} /> Formato CSV
+                      </button>
+                      <button
+                        onClick={() => handleExport("xlsx")}
+                        className="w-full text-left px-5 py-3 text-base text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-3 transition-colors"
+                      >
+                        <FileSpreadsheet size={18} /> Formato Excel
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
+
+              <div className="grid grid-cols-1 gap-8">
+                <Card className="p-8 bg-surface border-border h-[600px] flex flex-col shadow-md">
+                  <h3 className="text-base font-medium text-muted uppercase tracking-wider mb-8">
+                    Submissões por Exercício
+                  </h3>
+
+                  {stats.length > 0 ? (
+                    <div className="flex-1 min-h-0">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={stats}
+                          margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                        >
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke="#27272a"
+                            vertical={false}
+                          />
+                          <XAxis
+                            dataKey="name"
+                            stroke="#a1a1aa"
+                            tick={{ fontSize: 14 }}
+                            tickLine={false}
+                            axisLine={false}
+                            dy={10}
+                          />
+                          <YAxis
+                            stroke="#a1a1aa"
+                            allowDecimals={false}
+                            tick={{ fontSize: 14 }}
+                            tickLine={false}
+                            axisLine={false}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "#18181b",
+                              borderColor: "#27272a",
+                              color: "#fff",
+                              borderRadius: "8px",
+                              boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)",
+                              fontSize: "14px",
+                            }}
+                            itemStyle={{ color: "#fff", fontSize: "14px" }}
+                            cursor={{ fill: "rgba(255,255,255,0.05)" }}
+                          />
+                          <Legend wrapperStyle={{ paddingTop: "30px" }} />
+                          <Bar
+                            dataKey="Accepted"
+                            name="Sucesso"
+                            fill="#10b981"
+                            radius={[6, 6, 0, 0]}
+                            barSize={50}
+                          />
+                          <Bar
+                            dataKey="Error"
+                            name="Erros / Falhas"
+                            fill="#ef4444"
+                            radius={[6, 6, 0, 0]}
+                            barSize={50}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-muted space-y-4">
+                      <BarChartIcon size={64} className="opacity-20" />
+                      <p className="text-lg">
+                        Ainda não há dados suficientes para gerar gráficos.
+                      </p>
+                    </div>
+                  )}
+                </Card>
+              </div>
             </div>
-          )}
+          </div>
+        )}
+      </main>
+
+      {/* --- OVERLAYS --- */}
+      {showSubmissions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
+          <div className="bg-[#09090b] w-full max-w-5xl max-h-[90vh] rounded-xl border border-zinc-800 flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Header Modal */}
+            <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-surface">
+              <h3 className="text-2xl font-semibold text-white flex items-center gap-3">
+                <Clock size={24} className="text-primary" />
+                Histórico de Envios
+              </h3>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowSubmissions(false)}
+                className="h-10 w-10"
+              >
+                <XCircle size={24} />
+              </Button>
+            </div>
+
+            {/* Filtros */}
+            {isOwner && (
+              <div className="p-4 border-b border-zinc-800 bg-surface/50 flex items-center gap-4">
+                <div className="flex items-center gap-2 text-sm text-muted font-medium uppercase tracking-wider">
+                  <Filter size={16} /> Filtros:
+                </div>
+                <Select
+                  className="w-72 h-10 text-base"
+                  value={selectedStudentFilter || ""}
+                  onChange={(e) =>
+                    setSelectedStudentFilter(Number(e.target.value) || null)
+                  }
+                >
+                  <option value="">Todos os Alunos</option>
+                  {classroom?.students.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.email}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+
+            {/* Lista */}
+            <div className="flex-1 overflow-y-auto p-0">
+              <table className="w-full text-base text-left">
+                <thead className="text-sm text-muted uppercase bg-surface sticky top-0">
+                  <tr>
+                    <th className="px-6 py-4 font-semibold">Status</th>
+                    <th className="px-6 py-4 font-semibold">Data</th>
+                    <th className="px-6 py-4 font-semibold">Tempo</th>
+                    <th className="px-6 py-4 font-semibold">Memória</th>
+                    {isOwner && (
+                      <th className="px-6 py-4 font-semibold">Aluno</th>
+                    )}
+                    <th className="px-6 py-4 text-right font-semibold">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {submissions
+                    .filter(
+                      (s) =>
+                        !selectedStudentFilter ||
+                        s.user.id === selectedStudentFilter,
+                    )
+                    .map((sub) => (
+                      <tr
+                        key={sub.id}
+                        className="hover:bg-zinc-900/50 transition-colors"
+                      >
+                        <td className="px-6 py-4">
+                          <span
+                            className={cn(
+                              "px-3 py-1.5 rounded-full text-xs font-bold border",
+                              sub.status === "Accepted"
+                                ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                : sub.status.includes("Error")
+                                  ? "bg-red-500/10 text-red-500 border-red-500/20"
+                                  : "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+                            )}
+                          >
+                            {sub.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-zinc-300">
+                          {new Date(sub.createdAt).toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 text-zinc-400 font-mono">
+                          {sub.executionTime}ms
+                        </td>
+                        <td className="px-6 py-4 text-zinc-400 font-mono">
+                          {sub.memoryUsage}KB
+                        </td>
+                        {isOwner && (
+                          <td className="px-6 py-4 text-zinc-300">
+                            <div className="flex items-center gap-3">
+                              <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold">
+                                {sub.user.email.charAt(0).toUpperCase()}
+                              </div>
+                              <span className="truncate max-w-[180px]">
+                                {sub.user.email}
+                              </span>
+                            </div>
+                          </td>
+                        )}
+                        <td className="px-6 py-4 text-right">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-8 text-sm"
+                            onClick={() => handleStartInspection(sub)}
+                          >
+                            {isOwner ? "Avaliar" : "Detalhes"}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  {submissions.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-6 py-12 text-center text-muted text-base"
+                      >
+                        Nenhuma submissão encontrada.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* -- ANALYTICS -- */}
-      {activeTab === "analytics" && isOwner && (
-        <div className="container" style={{ padding: "40px" }}>
-          <h2 style={{ marginBottom: "30px", color: "#ccc" }}>
-            Desempenho da Turma: {classroom?.name}
-          </h2>
-          {stats.length > 0 ? (
-            <div
-              style={{
-                width: "100%",
-                height: 400,
-                background: "#1e1e1e",
-                padding: "20px",
-                borderRadius: "8px",
-                border: "1px solid #333",
-              }}
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={stats}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#333"
-                    vertical={false}
-                  />
-                  <XAxis dataKey="name" stroke="#888" />
-                  <YAxis stroke="#888" allowDecimals={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#1e1e1e",
-                      borderColor: "#444",
-                      color: "#fff",
+      {/* --- MODAL: DETALHES/NOTAS (OVERLAY) --- */}
+      {(inspectingUser || showModal) && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-6">
+          <div className="bg-[#09090b] w-full max-w-7xl h-[90vh] rounded-xl border border-zinc-800 flex flex-col shadow-2xl overflow-hidden">
+            {/* Header Inspeção */}
+            <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-surface">
+              <div>
+                <h2 className="text-2xl font-bold text-white mb-1">
+                  {isOwner && inspectingUser
+                    ? `Avaliando: ${inspectingUser.email}`
+                    : "Detalhes da Submissão"}
+                </h2>
+                <p className="text-sm text-muted">
+                  {activeSubmission
+                    ? `Enviado em ${new Date(activeSubmission.createdAt).toLocaleString()}`
+                    : selectedSubmission
+                      ? `Enviado em ${new Date(selectedSubmission.createdAt).toLocaleString()}`
+                      : ""}
+                </p>
+              </div>
+              <Button
+                variant="danger"
+                size="sm"
+                className="h-9 px-4 text-sm"
+                onClick={() => {
+                  setInspectingUser(null);
+                  setShowModal(false);
+                  setSelectedSubmission(null);
+                }}
+              >
+                Fechar
+              </Button>
+            </div>
+
+            <div className="flex-1 flex min-h-0">
+              {/* Lado Esquerdo: Código */}
+              <div className="flex-1 border-r border-zinc-800 flex flex-col">
+                <div className="bg-zinc-900 p-3 border-b border-zinc-800 text-sm text-muted flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileCode size={18} />
+                    Visualizador de Código
+                  </div>
+
+                  {/* Navegação de arquivos na inspeção */}
+                  {(activeSubmission?.files?.length || 0) > 1 && (
+                    <div className="flex bg-black/20 rounded overflow-hidden">
+                      {activeSubmission?.files.map((f, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setInspectFileIndex(idx)}
+                          className={cn(
+                            "px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors",
+                            inspectFileIndex === idx
+                              ? "text-primary bg-white/5"
+                              : "text-muted",
+                          )}
+                        >
+                          {f.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 relative">
+                  <Editor
+                    height="100%"
+                    width="100%"
+                    theme="vs-dark"
+                    language="python"
+                    value={
+                      (isOwner &&
+                        activeSubmission?.files[inspectFileIndex]?.content) ||
+                      selectedSubmission?.files[inspectFileIndex]?.content ||
+                      "// Código não disponível"
+                    }
+                    options={{
+                      readOnly: true,
+                      minimap: { enabled: false },
+                      fontSize: 16, // Fonte aumentada
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
                     }}
-                    itemStyle={{ color: "#fff" }}
-                    cursor={{ fill: "rgba(255,255,255,0.05)" }}
                   />
-                  <Legend />
-                  <Bar
-                    dataKey="Accepted"
-                    name="Acertos"
-                    fill="#4caf50"
-                    barSize={30}
-                  />
-                  <Bar
-                    dataKey="Error"
-                    name="Erros / Falhas"
-                    fill="#f44336"
-                    barSize={30}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Lado Direito: Feedback e Notas */}
+              <div className="w-[450px] bg-surface flex flex-col p-6 overflow-y-auto border-l border-zinc-800">
+                <div className="space-y-8">
+                  {/* Status Card */}
+                  <Card className="bg-zinc-900 border-zinc-800 p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm text-muted uppercase font-bold tracking-wider">
+                        Veredito
+                      </span>
+                      {(activeSubmission?.status ||
+                        selectedSubmission?.status) === "Accepted" ? (
+                        <CheckCircle size={20} className="text-emerald-500" />
+                      ) : (
+                        <XCircle size={20} className="text-red-500" />
+                      )}
+                    </div>
+                    <div
+                      className={cn(
+                        "text-2xl font-bold",
+                        (activeSubmission?.status ||
+                          selectedSubmission?.status) === "Accepted"
+                          ? "text-emerald-500"
+                          : "text-red-500",
+                      )}
+                    >
+                      {activeSubmission?.status || selectedSubmission?.status}
+                    </div>
+                  </Card>
+
+                  {/* Logs */}
+                  <div>
+                    <h4 className="text-base font-bold text-white mb-3">
+                      Saída / Logs
+                    </h4>
+                    <div className="bg-black rounded-lg p-4 text-sm font-mono text-zinc-300 max-h-60 overflow-y-auto border border-zinc-800">
+                      <pre>
+                        {activeSubmission?.output ||
+                          selectedSubmission?.output ||
+                          "Sem saída."}
+                      </pre>
+                    </div>
+                  </div>
+
+                  {/* Área de Nota (Apenas Professor) */}
+                  {isOwner && (
+                    <div className="pt-8 border-t border-zinc-800 space-y-6">
+                      <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                        <Settings size={20} /> Avaliação Manual
+                      </h4>
+
+                      <div className="space-y-2.5">
+                        <label className="text-sm text-muted font-medium">
+                          Nota (0-10)
+                        </label>
+                        <Input
+                          type="number"
+                          placeholder="0"
+                          value={gradingGrade}
+                          onChange={(e) => setGradingGrade(e.target.value)}
+                          className="h-11 text-base"
+                        />
+                      </div>
+
+                      <div className="space-y-2.5">
+                        <label className="text-sm text-muted font-medium">
+                          Comentários
+                        </label>
+                        <textarea
+                          className="w-full bg-black/20 border border-zinc-800 rounded-lg p-3 text-base text-white resize-none h-32 focus:outline-none focus:border-primary transition-colors"
+                          placeholder="Feedback para o aluno..."
+                          value={gradingComment}
+                          onChange={(e) => setGradingComment(e.target.value)}
+                        />
+                      </div>
+
+                      <Button
+                        className="w-full h-11 text-base"
+                        onClick={handleSaveGrade}
+                      >
+                        Salvar Avaliação
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          ) : (
-            <div
-              style={{ textAlign: "center", color: "#666", marginTop: "50px" }}
-            >
-              <p>Nenhum dado de submissão encontrado para esta turma ainda.</p>
-            </div>
-          )}
+          </div>
         </div>
       )}
     </div>

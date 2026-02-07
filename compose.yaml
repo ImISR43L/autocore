@@ -2,9 +2,13 @@ services:
   api:
     build:
       context: ./api
-      target: builder # <--- ISSO É CRUCIAL: Usa a etapa da imagem que tem o 'nest' instalado
+      target: builder
+    # Mantivemos TTY e Init para melhor controle
+    tty: true
+    init: true
     ports:
       - "3000:3000"
+      - "9229:9229" # Porta de Debug
     env_file:
       - ./api/.env
     environment:
@@ -16,25 +20,38 @@ services:
       - db_password
       - redis_password
       - jwt_secret
+    # CORREÇÃO 1: Voltamos com o comando de inicialização
+    command: npm run start:dev
+    develop:
+      watch:
+        # Regra 1: Sincronizar código (Rápido)
+        - action: sync
+          path: ./api
+          target: /app
+          ignore:
+            - node_modules/
+            - dist/
+
+        # Regra 2: Reconstruir container se mudar dependências (Lento, mas necessário)
+        - action: rebuild
+          path: ./api/package.json
+    volumes:
+      - /app/node_modules
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       go-judge:
         condition: service_started
-      redis:
-        condition: service_started
-    volumes:
-      - ./api:/app # Garante que seus logs no código apareçam no container
-      - /app/node_modules # Preserva os módulos do container
-    command: npm run start:dev
     networks:
       - backend_net
       - secure_sandbox
     deploy:
       resources:
         limits:
-          cpus: "0.80"
-          memory: 1G
+          cpus: "1.0"
+          memory: 1.5G
 
   db:
     image: postgres:13
@@ -53,9 +70,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    # Mantivemos a melhoria de logs
+    command: ["postgres", "-c", "log_statement=all"]
 
   redis:
     image: redis:alpine
+    # Mantivemos o Healthcheck (é uma boa prática)
     command: >
       sh -c "redis-server --requirepass $(cat /run/secrets/redis_password)"
     secrets:
@@ -69,6 +89,12 @@ services:
         limits:
           cpus: "0.5"
           memory: 256M
+    healthcheck:
+      test:
+        ["CMD", "redis-cli", "-a", "$(cat /run/secrets/redis_password)", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   go-judge:
     image: go-judge-custom
@@ -88,17 +114,32 @@ services:
         limits:
           cpus: "1.0"
           memory: 768M
+    restart: on-failure
 
   web:
-    build: ./web
+    build:
+      context: ./web
+      target: development
     ports:
-      - "8080:80"
+      - "8080:5173"
     env_file:
       - ./web/.env
+    command: npm run dev -- --host
     networks:
       - backend_net
+    develop:
+      watch:
+        - action: sync
+          path: ./web
+          target: /app
+          ignore:
+            - node_modules/
+        - action: rebuild
+          path: ./web/package.json
+    volumes:
+      - ./web:/app # <--- Isso espelha sua pasta local para dentro do container
+      - /app/node_modules
 
-# Definição dos Segredos (Aponta para os arquivos criados no Passo 1)
 secrets:
   db_password:
     file: ./secrets/db_password.txt
@@ -112,6 +153,7 @@ networks:
     driver: bridge
   secure_sandbox:
     driver: bridge
+    internal: true
 
 volumes:
   postgres_data:

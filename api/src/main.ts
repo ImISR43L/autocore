@@ -12,12 +12,15 @@ async function bootstrap() {
   // OTIMIZAÇÃO: Ativa compressão Gzip/Brotli
   app.use(compression());
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
   app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
   app.useGlobalFilters(new AllExceptionsFilter());
-
   app.enableCors({
-    origin: 'http://localhost:8080',
+    origin: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });

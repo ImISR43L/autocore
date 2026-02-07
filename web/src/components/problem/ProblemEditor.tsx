@@ -10,12 +10,20 @@ import {
   FlaskConical,
   Settings2,
   FileText,
+  Clock,
+  // ArrowLeft, // Removido
 } from "lucide-react";
+// import { useNavigate } from "react-router-dom"; // Removido pois não será mais usado aqui
 
 // Reutilizando os componentes existentes
 import { ScaffoldingConfig } from "./steps/ScaffoldingConfig";
 import { ValidationConfig } from "./steps/ValidationConfig";
 import { MarkdownInput } from "../inputs/MarkdownInput";
+
+// UI Components do Design System
+import { Button } from "../ui/Button";
+import { Input } from "../ui/Input";
+import { cn } from "../../lib/utils";
 
 interface ProblemEditorProps {
   initialValues: ProblemFormValues;
@@ -30,11 +38,11 @@ export function ProblemEditor({
   onSubmit,
   mode,
 }: ProblemEditorProps) {
+  // const navigate = useNavigate(); // Não é mais necessário
   const [activeTab, setActiveTab] = useState<TabType>("general");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const methods = useForm<ProblemFormValues>({
-    // CORREÇÃO: 'as any' resolve o conflito de tipos estritos entre Zod (Opcional) e Interface (Obrigatório/Array)
     resolver: zodResolver(problemSchema) as any,
     defaultValues: initialValues,
     mode: "onChange",
@@ -53,196 +61,206 @@ export function ProblemEditor({
     setIsSubmitting(false);
   };
 
+  // Botão de Navegação Interna (Abas)
+  const NavButton = ({
+    tab,
+    icon,
+    label,
+  }: {
+    tab: TabType;
+    icon: React.ReactNode;
+    label: string;
+  }) => (
+    <button
+      type="button"
+      onClick={() => setActiveTab(tab)}
+      className={cn(
+        "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary",
+        activeTab === tab
+          ? "bg-primary/10 text-primary border border-primary/20 shadow-sm"
+          : "text-muted hover:text-zinc-100 hover:bg-surface-hover",
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+
   return (
-    <div className="h-full flex flex-col bg-[#0d1117]">
+    <div className="h-full flex flex-col bg-background text-zinc-100 font-sans selection:bg-primary/20">
       <FormProvider {...methods}>
         <form
           onSubmit={handleSubmit(onFormSubmit)}
           className="h-full flex flex-col"
         >
-          {/* --- BARRA DE NAVEGAÇÃO / ABAS --- */}
-          <div className="flex items-center gap-1 p-2 border-b border-gray-800 bg-[#161b22]">
-            <NavButton
-              active={activeTab === "general"}
-              onClick={() => setActiveTab("general")}
-              icon={<Layout size={16} />}
-              label="Geral"
-            />
-            <NavButton
-              active={activeTab === "code"}
-              onClick={() => setActiveTab("code")}
-              icon={<Code2 size={16} />}
-              label="Código Base"
-            />
-            <NavButton
-              active={activeTab === "validation"}
-              onClick={() => setActiveTab("validation")}
-              icon={<FlaskConical size={16} />}
-              label="Testes & Validação"
-            />
-            <NavButton
-              active={activeTab === "settings"}
-              onClick={() => setActiveTab("settings")}
-              icon={<Settings2 size={16} />}
-              label="Configurações"
-            />
+          {/* --- HEADER / NAVIGATION --- */}
+          <div className="flex-none border-b border-border bg-surface px-6 py-4 flex items-center justify-between gap-4 shadow-sm z-10">
+            <div className="flex items-center gap-4">
+              {/* REMOVIDO: Botão de Voltar e Divisor. 
+                    A página pai (EditProblem ou CreateProblem) já deve fornecer a navegação de retorno.
+                */}
 
-            <div className="flex-1" />
+              <div className="flex bg-background/50 rounded-lg p-1 border border-border">
+                <NavButton
+                  tab="general"
+                  icon={<Layout size={18} />}
+                  label="Geral"
+                />
+                <NavButton
+                  tab="code"
+                  icon={<Code2 size={18} />}
+                  label="Código"
+                />
+                <NavButton
+                  tab="validation"
+                  icon={<FlaskConical size={18} />}
+                  label="Testes"
+                />
+                <NavButton
+                  tab="settings"
+                  icon={<Settings2 size={18} />}
+                  label="Ajustes"
+                />
+              </div>
+            </div>
 
-            <button
+            <Button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
+              isLoading={isSubmitting}
+              className="px-8 h-11 text-base font-semibold shadow-md shadow-primary/10"
             >
-              {isSubmitting ? (
-                <span className="animate-spin">⌛</span>
-              ) : (
-                <Save size={16} />
-              )}
+              <Save size={20} className="mr-2" />
               {mode === "EDIT" ? "Salvar Alterações" : "Criar Atividade"}
-            </button>
+            </Button>
           </div>
 
-          {/* --- ÁREA DE CONTEÚDO (Scrollável) --- */}
-          <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-gray-700">
-            <div className="max-w-6xl mx-auto">
-              {/* ABA GERAL: Título, Descrição, Slug */}
+          {/* --- CONTENT AREA --- */}
+          <div className="flex-1 overflow-y-auto p-8 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+            <div className="max-w-7xl mx-auto min-h-full">
+              {/* ABA GERAL */}
               <div
-                className={
-                  activeTab === "general" ? "block space-y-6" : "hidden"
-                }
+                className={cn(
+                  "space-y-8 animate-in fade-in slide-in-from-bottom-2",
+                  activeTab === "general" ? "block" : "hidden",
+                )}
               >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-300">
-                      Título da Atividade
-                    </label>
-                    <input
-                      {...register("title")}
-                      className="w-full h-10 bg-[#0d1117] border border-gray-700 rounded px-3 text-white focus:border-blue-500 outline-none transition-colors"
-                      placeholder="Ex: Soma de Vetores"
-                    />
-                    {errors.title && (
-                      <span className="text-xs text-red-400">
-                        {errors.title.message}
-                      </span>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-300">
-                      Slug (URL)
-                    </label>
-                    <input
-                      {...register("slug")}
-                      className="w-full h-10 bg-[#0d1117] border border-gray-700 rounded px-3 text-gray-400 font-mono text-sm focus:border-blue-500 outline-none transition-colors"
-                    />
-                    {errors.slug && (
-                      <span className="text-xs text-red-400">
-                        {errors.slug.message}
-                      </span>
-                    )}
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <Input
+                    label="Título da Atividade"
+                    placeholder="Ex: Soma de Vetores"
+                    error={errors.title?.message}
+                    {...register("title")}
+                    className="h-12 text-base bg-surface border-border focus:border-primary"
+                  />
+                  <Input
+                    label="Slug (URL Amigável)"
+                    placeholder="soma-de-vetores"
+                    error={errors.slug?.message}
+                    {...register("slug")}
+                    className="h-12 text-base bg-surface border-border font-mono text-muted focus:text-zinc-100"
+                  />
                 </div>
 
-                <div className="space-y-2 h-[500px] flex flex-col">
-                  <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                <div className="space-y-3 h-[600px] flex flex-col">
+                  <label className="text-sm font-medium text-muted uppercase tracking-wider flex items-center gap-2">
                     <FileText size={16} /> Enunciado (Markdown)
                   </label>
-                  <div className="flex-1 border border-gray-700 rounded overflow-hidden">
+                  <div className="flex-1 border border-border rounded-xl overflow-hidden bg-surface shadow-sm focus-within:ring-2 focus-within:ring-primary/20 transition-all">
                     <MarkdownInput
-                      label=""
+                      label="" // Label já renderizado acima
                       register={register("description")}
                       watchValue={watch("description")}
                       error={errors.description?.message}
-                      placeholder="Descreva o problema aqui..."
+                      placeholder="# Descreva o problema detalhadamente aqui..."
                     />
                   </div>
                 </div>
               </div>
 
-              {/* ABA CÓDIGO: ScaffoldingConfig */}
-              <div className={activeTab === "code" ? "block h-full" : "hidden"}>
-                <div className="bg-[#161b22] border border-gray-800 rounded-lg p-1 h-[600px]">
+              {/* ABA CÓDIGO */}
+              <div
+                className={cn(
+                  "h-full animate-in fade-in slide-in-from-bottom-2",
+                  activeTab === "code" ? "block" : "hidden",
+                )}
+              >
+                <div className="bg-surface border border-border rounded-xl p-1 h-[750px] shadow-lg">
                   <ScaffoldingConfig />
                 </div>
               </div>
 
-              {/* ABA VALIDAÇÃO: ValidationConfig */}
-              <div className={activeTab === "validation" ? "block" : "hidden"}>
-                <div className="bg-[#161b22] border border-gray-800 rounded-lg p-4">
+              {/* ABA VALIDAÇÃO */}
+              <div
+                className={cn(
+                  "animate-in fade-in slide-in-from-bottom-2",
+                  activeTab === "validation" ? "block" : "hidden",
+                )}
+              >
+                <div className="bg-surface border border-border rounded-xl p-6 shadow-lg">
                   <ValidationConfig />
                 </div>
               </div>
 
-              {/* ABA CONFIGURAÇÕES: Prazos, Limites */}
+              {/* ABA CONFIGURAÇÕES */}
               <div
-                className={
-                  activeTab === "settings" ? "block space-y-6" : "hidden"
-                }
+                className={cn(
+                  "animate-in fade-in slide-in-from-bottom-2",
+                  activeTab === "settings" ? "block" : "hidden",
+                )}
               >
-                <div className="bg-[#161b22] border border-gray-800 rounded-lg p-6 space-y-6">
-                  <h3 className="text-lg font-semibold text-white border-b border-gray-800 pb-2">
-                    Regras de Execução
-                  </h3>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-400">
-                        Tempo Limite (ms)
-                      </label>
-                      <input
+                <div className="bg-surface border border-border rounded-xl p-10 space-y-12 shadow-lg max-w-5xl mx-auto">
+                  <section className="space-y-8">
+                    <h3 className="text-2xl font-bold text-zinc-100 border-b border-border pb-4 flex items-center gap-3">
+                      <div className="p-2.5 bg-primary/10 rounded-xl text-primary">
+                        <Settings2 size={28} />
+                      </div>
+                      Regras de Execução
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                      <Input
+                        label="Tempo Limite (ms)"
                         type="number"
                         {...register("timeLimit", { valueAsNumber: true })}
-                        className="w-full h-10 bg-[#0d1117] border border-gray-700 rounded px-3 text-white"
+                        className="bg-background h-12 text-base border-border"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-400">
-                        Memória Limite (MB)
-                      </label>
-                      <input
+                      <Input
+                        label="Memória Limite (MB)"
                         type="number"
                         {...register("memoryLimit", { valueAsNumber: true })}
-                        className="w-full h-10 bg-[#0d1117] border border-gray-700 rounded px-3 text-white"
+                        className="bg-background h-12 text-base border-border"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-400">
-                        Tentativas (0 = Infinito)
-                      </label>
-                      <input
+                      <Input
+                        label="Tentativas (0 = Infinito)"
                         type="number"
                         {...register("maxAttempts", { valueAsNumber: true })}
-                        className="w-full h-10 bg-[#0d1117] border border-gray-700 rounded px-3 text-white"
+                        className="bg-background h-12 text-base border-border"
                       />
                     </div>
-                  </div>
+                  </section>
 
-                  <h3 className="text-lg font-semibold text-white border-b border-gray-800 pb-2 pt-4">
-                    Agendamento
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-400">
-                        Data de Início
-                      </label>
-                      <input
+                  <section className="space-y-8">
+                    <h3 className="text-2xl font-bold text-zinc-100 border-b border-border pb-4 flex items-center gap-3">
+                      <div className="p-2.5 bg-primary/10 rounded-xl text-primary">
+                        <Clock size={28} />
+                      </div>
+                      Agendamento
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <Input
+                        label="Data de Início"
                         type="datetime-local"
                         {...register("startDate")}
-                        className="w-full h-10 bg-[#0d1117] border border-gray-700 rounded px-3 text-white"
+                        className="bg-background h-12 text-base border-border"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-400">
-                        Prazo de Entrega (Deadline)
-                      </label>
-                      <input
+                      <Input
+                        label="Prazo de Entrega (Deadline)"
                         type="datetime-local"
                         {...register("deadline")}
-                        className="w-full h-10 bg-[#0d1117] border border-gray-700 rounded px-3 text-white"
+                        className="bg-background h-12 text-base border-border"
                       />
                     </div>
-                  </div>
+                  </section>
                 </div>
               </div>
             </div>
@@ -250,26 +268,5 @@ export function ProblemEditor({
         </form>
       </FormProvider>
     </div>
-  );
-}
-
-// Botão de Aba Auxiliar
-function NavButton({ active, onClick, icon, label }: any) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`
-        flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all
-        ${
-          active
-            ? "bg-blue-600/10 text-blue-400 border border-blue-600/20"
-            : "text-gray-400 hover:text-white hover:bg-white/5"
-        }
-      `}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }

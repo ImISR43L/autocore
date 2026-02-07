@@ -13,6 +13,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "../../../lib/utils";
 
 const Editor = lazy(() => import("@monaco-editor/react"));
 
@@ -47,31 +48,25 @@ const TEMPLATES: Record<LangKey, { name: string; content: string }> = {
 };
 
 export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
-  // Removido getValues que não estava sendo usado
   const { control, watch, setValue } = useFormContext();
   const [activeIndex, setActiveIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Estado local para controle IMEDIATO da UI
   const [currentLang, setCurrentLang] = useState<LangKey>("python");
   const [pendingLang, setPendingLang] = useState<LangKey | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const getName = (name: string) => (basePath ? `${basePath}.${name}` : name);
 
-  // Removido replace que não estava sendo usado
   const { fields, append, remove } = useFieldArray({
     control,
     name: getName("starterCode"),
   });
 
   const parameters = watch(getName("parameters")) || [];
-
-  // Watchers para detectar mudanças externas e inicialização
   const firstFileName = watch(getName(`starterCode.0.name`));
   const firstFileContent = watch(getName(`starterCode.0.content`));
 
-  // Sincroniza estado local com o formulário ao montar (caso venha do banco de dados)
   useEffect(() => {
     if (firstFileName) {
       const detected = getLanguageFromExt(firstFileName) as LangKey;
@@ -168,13 +163,8 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
 
   const applyLanguageSwitch = (lang: LangKey) => {
     const template = TEMPLATES[lang];
-
-    // 1. Atualiza UI imediatamente (Para o usuário ver a troca no select)
     setCurrentLang(lang);
 
-    // 2. Lógica Híbrida:
-    // Se já existem arquivos, usamos setValue no índice 0. Isso é MAIS RÁPIDO e SEGURO
-    // para o react-hook-form propagar mudanças para o ValidationConfig.
     if (fields.length > 0) {
       setValue(
         getName(`starterCode.0`),
@@ -184,10 +174,8 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
         },
         { shouldDirty: true },
       );
-
       setActiveIndex(0);
     } else {
-      // Se não tem nada, usamos append
       append({ name: template.name, content: template.content });
       setActiveIndex(0);
     }
@@ -205,11 +193,15 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
 
   return (
     <div
-      className={`flex flex-col gap-4 transition-all duration-300 ${isFullscreen ? "fixed inset-0 z-50 bg-[#0d1117] p-6 h-screen w-screen" : "w-full h-full animate-in fade-in slide-in-from-bottom-4 duration-500"}`}
+      className={`flex flex-col gap-4 transition-all duration-300 ${
+        isFullscreen
+          ? "fixed inset-0 z-50 bg-[#0d1117] p-6 h-screen w-screen"
+          : "w-full h-full animate-in fade-in slide-in-from-bottom-4 duration-500"
+      }`}
     >
       {showConfirmModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#1e1e1e] border border-gray-700 rounded-xl shadow-2xl p-6 max-w-sm w-full m-4 animate-in zoom-in-95 duration-200">
+          <div className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full m-4 animate-in zoom-in-95 duration-200">
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3 text-amber-500">
                 <div className="p-2 bg-amber-500/10 rounded-full">
@@ -219,7 +211,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                   Alterar Linguagem?
                 </h3>
               </div>
-              <p className="text-sm text-gray-400 leading-relaxed">
+              <p className="text-sm text-muted leading-relaxed">
                 Você editou o código. Trocar para{" "}
                 <strong className="text-white">
                   {" "}
@@ -230,7 +222,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
               <div className="flex gap-3 mt-2 justify-end">
                 <button
                   onClick={() => setShowConfirmModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-muted hover:text-white hover:bg-white/5 rounded-lg transition-colors"
                 >
                   Cancelar
                 </button>
@@ -248,10 +240,10 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
         </div>
       )}
 
-      <div className="flex justify-between items-center border-b border-gray-800 pb-2 flex-none">
+      <div className="flex justify-between items-center border-b border-border pb-2 flex-none">
         <div className="flex items-center gap-3">
           <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-            <FileCode className="text-green-500" size={20} />
+            <FileCode className="text-primary" size={20} />
             {isFullscreen
               ? "Modo de Edição Focada"
               : "Código Base (Scaffolding)"}
@@ -261,7 +253,12 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
               type="button"
               onClick={handleSyncParams}
               disabled={!isParamsOutOfSync}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-all border ${isParamsOutOfSync ? "bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20" : "bg-gray-800 text-gray-500 border-transparent opacity-50 cursor-default"}`}
+              className={cn(
+                "flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-all border",
+                isParamsOutOfSync
+                  ? "bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20"
+                  : "bg-surface-hover text-muted border-transparent opacity-50 cursor-default",
+              )}
             >
               <RefreshCw size={12} />{" "}
               {isParamsOutOfSync ? "Sincronizar Params" : "Sincronizado"}
@@ -273,54 +270,63 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
           <button
             type="button"
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className="text-gray-400 hover:text-white p-1.5 rounded hover:bg-white/10 transition-colors"
+            className="text-muted hover:text-white p-1.5 rounded hover:bg-white/10 transition-colors"
           >
             {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </button>
-          <div className="flex items-center bg-gray-800 rounded-md p-0.5 border border-gray-700">
+
+          {/* DROPDOWN DE LINGUAGEM COM FONTE AUMENTADA (text-sm) */}
+          <div className="flex items-center bg-background rounded-md p-0.5 border border-border">
             <div className="relative">
               <select
                 value={currentLang}
                 onChange={(e) =>
                   handleLanguageChange(e.target.value as LangKey)
                 }
-                className="appearance-none bg-transparent text-xs font-medium text-gray-300 pl-3 pr-7 py-1.5 outline-none cursor-pointer hover:text-white"
+                className="appearance-none bg-transparent text-sm font-medium text-zinc-300 pl-3 pr-7 py-1.5 outline-none cursor-pointer hover:text-white"
               >
                 <option value="python">Python</option>
                 <option value="javascript">JavaScript</option>
                 <option value="cpp">C++</option>
               </select>
               <ChevronDown
-                size={12}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"
+                size={14}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
               />
             </div>
-            <div className="w-[1px] h-4 bg-gray-600 mx-1"></div>
+            <div className="w-[1px] h-4 bg-border mx-1"></div>
             <button
               type="button"
               onClick={handleAddFile}
-              className="text-xs font-medium text-white px-3 py-1.5 rounded hover:bg-gray-700 flex items-center gap-1 transition-colors"
+              className="text-sm font-medium text-white px-3 py-1.5 rounded hover:bg-surface-hover flex items-center gap-1 transition-colors"
             >
-              <Plus size={14} /> Novo Arquivo
+              <Plus size={16} /> Novo Arquivo
             </button>
           </div>
         </div>
       </div>
 
       <div
-        className={`border border-gray-800 rounded-md overflow-hidden bg-[#1e1e1e] flex flex-col w-full shadow-lg ${isFullscreen ? "flex-1" : "flex-1 min-h-[500px]"}`}
+        className={`border border-border rounded-md overflow-hidden bg-surface flex flex-col w-full shadow-lg ${
+          isFullscreen ? "flex-1" : "flex-1 min-h-[500px]"
+        }`}
       >
-        <div className="flex bg-[#252526] overflow-x-auto no-scrollbar flex-none">
+        <div className="flex bg-background/50 overflow-x-auto no-scrollbar flex-none border-b border-border">
           {fields.map((field, index) => (
             <div
               key={field.id}
               onClick={() => setActiveIndex(index)}
-              className={`group flex items-center gap-2 px-4 py-2 text-sm cursor-pointer border-r border-gray-800 select-none min-w-[120px] justify-between ${index === activeIndex ? "bg-[#1e1e1e] text-white border-t-2 border-t-green-500" : "text-gray-500 hover:bg-[#2a2d2e] hover:text-gray-300"}`}
+              className={cn(
+                "group flex items-center gap-2 px-4 py-2 text-sm cursor-pointer border-r border-border select-none min-w-[120px] justify-between transition-colors",
+                index === activeIndex
+                  ? "bg-surface text-white border-t-2 border-t-primary"
+                  : "text-muted hover:bg-surface-hover hover:text-zinc-300",
+              )}
             >
               <div className="flex items-center gap-2">
                 <File
                   size={14}
-                  className={index === activeIndex ? "text-green-500" : ""}
+                  className={index === activeIndex ? "text-primary" : ""}
                 />
                 <Controller
                   control={control}
@@ -346,7 +352,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                     remove(index);
                     setActiveIndex(newIndex);
                   }}
-                  className="opacity-0 group-hover:opacity-100 hover:bg-gray-700 rounded p-0.5 text-gray-400 hover:text-red-400 transition-all"
+                  className="opacity-0 group-hover:opacity-100 hover:bg-zinc-700 rounded p-0.5 text-muted hover:text-destructive transition-all"
                 >
                   <Trash2 size={12} />
                 </button>
@@ -358,7 +364,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
         <div className="flex-1 relative min-h-0">
           <Suspense
             fallback={
-              <div className="absolute inset-0 flex items-center justify-center text-gray-500 gap-2">
+              <div className="absolute inset-0 flex items-center justify-center text-muted gap-2">
                 <Loader2 className="animate-spin" /> Carregando Editor...
               </div>
             }
@@ -370,13 +376,13 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                 render={({ field }) => (
                   <div className="absolute inset-0">
                     <Editor
-                      // CRÍTICO: Key com currentLang força renderização visual instantânea
                       key={`${fields[activeIndex].id}-${currentLang}-${activeIndex}`}
                       height="100%"
                       width="100%"
                       theme="vs-dark"
-                      path={`${basePath ? basePath + "-" : ""}${fields[activeIndex].id}-${currentLang}-${activeIndex}`}
-                      // CRÍTICO: Usa estado local para linguagem, desacoplando do delay do Form
+                      path={`${basePath ? basePath + "-" : ""}${
+                        fields[activeIndex].id
+                      }-${currentLang}-${activeIndex}`}
                       language={currentLang}
                       value={field.value}
                       onChange={(value) => field.onChange(value)}
@@ -393,14 +399,14 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
               />
             )}
             {fields.length === 0 && (
-              <div className="absolute inset-0 flex items-center justify-center text-gray-500">
+              <div className="absolute inset-0 flex items-center justify-center text-muted">
                 Nenhum arquivo selecionado.
               </div>
             )}
           </Suspense>
         </div>
       </div>
-      <p className="text-xs text-gray-500 flex-none">
+      <p className="text-xs text-muted flex-none">
         * Este código aparecerá automaticamente para o aluno.{" "}
         {isFullscreen && " (Pressione ESC para sair)"}
       </p>

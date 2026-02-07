@@ -14,7 +14,7 @@ import {
   RefreshCw,
   Trash,
   Type,
-  Link,
+  Link as LinkIcon,
   FileText,
   LayoutTemplate,
   ArrowLeft,
@@ -24,11 +24,17 @@ import { useFormPersist } from "../../hooks/useFormPersist";
 import { ExamQuestions } from "./steps/ExamQuestions";
 import { ExamReview } from "./steps/ExamReview";
 
+// UI Components
+import { Button } from "../ui/Button";
+import { Input } from "../ui/Input";
+import { cn } from "../../lib/utils";
+
 interface ProblemWizardProps {
   initialValues?: Partial<ProblemFormValues>;
   onSubmit: (data: ProblemFormValues) => Promise<void>;
 }
 
+// CORREÇÃO: Container de Scroll simples que preenche o espaço disponível
 const ScrollableStepContent = ({
   children,
   isWide = false,
@@ -36,11 +42,12 @@ const ScrollableStepContent = ({
   children: React.ReactNode;
   isWide?: boolean;
 }) => (
-  <div className="h-[calc(100vh-280px)] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
+  <div className="h-full w-full overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
     <div
-      className={`mx-auto flex flex-col gap-6 pt-4 pb-10 transition-all duration-300 ${
-        isWide ? "w-full max-w-[98%]" : "w-full max-w-5xl"
-      }`}
+      className={cn(
+        "mx-auto flex flex-col gap-6 pt-6 pb-10 px-4 transition-all duration-300",
+        isWide ? "max-w-[98%]" : "max-w-5xl",
+      )}
     >
       {children}
     </div>
@@ -60,11 +67,8 @@ const generateSlug = (text: string) => {
 };
 
 export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
-  // --- CORREÇÃO 1: Robustez na captura do ID ---
   const params = useParams();
-  // Tenta pegar 'id' ou 'classroomId', garantindo que não seja undefined
   const classroomId = params.id || params.classroomId || "";
-
   const navigate = useNavigate();
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
 
@@ -126,8 +130,6 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
 
   const handleConfirmExit = () => {
     if (!classroomId) {
-      console.error("Classroom ID não encontrado para navegação.");
-      // Fallback para a home se der erro
       navigate("/");
       return;
     }
@@ -161,39 +163,30 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
       : ["startDate", "deadline", "timeLimit", "memoryLimit", "maxAttempts"];
 
   return (
-    <div className="h-full flex flex-col relative bg-black/20 rounded-xl border border-gray-800 shadow-2xl overflow-hidden">
-      {/* Modal de Confirmação (Mantido igual) */}
+    // CORREÇÃO: Container principal Flex + Overflow hidden para conter tudo na tela
+    <div className="h-full flex flex-col relative bg-surface rounded-xl overflow-hidden border border-border shadow-2xl">
+      {/* Modal Confirmação */}
       {showExitConfirmation && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#1e1e1e] border border-gray-700 rounded-xl shadow-2xl p-6 max-w-sm w-full m-4 animate-in zoom-in-95 duration-200">
+          <div className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full m-4">
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3 text-amber-500">
-                <div className="p-2 bg-amber-500/10 rounded-full">
-                  <AlertTriangle size={24} />
-                </div>
-                <h3 className="text-lg font-bold text-white">
-                  Cancelar Criação?
-                </h3>
+                <AlertTriangle size={24} />
+                <h3 className="text-lg font-bold text-white">Cancelar?</h3>
               </div>
-
-              <p className="text-sm text-gray-400 leading-relaxed">
-                Você está prestes a sair do assistente. Seu progresso atual
-                permanecerá salvo como rascunho.
+              <p className="text-sm text-muted">
+                Seu progresso será salvo como rascunho.
               </p>
-
               <div className="flex gap-3 mt-2 justify-end">
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => setShowExitConfirmation(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
                 >
                   Continuar
-                </button>
-                <button
-                  onClick={handleConfirmExit}
-                  className="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-500 text-white rounded-lg shadow-lg shadow-red-900/20 transition-all"
-                >
+                </Button>
+                <Button variant="danger" onClick={handleConfirmExit}>
                   Sair
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -205,32 +198,30 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
           methods={methods as any}
           onComplete={handleFinalSubmit}
         >
-          {/* --- HEADER FIXO (Ajustado tamanho dos botões) --- */}
-          <div className="flex-none border-b border-gray-800 bg-gray-900/50 backdrop-blur p-4 flex items-center justify-between gap-4">
-            {/* CORREÇÃO 2: Botões Maiores (text-sm, px-4, py-2) */}
-            <button
+          {/* HEADER FIXO */}
+          <div className="flex-none border-b border-border bg-surface p-4 flex items-center justify-between gap-4 z-20 relative shadow-sm">
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setShowExitConfirmation(true)}
-              className="text-sm font-medium text-gray-400 hover:text-white flex items-center gap-2 transition-colors px-4 py-2 rounded-lg border border-gray-800 hover:border-gray-600 bg-black/40 hover:bg-white/5"
-              title="Voltar para a turma"
-              type="button"
+              className="text-muted border-border hover:bg-background"
             >
-              <ArrowLeft size={16} />
-              <span className="hidden md:inline">Voltar</span>
-            </button>
+              <ArrowLeft size={16} className="mr-2" /> Voltar
+            </Button>
 
-            <div className="flex-1 flex justify-center overflow-hidden">
+            {/* Navegação centralizada que não quebra o layout */}
+            <div className="flex-1 flex justify-center min-w-0">
               <Stepper.Navigation />
             </div>
 
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={handleDiscardDraft}
-              className="text-sm font-medium text-gray-500 hover:text-red-400 flex items-center gap-2 transition-colors px-4 py-2 rounded-lg border border-gray-800 hover:border-red-500/30 hover:bg-red-500/10 bg-black/40"
-              title="Descartar Rascunho e Começar do Zero"
-              type="button"
+              className="text-muted hover:text-destructive"
             >
-              <Trash size={16} />
-              <span className="hidden md:inline">Limpar</span>
-            </button>
+              <Trash size={16} className="mr-2" /> Limpar
+            </Button>
           </div>
 
           <Stepper.Step
@@ -238,75 +229,65 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
             validationFields={["title", "slug", "description", "type"]}
           >
             <ScrollableStepContent>
-              {/* Conteúdo do Step 1 (Identidade) Mantido Igual */}
               <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                      <Type size={12} /> Título do Problema
-                    </label>
-                    <input
-                      {...register("title")}
-                      className={`h-11 bg-black/20 border ${
-                        errors.title
-                          ? "border-red-500/50 focus:border-red-500"
-                          : "border-gray-700 focus:border-blue-500"
-                      } rounded-md px-3 text-white placeholder:text-gray-600 outline-none focus:ring-2 transition-all`}
-                      placeholder="Ex: Soma de Dois Números"
-                    />
-                    {errors.title && (
-                      <span className="text-[10px] text-red-400">
-                        {errors.title.message}
-                      </span>
-                    )}
-                  </div>
+                  <Input
+                    label="Título do Problema"
+                    placeholder="Ex: Soma de Dois Números"
+                    {...register("title")}
+                    error={errors.title?.message}
+                    className="h-12 text-base"
+                  />
 
-                  <div className="flex flex-col gap-2">
-                    <div className="flex justify-between items-end">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                        <Link size={12} /> URL Amigável (Slug)
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-medium text-muted uppercase tracking-wider">
+                        URL Amigável (Slug)
                       </label>
                       <button
                         type="button"
                         onClick={handleRegenerateSlug}
-                        className="text-gray-500 hover:text-blue-400 transition-colors p-1 rounded hover:bg-blue-500/10"
+                        className="text-muted hover:text-primary transition-colors p-1"
+                        title="Regerar Slug"
                       >
                         <RefreshCw size={12} />
                       </button>
                     </div>
                     <div className="relative group">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-sm font-mono select-none">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm font-mono select-none">
                         /
                       </span>
                       <input
                         {...register("slug")}
-                        className={`h-11 w-full bg-black/20 border ${
-                          errors.slug
-                            ? "border-red-500/50"
-                            : "border-gray-700 focus:border-blue-500"
-                        } rounded-md pl-6 pr-3 text-white font-mono text-sm outline-none transition-all`}
+                        className={cn(
+                          "flex h-12 w-full rounded-md border border-border bg-background px-3 py-2 pl-6 text-base text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-mono",
+                          errors.slug &&
+                            "border-destructive focus:border-destructive",
+                        )}
                         placeholder="soma-dois-numeros"
                       />
                     </div>
                     {errors.slug && (
-                      <span className="text-[10px] text-red-400">
+                      <span className="text-xs text-destructive">
                         {errors.slug.message}
                       </span>
                     )}
                   </div>
                 </div>
 
+                {/* Cards de Tipo de Problema */}
                 <div className="flex flex-col gap-3">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                    <LayoutTemplate size={12} /> Tipo de Problema
+                  <label className="text-xs font-medium text-muted uppercase tracking-wider flex items-center gap-2">
+                    <LayoutTemplate size={14} /> Tipo de Problema
                   </label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <label
-                      className={`cursor-pointer border rounded-lg p-4 flex items-center gap-4 transition-all duration-300 relative overflow-hidden group ${
+                      className={cn(
+                        "cursor-pointer border rounded-xl p-5 flex items-center gap-4 transition-all duration-300 relative overflow-hidden group hover:bg-surface-hover",
                         problemType === "EXERCISE"
-                          ? "bg-blue-500/10 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.1)]"
-                          : "bg-gray-900 border-gray-800 hover:border-gray-700"
-                      }`}
+                          ? "bg-primary/5 border-primary shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+                          : "bg-background border-border",
+                      )}
                     >
                       <input
                         type="radio"
@@ -315,38 +296,41 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
                         className="absolute opacity-0"
                       />
                       <div
-                        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
+                        className={cn(
+                          "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
                           problemType === "EXERCISE"
-                            ? "border-blue-500"
-                            : "border-gray-600 group-hover:border-gray-500"
-                        }`}
+                            ? "border-primary"
+                            : "border-muted group-hover:border-zinc-400",
+                        )}
                       >
                         {problemType === "EXERCISE" && (
-                          <div className="w-2 h-2 rounded-full bg-blue-500 animate-in zoom-in" />
+                          <div className="w-2.5 h-2.5 rounded-full bg-primary animate-in zoom-in" />
                         )}
                       </div>
                       <div>
                         <span
-                          className={`block font-semibold transition-colors ${
+                          className={cn(
+                            "block font-semibold text-lg transition-colors",
                             problemType === "EXERCISE"
-                              ? "text-blue-400"
-                              : "text-white"
-                          }`}
+                              ? "text-primary"
+                              : "text-white",
+                          )}
                         >
                           Exercício Prático
                         </span>
-                        <span className="text-xs text-gray-500 mt-0.5 block">
+                        <span className="text-sm text-muted mt-1 block">
                           Focado em código, inputs e outputs.
                         </span>
                       </div>
                     </label>
 
                     <label
-                      className={`cursor-pointer border rounded-lg p-4 flex items-center gap-4 transition-all duration-300 relative overflow-hidden group ${
+                      className={cn(
+                        "cursor-pointer border rounded-xl p-5 flex items-center gap-4 transition-all duration-300 relative overflow-hidden group hover:bg-surface-hover",
                         problemType === "EXAM"
-                          ? "bg-purple-500/10 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.1)]"
-                          : "bg-gray-900 border-gray-800 hover:border-gray-700"
-                      }`}
+                          ? "bg-primary/5 border-primary shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+                          : "bg-background border-border",
+                      )}
                     >
                       <input
                         type="radio"
@@ -355,27 +339,29 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
                         className="absolute opacity-0"
                       />
                       <div
-                        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
+                        className={cn(
+                          "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
                           problemType === "EXAM"
-                            ? "border-purple-500"
-                            : "border-gray-600 group-hover:border-gray-500"
-                        }`}
+                            ? "border-primary"
+                            : "border-muted group-hover:border-zinc-400",
+                        )}
                       >
                         {problemType === "EXAM" && (
-                          <div className="w-2 h-2 rounded-full bg-purple-500 animate-in zoom-in" />
+                          <div className="w-2.5 h-2.5 rounded-full bg-primary animate-in zoom-in" />
                         )}
                       </div>
                       <div>
                         <span
-                          className={`block font-semibold transition-colors ${
+                          className={cn(
+                            "block font-semibold text-lg transition-colors",
                             problemType === "EXAM"
-                              ? "text-purple-400"
-                              : "text-white"
-                          }`}
+                              ? "text-primary"
+                              : "text-white",
+                          )}
                         >
                           Prova / Avaliação
                         </span>
-                        <span className="text-xs text-gray-500 mt-0.5 block">
+                        <span className="text-sm text-muted mt-1 block">
                           Múltiplas questões, com prazos e nota.
                         </span>
                       </div>
@@ -384,15 +370,16 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                    <FileText size={12} /> Enunciado
+                  <label className="text-xs font-medium text-muted uppercase tracking-wider flex items-center gap-2">
+                    <FileText size={14} /> Enunciado
                   </label>
                   <div
-                    className={`rounded-lg overflow-hidden border ${
+                    className={cn(
+                      "rounded-xl overflow-hidden border bg-background",
                       errors.description
-                        ? "border-red-500/50"
-                        : "border-gray-700"
-                    }`}
+                        ? "border-destructive"
+                        : "border-border",
+                    )}
                   >
                     <MarkdownInput
                       label=""
@@ -419,7 +406,8 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
           {problemType === "EXERCISE" && (
             <Stepper.Step label="Template" validationFields={["starterCode"]}>
               <ScrollableStepContent isWide={true}>
-                <div className="h-full min-h-[600px]">
+                {/* Altura ajustada para não quebrar layout */}
+                <div className="h-full min-h-[500px]">
                   <ScaffoldingConfig />
                 </div>
               </ScrollableStepContent>
@@ -429,7 +417,7 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
           {problemType === "EXAM" && (
             <Stepper.Step label="Questões" validationFields={["questions"]}>
               <ScrollableStepContent isWide={true}>
-                <div className="h-full min-h-[600px]">
+                <div className="h-full min-h-[500px]">
                   <ExamQuestions />
                 </div>
               </ScrollableStepContent>
