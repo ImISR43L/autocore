@@ -1,10 +1,4 @@
-import {
-  Process,
-  Processor,
-  OnQueueActive,
-  OnQueueFailed,
-  OnQueueCompleted,
-} from '@nestjs/bull';
+import { Process, Processor } from '@nestjs/bull';
 import { Logger, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -67,12 +61,84 @@ export class SubmissionsProcessor {
     return cleaned.trim();
   }
 
+  /**
+   * Compara a saída obtida com a esperada de forma robusta e LOGA as diferenças.
+   */
+  private compareOutputs(actual: string, expected: string): boolean {
+    if (!actual && !expected) return true;
+    if (!actual || !expected) {
+      this.logger.debug(
+        `[COMPARE] Falha por vazio. Actual: "${actual}", Expected: "${expected}"`,
+      );
+      return false;
+    }
+
+    // 1. Limpeza básica
+    const clean = (s: string) =>
+      s
+        .trim()
+        .replace(/\r\n/g, '\n')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '');
+    const a = clean(actual);
+    const e = clean(expected);
+
+    if (a === e) return true;
+
+    // 2. Comparação Linha a Linha
+    const aLines = a.split('\n').map((l) => l.trimEnd());
+    const eLines = e.split('\n').map((l) => l.trimEnd());
+    if (
+      aLines.length === eLines.length &&
+      aLines.every((line, i) => line === eLines[i])
+    ) {
+      return true;
+    }
+
+    // 3. Comparação Semântica (JSON)
+    try {
+      const objA = JSON.parse(a);
+      const objE = JSON.parse(e);
+      if (JSON.stringify(objA) === JSON.stringify(objE)) return true;
+    } catch {
+      // Ignora erro
+    }
+
+    // 4. Normalização Canônica (Agressiva)
+    const normalize = (str: string) => {
+      return str
+        .replace(/\s+/g, '') // Remove TODOS os espaços/newlines
+        .replace(/[\u2018\u2019]/g, "'") // Padroniza Smart Quotes Simples
+        .replace(/[\u201C\u201D]/g, '"') // Padroniza Smart Quotes Duplas
+        .replace(/'/g, '"') // Transforma aspas simples em duplas
+        .replace(/\(/g, '[') // Tupla -> Array
+        .replace(/\)/g, ']')
+        .replace(/\bTrue\b/g, 'true') // Python Booleans
+        .replace(/\bFalse\b/g, 'false')
+        .replace(/\bNone\b/g, 'null')
+        .replace(/;$/, '');
+    };
+
+    const normA = normalize(a);
+    const normE = normalize(e);
+
+    if (normA === normE) return true;
+
+    // LOG DE DIAGNÓSTICO (Aparecerá no terminal do docker compose)
+    this.logger.debug(`[COMPARE FAIL]
+      Raw Actual:   ${JSON.stringify(actual)}
+      Raw Expected: ${JSON.stringify(expected)}
+      Norm Actual:  ${normA}
+      Norm Expected: ${normE}
+    `);
+
+    return false;
+  }
+
   @Process('grade')
   async handleGrade(job: Job) {
     const { submissionId, files, language, timeLimit, memoryLimit } = job.data;
 
     try {
-      // Carrega a submissão COM as relações necessárias (user, problem) para uso no WebSocket
       const submission = await this.submissionsRepository.findOne({
         where: { id: submissionId },
         relations: [
@@ -99,7 +165,6 @@ export class SubmissionsProcessor {
         return;
       }
 
-      // Wrapper Generator
       let filesToRun: { name: string; content: string }[] = [];
       try {
         const inputFiles = Array.isArray(files)
@@ -114,7 +179,6 @@ export class SubmissionsProcessor {
         return;
       }
 
-      // Execução no Go-Judge
       let totalGrade = 0;
       let maxTime = 0;
       let maxMemory = 0;
@@ -136,17 +200,17 @@ export class SubmissionsProcessor {
               env: [
                 'PATH=/usr/bin:/bin:/usr/local/bin',
                 'LANG=en_US.UTF-8',
-                'PYTHONUNBUFFERED=1', // Força saída imediata (sem buffer)
+                'PYTHONUNBUFFERED=1',
               ],
               files: [
                 { content: inputContent },
-                { name: 'stdout', max: 10240 }, // FD 1: STDOUT
-                { name: 'stderr', max: 10240 }, // FD 2: STDERR
+                { name: 'stdout', max: 10240 },
+                { name: 'stderr', max: 10240 },
               ],
               cpuLimit: (timeLimit || 2) * 1000000000,
               memoryLimit: (memoryLimit || 128) * 1024 * 1024,
               procLimit: 64,
-              copyIn: copyIn, // Arquivos do código fonte
+              copyIn: copyIn,
             },
           ],
         };
@@ -171,14 +235,14 @@ export class SubmissionsProcessor {
         }
 
         const runStdout = this.cleanLog(res.files['stdout']);
-        const expected = testCase.expectedOutput?.trim() || '';
+        const expected = testCase.expectedOutput || '';
 
-        if (runStdout.trim() === expected) {
+        if (this.compareOutputs(runStdout, expected)) {
           totalGrade += 100 / fullProblem.testCases.length;
         } else {
           finalStatus = 'Wrong Answer';
           if (!firstErrorOutput) {
-            firstErrorOutput = `Esperado: ${expected}\nRecebido: ${runStdout.trim()}`;
+            firstErrorOutput = `Esperado: ${expected.trim()}\nRecebido: ${runStdout.trim()}`;
           }
         }
 
@@ -188,7 +252,6 @@ export class SubmissionsProcessor {
         if (memBytes > maxMemory) maxMemory = memBytes;
       }
 
-      // Atualiza o objeto submission
       submission.status = finalStatus;
       submission.grade = Math.round(totalGrade);
       // @ts-ignore
@@ -199,10 +262,8 @@ export class SubmissionsProcessor {
       submission.output =
         finalStatus !== 'Accepted' ? firstErrorOutput : 'Sucesso!';
 
-      // Salva no banco (mas não sobrescreve a variável 'submission' que tem as relações)
       await this.submissionsRepository.save(submission);
 
-      // CORREÇÃO WEBSOCKET: Usa o objeto 'submission' original que tem o 'user' carregado
       if (submission.user?.id) {
         this.submissionsGateway.server
           .to(`user-${submission.user.id}`)
@@ -222,7 +283,7 @@ export class SubmissionsProcessor {
       case 71: // Python
         return {
           fileName: 'main.py',
-          runCommand: ['python3', '-u', 'main.py'], // -u para unbuffered
+          runCommand: ['python3', '-u', 'main.py'],
         };
       case 63: // Node.js
         return { fileName: 'index.js', runCommand: ['node', 'index.js'] };

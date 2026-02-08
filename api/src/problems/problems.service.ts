@@ -36,6 +36,93 @@ export class ProblemsService {
     private classroomsRepository: Repository<Classroom>,
   ) {}
 
+  /**
+   * Validação Robusta com Logs de Debug
+   */
+  private compareOutputs(actual: string, expected: string): boolean {
+    // LOG INICIAL: O que chegou exatamente?
+    this.logger.debug(`[COMPARE-START]
+      Actual (Raw):   ${JSON.stringify(actual)}
+      Expected (Raw): ${JSON.stringify(expected)}
+    `);
+
+    if (!actual && !expected) return true;
+    if (!actual || !expected) {
+      this.logger.debug(`[COMPARE-FAIL] Um dos valores é vazio.`);
+      return false;
+    }
+
+    // 1. Limpeza básica
+    const clean = (s: string) =>
+      s
+        .trim()
+        .replace(/\r\n/g, '\n')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '');
+    const a = clean(actual);
+    const e = clean(expected);
+
+    if (a === e) {
+      this.logger.debug(`[COMPARE-SUCCESS] Match exato após trim.`);
+      return true;
+    }
+
+    // 2. Comparação Linha a Linha
+    const aLines = a.split('\n').map((l) => l.trimEnd());
+    const eLines = e.split('\n').map((l) => l.trimEnd());
+    if (
+      aLines.length === eLines.length &&
+      aLines.every((line, i) => line === eLines[i])
+    ) {
+      this.logger.debug(`[COMPARE-SUCCESS] Match linha a linha.`);
+      return true;
+    }
+
+    // 3. Comparação Semântica (JSON)
+    try {
+      const objA = JSON.parse(a);
+      const objE = JSON.parse(e);
+      if (JSON.stringify(objA) === JSON.stringify(objE)) {
+        this.logger.debug(`[COMPARE-SUCCESS] Match via JSON Parse.`);
+        return true;
+      }
+    } catch {
+      // Ignora erro
+    }
+
+    // 4. Normalização Canônica (Agressiva)
+    const normalize = (str: string) => {
+      return str
+        .replace(/\s+/g, '') // Remove TODOS os espaços/newlines
+        .replace(/[\u2018\u2019]/g, "'") // Padroniza Smart Quotes Simples
+        .replace(/[\u201C\u201D]/g, '"') // Padroniza Smart Quotes Duplas
+        .replace(/'/g, '"') // Transforma aspas simples em duplas
+        .replace(/\(/g, '[') // Tupla -> Array
+        .replace(/\)/g, ']')
+        .replace(/\bTrue\b/g, 'true') // Python Booleans
+        .replace(/\bFalse\b/g, 'false')
+        .replace(/\bNone\b/g, 'null')
+        .replace(/;$/, '');
+    };
+
+    const normA = normalize(a);
+    const normE = normalize(e);
+
+    // LOG DA NORMALIZAÇÃO: Verifique aqui se as strings ficaram iguais
+    this.logger.debug(`[COMPARE-NORM]
+      Norm Actual:   "${normA}"
+      Norm Expected: "${normE}"
+      Iguais?        ${normA === normE}
+    `);
+
+    if (normA === normE) {
+      this.logger.debug(`[COMPARE-SUCCESS] Match após normalização.`);
+      return true;
+    }
+
+    this.logger.debug(`[COMPARE-FAIL] Nenhuma estratégia funcionou.`);
+    return false;
+  }
+
   async create(createProblemDto: CreateProblemDto) {
     const {
       classroomId,
@@ -76,7 +163,6 @@ export class ProblemsService {
 
     const problem = this.problemsRepository.create({
       ...problemData,
-      // Se vier string/data, converte. Se vier null/undefined, passa undefined para o create ignorar ou usar default.
       startDate: startDate ? new Date(startDate) : undefined,
       deadline: deadline ? new Date(deadline) : undefined,
       parameters: parameters as unknown as ParameterDefinition[],
@@ -178,7 +264,6 @@ export class ProblemsService {
       questions,
       testCases,
       parameters,
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       classroomId: _classroomId,
       deadline,
       startDate,
@@ -223,7 +308,6 @@ export class ProblemsService {
       problem.parameters = parameters as unknown as ParameterDefinition[];
     }
 
-    // CORREÇÃO: Cast para 'any' ou 'Date' para permitir null
     if (deadline !== undefined) {
       problem.deadline = (deadline ? new Date(deadline) : null) as any;
     }
@@ -297,8 +381,11 @@ export class ProblemsService {
 
         const actualOutput = (result.stdout || '').trim();
         const expectedOutput = tc.expectedOutput.trim();
-        const status =
-          actualOutput === expectedOutput ? 'ACCEPTED' : 'WRONG_ANSWER';
+
+        // Uso da função com logs
+        const status = this.compareOutputs(actualOutput, expectedOutput)
+          ? 'ACCEPTED'
+          : 'WRONG_ANSWER';
 
         return {
           id: index,

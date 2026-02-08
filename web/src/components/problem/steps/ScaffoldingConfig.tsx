@@ -242,10 +242,20 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
               variant="outline"
               onClick={handleSyncParams}
               disabled={!isParamsOutOfSync}
-              className="h-7 text-xs px-2"
+              className={cn(
+                "h-7 text-xs px-2 transition-all border",
+                isParamsOutOfSync
+                  ? "border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 animate-pulse"
+                  : "border-transparent text-muted opacity-50 hover:bg-transparent cursor-default",
+              )}
             >
-              <RefreshCw size={12} className="mr-1" />
-              {isParamsOutOfSync ? "Sincronizar" : "Sincronizado"}
+              <RefreshCw
+                size={12}
+                className={cn("mr-1", isParamsOutOfSync && "animate-spin-slow")}
+              />
+              {isParamsOutOfSync
+                ? "Sincronizar Assinatura"
+                : "Assinatura Sincronizada"}
             </Button>
           )}
         </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, Suspense, lazy, useMemo } from "react";
+import { useState, useEffect, Suspense, lazy, useMemo, useRef } from "react";
 import { useFormContext, useFieldArray, Controller } from "react-hook-form";
 import {
   FlaskConical,
@@ -45,12 +45,16 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     getValues,
     setValue,
     watch,
-    formState: { errors },
+    formState: { errors, dirtyFields },
   } = useFormContext();
+
   const [isRunning, setIsRunning] = useState(false);
   const [runResults, setRunResults] = useState<any>(null);
   const [activeSolutionTab, setActiveSolutionTab] = useState(0);
   const [isSolutionFullscreen, setIsSolutionFullscreen] = useState(false);
+
+  // KEY MESTRA: Controla o ciclo de vida do Editor para forçar atualizações
+  const [remountKey, setRemountKey] = useState(0);
 
   const getName = (name: string) => (basePath ? `${basePath}.${name}` : name);
   const getError = (path: string) =>
@@ -61,50 +65,113 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     append: appendTest,
     remove: removeTest,
   } = useFieldArray({ control, name: getName("testCases") });
-  const { fields: solutionFields, replace: replaceSolution } = useFieldArray({
+
+  const { fields: solutionFields } = useFieldArray({
     control,
     name: getName("solutionCode"),
   });
 
+  // Watchers
   const starterCode = watch(getName("starterCode"));
-  const parameters = watch(getName("parameters")) || [];
-  const firstSolutionContent = watch(getName(`solutionCode.0.content`));
+  const solutionCode = watch(getName("solutionCode"));
   const firstSolutionName = watch(getName(`solutionCode.0.name`));
+  const firstSolutionContent = watch(getName(`solutionCode.0.content`)); // Necessário para sync de params
+  const parameters = watch(getName("parameters")) || []; // Necessário para sync de params
 
-  const cleanCopy = (files: any[]) =>
-    JSON.parse(JSON.stringify(files)).map(({ id, ...rest }: any) => rest);
+  // Utils
+  const cleanCopy = (files: any[]) => {
+    if (!files) return [];
+    return JSON.parse(JSON.stringify(files)).map((file: any) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { id, ...rest } = file;
+      return rest;
+    });
+  };
 
-  // Lógica de Sincronização Automática do Gabarito (Mantida)
+  // --- FORCE UPDATE ENGINE ---
+  const forceUpdateSolution = (newCode: any[], reason: string) => {
+    console.log(`>>> [ValidationConfig] Force Update Triggered: ${reason}`);
+
+    setValue(getName("solutionCode"), newCode, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    });
+
+    setTimeout(() => {
+      setRemountKey((prev) => prev + 1);
+    }, 0);
+  };
+
+  // --- SINCRONIA AUTOMÁTICA (SC -> VAL) ---
   useEffect(() => {
     const currentStarter = starterCode || [];
-    if (currentStarter.length === 0) return;
     const currentSolution = getValues(getName("solutionCode")) || [];
 
+    if (currentStarter.length === 0) return;
+
+    const starterJson = JSON.stringify(cleanCopy(currentStarter));
+    const solutionJson = JSON.stringify(cleanCopy(currentSolution));
+
+    // 1. Se não há solução, copia.
     if (currentSolution.length === 0) {
-      replaceSolution(cleanCopy(currentStarter));
+      forceUpdateSolution(
+        cleanCopy(currentStarter),
+        "First Load / Empty Solution",
+      );
       return;
     }
 
+    // 2. Se a linguagem mudou, copia.
     const starterLang = getLanguageFromExt(currentStarter[0]?.name || "");
     const solutionLang = getLanguageFromExt(currentSolution[0]?.name || "");
-
-    if (starterLang !== solutionLang) {
-      replaceSolution(cleanCopy(currentStarter));
-      toast.info(`Gabarito atualizado para ${starterLang} (Sincronizado).`);
+    if (starterLang !== solutionLang && solutionLang !== "plaintext") {
+      forceUpdateSolution(
+        cleanCopy(currentStarter),
+        `Language Change (${solutionLang} -> ${starterLang})`,
+      );
+      toast.info(`Gabarito atualizado para ${starterLang}.`);
+      return;
     }
-  }, [JSON.stringify(starterCode), replaceSolution, getValues, getName]);
+
+    // 3. Se o conteúdo mudou E o gabarito não foi "tocado" (dirty)
+    if (starterJson !== solutionJson) {
+      const isSolutionDirty = dirtyFields?.[getName("solutionCode")];
+      if (!isSolutionDirty) {
+        forceUpdateSolution(
+          cleanCopy(currentStarter),
+          "Content Sync (Not Dirty)",
+        );
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(starterCode)]);
 
   const currentLang = useMemo(
     () => getLanguageFromExt(firstSolutionName || ""),
     [firstSolutionName],
   );
 
+  // --- LÓGICA DE SINCRONIA DE PARÂMETROS ---
   const expectedParamsString = useMemo(() => {
     if (!parameters || parameters.length === 0) return "";
+
     if (currentLang === "python" || currentLang === "javascript") {
       return parameters.map((p: any) => p.name).join(", ");
+    } else if (currentLang === "cpp") {
+      // Mapeamento básico para C++ (pode ser expandido)
+      const typeMap: Record<string, string> = {
+        int: "int",
+        integer: "int",
+        float: "double",
+        string: "string",
+        boolean: "bool",
+        char: "char",
+      };
+      return parameters
+        .map((p: any) => `${typeMap[p.type] || "auto"} ${p.name}`)
+        .join(", ");
     }
-    // Lógica simplificada para cpp neste contexto de display, mantendo a original se precisar
     return "";
   }, [parameters, currentLang]);
 
@@ -114,6 +181,8 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     if (currentLang === "python") regex = /def\s+solve\s*\(([^)]*)\)/;
     else if (currentLang === "javascript")
       regex = /function\s+solve\s*\(([^)]*)\)/;
+    else if (currentLang === "cpp")
+      regex = /(?:int|void)\s+(?:solve|main)\s*\(([^)]*)\)/;
     else return false;
 
     const match = firstSolutionContent.match(regex);
@@ -127,23 +196,33 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     if (currentLang === "python") regex = /(def\s+solve\s*\()([^)]*)(\))/;
     else if (currentLang === "javascript")
       regex = /(function\s+solve\s*\()([^)]*)(\))/;
+    else if (currentLang === "cpp")
+      regex = /((?:int|void)\s+(?:solve|main)\s*\()([^)]*)(\))/;
     else return;
 
     const newContent = firstSolutionContent.replace(
       regex,
       `$1${expectedParamsString}$3`,
     );
-    setValue(getName(`solutionCode.0.content`), newContent, {
-      shouldDirty: true,
-    });
-    toast.success("Parâmetros do gabarito atualizados!");
+
+    // Atualiza apenas o conteúdo do arquivo
+    const currentCode = getValues(getName("solutionCode"));
+    if (currentCode && currentCode[0]) {
+      currentCode[0].content = newContent;
+      // Usa o forceUpdate para garantir visualização imediata
+      forceUpdateSolution(currentCode, "Parameter Sync");
+      toast.success("Parâmetros do gabarito atualizados!");
+    }
   };
 
   const handleResetSolution = () => {
-    const starter = getValues(getName("starterCode"));
-    if (starter && starter.length > 0) {
-      replaceSolution(cleanCopy(starter));
-      toast.info("Solução reiniciada.");
+    const latestStarter = getValues(getName("starterCode"));
+    if (latestStarter && latestStarter.length > 0) {
+      forceUpdateSolution(cleanCopy(latestStarter), "Manual Reset Button");
+      setActiveSolutionTab(0);
+      toast.success("Gabarito restaurado para o template original.");
+    } else {
+      toast.warning("Não há código base para restaurar.");
     }
   };
 
@@ -157,14 +236,14 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
   };
 
   const handleDryRun = async () => {
-    const solutionCode = getValues(getName("solutionCode"));
-    const testCases = getValues(getName("testCases"));
-    const parameters = getValues(getName("parameters"));
-    const returnType = getValues(getName("returnType"));
+    const sCode = getValues(getName("solutionCode"));
+    const tCases = getValues(getName("testCases"));
+    const params = getValues(getName("parameters"));
+    const retType = getValues(getName("returnType"));
 
-    if (!solutionCode?.length)
+    if (!sCode?.length)
       return toast.error("Escreva uma solução de referência.");
-    if (!testCases?.length) return toast.error("Adicione casos de teste.");
+    if (!tCases?.length) return toast.error("Adicione casos de teste.");
 
     setIsRunning(true);
     setRunResults(null);
@@ -174,11 +253,11 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
 
     try {
       const result = await dryRunProblem({
-        starterCode: sanitize(solutionCode),
-        testCases: sanitize(testCases),
-        parameters: sanitize(parameters),
-        returnType,
-        language: getLanguageFromExt(solutionCode[0].name),
+        starterCode: sanitize(sCode),
+        testCases: sanitize(tCases),
+        parameters: sanitize(params),
+        returnType: retType,
+        language: getLanguageFromExt(sCode[0].name),
       });
 
       setRunResults(result);
@@ -217,19 +296,35 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                 <p className="text-sm text-muted">Código validador (oculto).</p>
               )}
             </div>
+
+            {/* BOTÃO DE SINCRONIZAÇÃO DE VARIÁVEIS - AGORA VISÍVEL E CONSISTENTE */}
             {parameters.length > 0 && (
               <Button
                 size="sm"
                 variant="outline"
                 onClick={handleSyncParams}
                 disabled={!isParamsOutOfSync}
-                className="h-7 text-xs px-2"
+                className={cn(
+                  "h-7 text-xs px-2 transition-all border",
+                  isParamsOutOfSync
+                    ? "border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 animate-pulse"
+                    : "border-transparent text-muted opacity-50 hover:bg-transparent cursor-default",
+                )}
               >
-                <RefreshCw size={12} className="mr-1" />{" "}
-                {isParamsOutOfSync ? "Sincronizar" : "Sincronizado"}
+                <RefreshCw
+                  size={12}
+                  className={cn(
+                    "mr-1",
+                    isParamsOutOfSync && "animate-spin-slow",
+                  )}
+                />
+                {isParamsOutOfSync
+                  ? "Sincronizar Assinatura"
+                  : "Assinatura Sincronizada"}
               </Button>
             )}
           </div>
+
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsSolutionFullscreen(!isSolutionFullscreen)}
@@ -247,12 +342,14 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
               onClick={handleResetSolution}
               className="h-8 text-xs"
             >
-              <RotateCcw size={12} className="mr-1" /> Restaurar
+              <RotateCcw size={12} className="mr-1" /> Restaurar do Template
             </Button>
           </div>
         </div>
 
+        {/* CONTAINER COM KEY PARA FORÇAR REMONTAGEM COMPLETA */}
         <div
+          key={`editor-container-${remountKey}`}
           className={cn(
             "border border-border rounded-md overflow-hidden bg-surface flex flex-col shadow-lg",
             isSolutionFullscreen ? "flex-1" : "h-[400px]",
@@ -290,7 +387,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                     render={({ field }) => (
                       <div className="absolute inset-0">
                         <Editor
-                          key={`${solutionFields[activeSolutionTab].id}`}
+                          key={`${field.name}-${remountKey}`} // Key redundante para garantir
                           height="100%"
                           theme="vs-dark"
                           language={getLanguageFromExt(
@@ -317,6 +414,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
 
       {/* SEÇÃO 2: CASOS DE TESTE */}
       <div className="flex flex-col gap-6 w-full">
+        {/* ... (O restante do componente de testes permanece idêntico) ... */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-border pb-3 gap-4">
           <div>
             <h3 className="text-lg font-semibold text-white flex items-center gap-2">
