@@ -6,12 +6,21 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
+  // Apanha o token diretamente da sessão armazenada na storage local do Supabase
+  // Isso previne chamadas lentas à API de auth durante requests paralelos
   const {
     data: { session },
+    error,
   } = await supabase.auth.getSession();
 
   if (session?.access_token) {
-    config.headers.set("Authorization", `Bearer ${session.access_token}`);
+    // IMPORTANTE: Utilize atribuição direta no Axios mais recente se o set() falhar
+    config.headers.Authorization = `Bearer ${session.access_token}`;
+  } else {
+    console.warn(
+      "Nenhum token JWT disponível na sessão atual do Supabase.",
+      error,
+    );
   }
 
   return config;

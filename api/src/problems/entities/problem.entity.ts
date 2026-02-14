@@ -18,7 +18,15 @@ export enum ProblemType {
 
 export interface ParameterDefinition {
   name: string;
-  type: 'int' | 'float' | 'string' | 'boolean' | 'int[]' | 'string[]';
+  type:
+    | 'int'
+    | 'float'
+    | 'string'
+    | 'boolean'
+    | 'int[]'
+    | 'string[]'
+    | 'float[]'
+    | 'boolean[]';
 }
 
 export interface StarterCodeDefinition {

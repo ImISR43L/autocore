@@ -40,11 +40,9 @@ export class ProblemsService {
    * Validação Robusta com Logs de Debug
    */
   private compareOutputs(actual: string, expected: string): boolean {
-    // LOG INICIAL: O que chegou exatamente?
-    this.logger.debug(`[COMPARE-START]
-      Actual (Raw):   ${JSON.stringify(actual)}
-      Expected (Raw): ${JSON.stringify(expected)}
-    `);
+    this.logger.debug(
+      `[COMPARE-START]\nActual (Raw):   ${JSON.stringify(actual)}\nExpected (Raw): ${JSON.stringify(expected)}`,
+    );
 
     if (!actual && !expected) return true;
     if (!actual || !expected) {
@@ -107,12 +105,9 @@ export class ProblemsService {
     const normA = normalize(a);
     const normE = normalize(e);
 
-    // LOG DA NORMALIZAÇÃO: Verifique aqui se as strings ficaram iguais
-    this.logger.debug(`[COMPARE-NORM]
-      Norm Actual:   "${normA}"
-      Norm Expected: "${normE}"
-      Iguais?        ${normA === normE}
-    `);
+    this.logger.debug(
+      `[COMPARE-NORM]\nNorm Actual:   "${normA}"\nNorm Expected: "${normE}"\nIguais?        ${normA === normE}`,
+    );
 
     if (normA === normE) {
       this.logger.debug(`[COMPARE-SUCCESS] Match após normalização.`);
@@ -354,8 +349,25 @@ export class ProblemsService {
       returnType: (dto as any).returnType || 'void',
     } as Problem;
 
+    // Clone profundo para não afetar o payload original
     const filesClone = JSON.parse(JSON.stringify(dto.starterCode));
 
+    // LIMPEZA CRÍTICA: Remove resíduos de wrappers antigos armazenados na BD ou cache
+    filesClone.forEach((f: any) => {
+      if (f.content) {
+        const jsCppIndex = f.content.indexOf('// --- Wrapper Injetado');
+        const pyIndex = f.content.indexOf('# --- Wrapper Injetado');
+
+        if (jsCppIndex !== -1) {
+          f.content = f.content.substring(0, jsCppIndex).trim();
+        }
+        if (pyIndex !== -1) {
+          f.content = f.content.substring(0, pyIndex).trim();
+        }
+      }
+    });
+
+    // Aplica o Wrapper Inteligente no código purificado
     const processedFiles = WrapperGenerator.apply(
       filesClone,
       tempProblem,
@@ -382,7 +394,6 @@ export class ProblemsService {
         const actualOutput = (result.stdout || '').trim();
         const expectedOutput = tc.expectedOutput.trim();
 
-        // Uso da função com logs
         const status = this.compareOutputs(actualOutput, expectedOutput)
           ? 'ACCEPTED'
           : 'WRONG_ANSWER';
