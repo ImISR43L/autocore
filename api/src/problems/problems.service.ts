@@ -4,7 +4,6 @@ import {
   NotFoundException,
   Logger,
   InternalServerErrorException,
-  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -21,17 +20,12 @@ import { TestCase } from './entities/test-case.entity';
 import { Classroom } from '../classrooms/entities/classroom.entity';
 import { WrapperGenerator } from '../submissions/wrapper-generator';
 
-import * as http from 'http';
-
 @Injectable()
 export class ProblemsService {
   private readonly logger = new Logger(ProblemsService.name);
 
   private readonly executorUrl =
     process.env.EXECUTOR_URL || 'http://go-judge:5050/run';
-
-  // Injeta uma conexão persistente para não colapsar o DNS do Docker
-  private readonly httpAgent = new http.Agent({ keepAlive: true });
 
   constructor(
     @InjectRepository(Problem)
@@ -131,7 +125,6 @@ export class ProblemsService {
       parameters,
       startDate,
       deadline,
-      testCases,
       ...problemData
     } = createProblemDto;
 
@@ -171,28 +164,10 @@ export class ProblemsService {
       starterCode: problemData.starterCode as any,
       solutionCode: problemData.solutionCode as any,
       classroom: classroom,
-      testCases: testCases
-        ? testCases.map((tc) => this.testCasesRepository.create({ ...tc }))
-        : undefined,
       children: children.length > 0 ? children : undefined,
     });
 
-    try {
-      return await this.problemsRepository.save(problem);
-    } catch (error: any) {
-      if (
-        error.code === '23505' ||
-        (error.message && error.message.toLowerCase().includes('unique'))
-      ) {
-        throw new ConflictException([
-          'Já existe uma atividade com este Título ou URL. Altere o título.',
-        ]);
-      }
-      this.logger.error(`[CREATE PROBLEM] ${error.message}`, error.stack);
-      throw new InternalServerErrorException([
-        'Erro interno ao salvar a atividade. Verifique os logs.',
-      ]);
-    }
+    return this.problemsRepository.save(problem);
   }
 
   async findAll() {
@@ -227,12 +202,8 @@ export class ProblemsService {
     }
 
     if (problem.classroom && problem.classroom.owner.id !== userId) {
-      const now = new Date();
-      if (problem.startDate && problem.startDate > now) {
-        throw new ForbiddenException('Esta atividade ainda não começou.');
-      }
-
       if (problem.type === ProblemType.EXAM) {
+        const now = new Date();
         if (!problem.startedAt || problem.startedAt > now) {
           throw new ForbiddenException(
             'Esta prova ainda não foi iniciada pelo professor.',
@@ -512,9 +483,7 @@ export class ProblemsService {
       ],
     };
 
-    const { data } = await axios.post(this.executorUrl, payload, {
-      httpAgent: this.httpAgent, // <--- Adicione esta linha
-    });
+    const { data } = await axios.post(this.executorUrl, payload);
     const result = data[0];
 
     if (result.status !== 'Accepted') {

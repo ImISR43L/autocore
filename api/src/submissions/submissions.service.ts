@@ -103,10 +103,10 @@ export class SubmissionsService {
     }
 
     // Validações de Prazo
-    if (problem.startDate) {
+    if (problem.type === ProblemType.EXAM && problem.startDate) {
       const now = new Date();
       if (now < problem.startDate) {
-        throw new ForbiddenException('A atividade ainda não começou.');
+        throw new ForbiddenException('A prova ainda não começou.');
       }
     }
     if (problem.deadline && new Date() > problem.deadline) {

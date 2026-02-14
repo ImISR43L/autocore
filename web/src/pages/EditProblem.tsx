@@ -103,13 +103,7 @@ export default function EditProblem() {
     if (isFormDirty) {
       setShowExitModal(true);
     } else {
-      if (problem?.classroomId) {
-        navigate(`/class/${problem.classroomId}`, {
-          state: { activeTab: "classwork" },
-        });
-      } else {
-        navigate("/dashboard");
-      }
+      navigate(-1);
     }
   };
 
@@ -140,18 +134,7 @@ export default function EditProblem() {
                 <Button variant="ghost" onClick={() => setShowExitModal(false)}>
                   Voltar
                 </Button>
-                <Button
-                  variant="danger"
-                  onClick={() => {
-                    if (problem?.classroomId) {
-                      navigate(`/class/${problem.classroomId}`, {
-                        state: { activeTab: "classwork" },
-                      });
-                    } else {
-                      navigate("/dashboard");
-                    }
-                  }}
-                >
+                <Button variant="danger" onClick={() => navigate(-1)}>
                   Sair sem Salvar
                 </Button>
               </div>

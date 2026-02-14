@@ -13,6 +13,8 @@ import { MarkdownInput } from "../inputs/MarkdownInput";
 import {
   RefreshCw,
   Trash,
+  Type,
+  Link as LinkIcon,
   FileText,
   LayoutTemplate,
   ArrowLeft,
@@ -132,7 +134,7 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
       navigate("/");
       return;
     }
-    navigate(`/class/${classroomId}`, { state: { activeTab: "classwork" } });
+    navigate(`/class/${classroomId}`);
   };
 
   const problemType = useWatch({ control, name: "type" });

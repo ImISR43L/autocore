@@ -10,17 +10,11 @@ const parameterSchema = z.object({
       /^[a-zA-Z_][a-zA-Z0-9_]*$/,
       "Nome inválido (use apenas letras, números e _)",
     ),
+  // CORREÇÃO CRÍTICA AQUI:
+  // Removemos o { errorMap: ... } que estava causando o crash "(intermediate value) is null".
+  // Usamos errorMap ou params padrões suportados.
   type: z
-    .enum([
-      "int",
-      "float",
-      "string",
-      "boolean",
-      "int[]",
-      "string[]",
-      "float[]",
-      "boolean[]",
-    ])
+    .enum(["int", "float", "string", "boolean", "int[]", "string[]"])
     .refine((val) => val, { message: "Inválido" }),
 });
 
@@ -105,6 +99,7 @@ export const examSettingsSchema = z
       .datetime({ message: "Data inválida" })
       .optional()
       .or(z.literal("")),
+    // --- O CAMPO QUE FALTAVA ---
     questions: z.array(nestedQuestionSchema).default([]),
   })
   .refine(
@@ -130,6 +125,7 @@ export const problemSchema = z.discriminatedUnion("type", [
   basicInfoSchema
     .extend({ type: z.literal("EXERCISE") })
     .merge(exerciseDetailsSchema),
+  // Agora EXAM inclui 'questions' via examSettingsSchema
   basicInfoSchema.extend({ type: z.literal("EXAM") }).merge(examSettingsSchema),
 ]);
 

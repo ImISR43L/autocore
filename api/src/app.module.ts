@@ -58,7 +58,7 @@ import * as redisStore from 'cache-manager-redis-store';
     ThrottlerModule.forRoot([
       {
         ttl: 60000,
-        limit: 1000,
+        limit: 100,
       },
     ]),
 
