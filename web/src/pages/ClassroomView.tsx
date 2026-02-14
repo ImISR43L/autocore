@@ -678,39 +678,70 @@ export default function ClassroomView() {
   }, [activeTab, isOwner, id, fetchStats]);
 
   useEffect(() => {
-    if (
-      !currentProblem ||
-      currentProblem.type !== "EXAM" ||
-      !currentProblem.timeLimit ||
-      !currentProblem.startedAt
-    ) {
+    if (!currentProblem) {
       setTimeLeft(null);
-      setExamStatus(
-        currentProblem && !currentProblem.startedAt ? "WAITING" : "RUNNING",
-      );
       return;
     }
-    const interval = setInterval(() => {
+
+    const updateTimer = () => {
       const now = new Date().getTime();
-      const start = new Date(currentProblem.startedAt!).getTime();
-      const diff = start + currentProblem.timeLimit! * 60 * 1000 - now;
+
+      // Prova não iniciada fica aguardando o professor
+      if (currentProblem.type === "EXAM" && !currentProblem.startedAt) {
+        setExamStatus("WAITING");
+        setTimeLeft(null);
+        return;
+      }
+
+      let diff = Infinity;
+
+      // 1. Considera o Tempo Limite em Minutos (se for uma prova já iniciada)
+      if (
+        currentProblem.type === "EXAM" &&
+        currentProblem.timeLimit &&
+        currentProblem.startedAt
+      ) {
+        const start = new Date(currentProblem.startedAt).getTime();
+        diff = start + currentProblem.timeLimit * 60 * 1000 - now;
+      }
+
+      // 2. Considera a Data Limite (Deadline) de Provas ou Exercícios
+      if (currentProblem.deadline) {
+        const deadlineDiff = new Date(currentProblem.deadline).getTime() - now;
+        // Usa o tempo mais restrito (o que acabar primeiro)
+        diff = Math.min(diff, deadlineDiff);
+      }
+
+      if (diff === Infinity) {
+        setExamStatus("RUNNING");
+        setTimeLeft(null);
+        return;
+      }
+
       if (diff <= 0) {
         setExamStatus("FINISHED");
         setTimeLeft("00:00:00");
-        clearInterval(interval);
       } else {
         setExamStatus("RUNNING");
-        setTimeLeft(
-          `${Math.floor((diff % 864e5) / 36e5)
-            .toString()
-            .padStart(2, "0")}:${Math.floor((diff % 36e5) / 6e4)
-            .toString()
-            .padStart(2, "0")}:${Math.floor((diff % 6e4) / 1e3)
-            .toString()
-            .padStart(2, "0")}`,
-        );
+
+        // Formatação do Tempo
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % 864e5) / 36e5);
+        const mins = Math.floor((diff % 36e5) / 6e4);
+        const secs = Math.floor((diff % 6e4) / 1e3);
+
+        if (days > 0) {
+          setTimeLeft(`${days}d ${hours.toString().padStart(2, "0")}h`);
+        } else {
+          setTimeLeft(
+            `${hours.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`,
+          );
+        }
       }
-    }, 1000);
+    };
+
+    updateTimer(); // Chamada síncrona imediata
+    const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
   }, [currentProblem]);
 
@@ -1090,7 +1121,12 @@ export default function ClassroomView() {
 
   const upcomingWork = useMemo(() => {
     if (!classroom?.problems) return [];
-    const rootProblems = classroom.problems.filter((p) => !p.parent);
+    const rootProblems = classroom.problems.filter((p) => {
+      if (p.parent) return false;
+      if (!isOwner && p.startDate && new Date(p.startDate) > new Date())
+        return false;
+      return true;
+    });
     const now = new Date();
     return rootProblems
       .filter((p) => p.deadline && new Date(p.deadline) > now)
@@ -1099,7 +1135,7 @@ export default function ClassroomView() {
           new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime(),
       )
       .slice(0, 3);
-  }, [classroom]);
+  }, [classroom, isOwner]);
 
   const lastSubmission = useMemo(() => {
     if (!submissions || submissions.length === 0) return null;
@@ -1128,13 +1164,24 @@ export default function ClassroomView() {
     : false;
   const attemptsLeft =
     isExam && hasLimit ? Math.max(0, maxAttempts - myAttemptsCount) : Infinity;
+
+  const isBeforeStart = currentProblem?.startDate
+    ? new Date() < new Date(currentProblem.startDate)
+    : false;
+
   const isBlocked =
     (isExam && !isOwner && hasLimit && attemptsLeft === 0) ||
     (!isOwner && isDeadlinePassed) ||
+    (!isOwner && isBeforeStart) ||
     (isExam && examStatus === "WAITING" && !isOwner) ||
-    (isExam && examStatus === "FINISHED" && !isOwner);
+    (examStatus === "FINISHED" && !isOwner);
 
-  const dropdownOptions = classroom.problems.filter((p) => !p.parent);
+  const dropdownOptions = classroom.problems.filter((p) => {
+    if (p.parent) return false;
+    if (!isOwner && p.startDate && new Date(p.startDate) > new Date())
+      return false;
+    return true;
+  });
   const activeInspectionProblem =
     currentProblem?.children && currentProblem.children.length > 0
       ? currentProblem.children[activeInspectionIndex]
@@ -1639,7 +1686,9 @@ export default function ClassroomView() {
                 </Select>
 
                 {/* Status do Exame */}
-                {isExam && currentProblem?.timeLimit && (
+                {(timeLeft !== null ||
+                  examStatus === "WAITING" ||
+                  examStatus === "FINISHED") && (
                   <div
                     className={cn(
                       "px-4 py-2 rounded text-sm font-bold flex items-center gap-2 h-11 whitespace-nowrap",
@@ -1658,16 +1707,18 @@ export default function ClassroomView() {
                           ? "Encerrado"
                           : timeLeft}
                     </span>
-                    {isOwner && examStatus === "WAITING" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 ml-2 text-xs"
-                        onClick={handleStartExam}
-                      >
-                        Iniciar
-                      </Button>
-                    )}
+                    {isOwner &&
+                      currentProblem?.type === "EXAM" &&
+                      examStatus === "WAITING" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 ml-2 text-xs"
+                          onClick={handleStartExam}
+                        >
+                          Iniciar
+                        </Button>
+                      )}
                   </div>
                 )}
               </div>

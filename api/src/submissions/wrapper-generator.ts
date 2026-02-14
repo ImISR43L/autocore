@@ -4,23 +4,20 @@ import { Problem } from '../problems/entities/problem.entity';
 export class WrapperGenerator {
   private static readonly logger = new Logger(WrapperGenerator.name);
 
-  // Regex de segurança
   private static readonly UNSAFE_CHARS_REGEX =
     /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u3164]/g;
 
-  // Configuração de Extensão e Nome Padrão
   private static readonly LANGUAGE_CONFIG: Record<
     number,
     { ext: string; standardName: string }
   > = {
-    71: { ext: '.py', standardName: 'main.py' }, // Python
-    63: { ext: '.js', standardName: 'index.js' }, // Node.js
-    54: { ext: '.cpp', standardName: 'main.cpp' }, // C++
+    71: { ext: '.py', standardName: 'main.py' },
+    63: { ext: '.js', standardName: 'index.js' },
+    54: { ext: '.cpp', standardName: 'main.cpp' },
   };
 
   static apply(files: any[], problem: Problem, languageId: number): any[] {
     this.logger.log(`[log] Iniciando Wrapper para LangID: ${languageId}`);
-    this.logger.log(`[log] Arquivos: ${files.map((f) => f.name).join(', ')}`);
 
     const sanitizedFiles = files.map((file) => ({
       ...file,
@@ -41,29 +38,22 @@ export class WrapperGenerator {
     if (config) entryFile.name = config.standardName;
 
     switch (languageId) {
-      case 71: // Python
+      case 71:
         wrapperCode = this.generatePythonWrapper(problem);
         entryFile.content = `${entryFile.content}\n\n${wrapperCode}`;
         break;
 
-      case 63: // JavaScript
+      case 63:
         wrapperCode = this.generateJsWrapper(problem);
         entryFile.content = `${entryFile.content}\n\n${wrapperCode}`;
         break;
 
-      case 54: // C++
+      case 54:
         if (!entryFile.content.includes('int main')) {
           wrapperCode = this.generateCppWrapper(problem);
           entryFile.content = `${entryFile.content}\n\n${wrapperCode}`;
-        } else {
-          this.logger.warn(`[WRAPPER-SKIP] 'int main' detectado.`);
         }
         break;
-
-      default:
-        this.logger.warn(
-          `[WRAPPER-FAIL] Sem gerador para LangID ${languageId}`,
-        );
     }
 
     sanitizedFiles[entryFileIndex] = entryFile;
@@ -89,7 +79,6 @@ import sys
 import re
 import json
 
-# --- Wrapper Injetado pelo Autocore (NORMALIZAÇÃO ESTrita) ---
 def parse_arg(raw, arg_type):
     if raw is None: return raw
     raw = str(raw).strip()
@@ -124,20 +113,15 @@ if __name__ == '__main__':
         if input_data:
             types = [${typesArray}]
             
-            # Estratégia 1: Parse linha a linha (Preserva espaços internos)
             parts = [line.strip() for line in input_data.split('\\n') if line.strip()]
             
-            # Estratégia 2: Regex Tokenizer caso tudo venha na mesma linha
             if len(parts) < len(types):
                 parts = re.findall(r'\\[.*?\\]|".*?"|\\'.*?\\'|\\S+', input_data)
                 
             if len(parts) >= len(types):
                 args = [parse_arg(parts[i], types[i]) for i in range(len(types))]
-                
-                # Executa o código do aluno
                 result = solve(*args)
                 
-                # Trata a saída adequadamente
                 if isinstance(result, list):
                     print(json.dumps(result))
                 elif isinstance(result, bool):
@@ -145,14 +129,8 @@ if __name__ == '__main__':
                 else:
                     print(result)
             else:
-                print(f"Erro: Esperado {len(types)} argumentos, recebido {len(parts)}", file=sys.stderr)
                 sys.exit(1)
-        else:
-             print("Aviso: Nenhuma entrada recebida no stdin", file=sys.stderr)
     except Exception as e:
-        print(f"Erro de Execução no Wrapper: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 `;
   }
@@ -162,7 +140,6 @@ if __name__ == '__main__':
     const typesArray = JSON.stringify(params.map((p) => p.type));
 
     return `
-// --- Wrapper Injetado pelo Autocore (NORMALIZAÇÃO ESTRITA) ---
 import { readFileSync } from 'fs';
 
 function parseArg(raw, type) {
@@ -199,18 +176,14 @@ try {
     if (input) {
         const types = ${typesArray};
         
-        // Estratégia 1: Parse linha a linha
         let parts = input.split(/\\r?\\n/).filter(line => line.trim() !== '');
         
-        // Estratégia 2: Fallback Regex
         if (parts.length < types.length) {
             parts = input.match(/\\[.*?\\]|".*?"|'.*?'|\\S+/g) || [];
         }
         
         if (parts.length >= types.length) {
             const args = types.map((type, i) => parseArg(parts[i], type));
-            
-            // Invoca a função do usuário de forma segura
             const result = solve(...args);
             
             if (Array.isArray(result)) {
@@ -219,12 +192,10 @@ try {
                 console.log(result);
             }
         } else {
-            console.error(\`Erro: Esperado \${types.length} argumentos, recebido \${parts.length}\`);
             process.exit(1);
         }
     }
 } catch (e) {
-    console.error("Erro de Execução no Wrapper:", e);
     process.exit(1);
 }
 `;
@@ -239,14 +210,17 @@ try {
     const hasBooleanArray = params.some((p) => p.type === 'boolean[]');
 
     let helpers = `
-// Helpers de Parsing e Limpeza
 string trim_quotes(string s) {
+    while(!s.empty() && (s.back() == '\\r' || s.back() == '\\n' || s.back() == ' ')) s.pop_back();
+    while(!s.empty() && (s.front() == '\\r' || s.front() == '\\n' || s.front() == ' ')) s.erase(0, 1);
     if(!s.empty() && (s.front() == '"' || s.front() == '\\'')) s.erase(0, 1);
     if(!s.empty() && (s.back() == '"' || s.back() == '\\'')) s.pop_back();
     return s;
 }
 
 string trim_brackets(string s) {
+    while(!s.empty() && (s.back() == '\\r' || s.back() == '\\n' || s.back() == ' ')) s.pop_back();
+    while(!s.empty() && (s.front() == '\\r' || s.front() == '\\n' || s.front() == ' ')) s.erase(0, 1);
     if(!s.empty() && s.front() == '[') s.erase(0, 1);
     if(!s.empty() && s.back() == ']') s.pop_back();
     return s;
@@ -255,10 +229,11 @@ string trim_brackets(string s) {
 template<typename T> void print_result(const T& t) { cout << t << endl; }
 template<typename T> void print_result(const vector<T>& v) {
     cout << "[";
-    for (size_t i = 0; i < v.size(); ++i) { cout << v[i] << (i + 1 == v.size() ? "" : ", "); }
+    for (size_t i = 0; i < v.size(); ++i) { cout << (T)v[i] << (i + 1 == v.size() ? "" : ", "); }
     cout << "]" << endl;
 }
 `;
+
     if (hasIntArray) {
       helpers += `
 vector<int> parse_int_array(string raw) {
@@ -267,7 +242,8 @@ vector<int> parse_int_array(string raw) {
     stringstream ss(raw);
     string item;
     while(getline(ss, item, ',')) {
-        while(!item.empty() && item.front() == ' ') item.erase(0, 1);
+        while(!item.empty() && (item.front() == ' ' || item.front() == '\\r' || item.front() == '\\n')) item.erase(0, 1);
+        while(!item.empty() && (item.back() == ' ' || item.back() == '\\r' || item.back() == '\\n')) item.pop_back();
         if(!item.empty()) res.push_back(stoi(item));
     }
     return res;
@@ -281,7 +257,8 @@ vector<float> parse_float_array(string raw) {
     stringstream ss(raw);
     string item;
     while(getline(ss, item, ',')) {
-        while(!item.empty() && item.front() == ' ') item.erase(0, 1);
+        while(!item.empty() && (item.front() == ' ' || item.front() == '\\r' || item.front() == '\\n')) item.erase(0, 1);
+        while(!item.empty() && (item.back() == ' ' || item.back() == '\\r' || item.back() == '\\n')) item.pop_back();
         if(!item.empty()) res.push_back(stof(item));
     }
     return res;
@@ -295,7 +272,8 @@ vector<string> parse_string_array(string raw) {
     stringstream ss(raw);
     string item;
     while(getline(ss, item, ',')) {
-        while(!item.empty() && item.front() == ' ') item.erase(0, 1);
+        while(!item.empty() && (item.front() == ' ' || item.front() == '\\r' || item.front() == '\\n')) item.erase(0, 1);
+        while(!item.empty() && (item.back() == ' ' || item.back() == '\\r' || item.back() == '\\n')) item.pop_back();
         if(!item.empty()) res.push_back(trim_quotes(item));
     }
     return res;
@@ -309,7 +287,8 @@ vector<bool> parse_boolean_array(string raw) {
     stringstream ss(raw);
     string item;
     while(getline(ss, item, ',')) {
-        while(!item.empty() && item.front() == ' ') item.erase(0, 1);
+        while(!item.empty() && (item.front() == ' ' || item.front() == '\\r' || item.front() == '\\n')) item.erase(0, 1);
+        while(!item.empty() && (item.back() == ' ' || item.back() == '\\r' || item.back() == '\\n')) item.pop_back();
         if(!item.empty()) res.push_back(item == "true" || item == "1");
     }
     return res;
@@ -343,13 +322,11 @@ vector<bool> parse_boolean_array(string raw) {
 #include <string>
 #include <vector>
 #include <sstream>
-#include <regex>
 
 using namespace std;
 
 ${helpers}
 
-// --- Wrapper Injetado pelo Autocore (NORMALIZAÇÃO ESTRITA) ---
 int main() {
     string input_data, line;
     while (getline(cin, line)) {
@@ -369,29 +346,41 @@ int main() {
 
     if (parts.size() < ${params.length}) {
         parts.clear();
-        regex re(R"(\\[.*?\\]|\\".*?\\"|'.*?'|\\S+)");
-        sregex_iterator next(input_data.begin(), input_data.end(), re);
-        sregex_iterator end;
-        while (next != end) {
-            parts.push_back(next->str());
-            next++;
+        string current_token = "";
+        bool in_quotes = false;
+        int bracket_level = 0;
+        
+        for (char c : input_data) {
+            if (c == '"' || c == '\\'') in_quotes = !in_quotes;
+            else if (c == '[') bracket_level++;
+            else if (c == ']') bracket_level--;
+            
+            if (c == ' ' && !in_quotes && bracket_level == 0) {
+                if (!current_token.empty()) {
+                    parts.push_back(current_token);
+                    current_token = "";
+                }
+            } else {
+                current_token += c;
+            }
         }
+        if (!current_token.empty()) parts.push_back(current_token);
     }
 
     if (parts.size() >= ${params.length}) {
         try {
-            // Conversão Rigorosa (Strong Typing)
-            ${decls}
+            for(auto& p : parts) {
+                while(!p.empty() && (p.back() == '\\r' || p.back() == '\\n' || p.back() == ' ')) p.pop_back();
+                while(!p.empty() && (p.front() == '\\r' || p.front() == '\\n' || p.front() == ' ')) p.erase(0, 1);
+            }
             
-            // Impressão genérica segura para arrays e primitivos
+            ${decls}
             print_result(solve(${callArgs}));
             
-        } catch (const exception& e) {
-            cerr << "Erro de Execução no Wrapper (C++): " << e.what() << endl;
+        } catch (...) {
             return 1;
         }
     } else {
-        cerr << "Erro: Esperado ${params.length} argumentos" << endl;
         return 1;
     }
     

@@ -1,5 +1,5 @@
 import { useFieldArray, useFormContext } from "react-hook-form";
-import { Plus, Trash2, Type, CalendarClock } from "lucide-react"; // Importar CalendarClock
+import { Plus, Trash2, Type, CalendarClock } from "lucide-react";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
 import { Select } from "../../ui/Select";
@@ -32,7 +32,6 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 w-full">
         {/* --- Coluna 1: Parâmetros (Ocupa 2/3 no desktop) --- */}
         <div className="lg:col-span-2 flex flex-col gap-5">
-          {/* ... (Código da lista de parâmetros mantém igual) ... */}
           <div className="flex flex-wrap justify-between items-end border-b border-border pb-3 gap-3">
             <div>
               <label className="text-sm font-semibold text-white flex items-center gap-2">
@@ -92,7 +91,9 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
                         <option value="string">String</option>
                         <option value="boolean">Boolean</option>
                         <option value="int[]">Array (int[])</option>
+                        <option value="float[]">Array (float[])</option>
                         <option value="string[]">Array (string[])</option>
+                        <option value="boolean[]">Array (boolean[])</option>
                       </Select>
                     </div>
 
@@ -142,7 +143,9 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
                 <option value="string">String</option>
                 <option value="boolean">Boolean</option>
                 <option value="int[]">Array (int[])</option>
+                <option value="float[]">Array (float[])</option>
                 <option value="string[]">Array (string[])</option>
+                <option value="boolean[]">Array (boolean[])</option>
               </Select>
 
               <p className="text-[11px] text-muted leading-relaxed mt-1">
@@ -152,7 +155,7 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
             </div>
           </Card>
 
-          {/* NOVO: Card de Prazos para Exercícios */}
+          {/* Card de Prazos para Exercícios */}
           <Card className="p-6 flex flex-col gap-5">
             <div className="flex items-center gap-3 text-zinc-300 border-b border-border pb-3">
               <div className="p-2 bg-primary/10 rounded-md text-primary">
