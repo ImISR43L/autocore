@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
+import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -44,28 +44,18 @@ export default function Login() {
   const emailInputRef = useRef<HTMLInputElement>(null);
 
   const navigate = useNavigate();
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
   // --- VERIFICAÇÃO DE SESSÃO (ANTI-FLASH) ---
   useEffect(() => {
     const verifySession = async () => {
-      const token = localStorage.getItem("token");
+      // Verifica a sessão local gerenciada pelo Supabase
+      const { data } = await supabase.auth.getSession();
 
-      // Se não tem token, libera o formulário imediatamente
-      if (!token) {
-        setIsCheckingSession(false);
-        return;
-      }
-
-      try {
-        await axios.get(`${API_URL}/classrooms`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        // Token válido -> Redireciona
+      if (data.session) {
+        // Sessão válida detectada
         navigate("/dashboard");
-      } catch (error) {
-        // Token inválido -> Limpa e libera o formulário
-        console.warn("Sessão expirada.");
+      } else {
+        // Sem sessão, limpa resquícios antigos e libera a interface
         localStorage.removeItem("token");
         localStorage.removeItem("userName");
         setIsCheckingSession(false);
@@ -73,7 +63,7 @@ export default function Login() {
     };
 
     verifySession();
-  }, [navigate, API_URL]);
+  }, [navigate]);
 
   // --- GESTÃO DE FOCO AUTOMÁTICO ---
   useEffect(() => {
@@ -110,31 +100,30 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
 
-    // CORREÇÃO: Pegar valores diretamente do elemento DOM garante que
-    // o autocomplete do navegador seja capturado, mesmo se o state do React falhar.
     const form = e.currentTarget;
     const emailInput = form.elements.namedItem("email") as HTMLInputElement;
     const passwordInput = form.elements.namedItem(
       "password",
     ) as HTMLInputElement;
 
-    const emailValue = emailInput.value;
-    const passwordValue = passwordInput.value;
-
     try {
-      const { data } = await axios.post(`${API_URL}/auth/login`, {
-        email: emailValue.trim(), // Usa o valor direto do input
-        password: passwordValue, // Usa o valor direto do input
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailInput.value.trim(),
+        password: passwordInput.value,
       });
 
-      localStorage.setItem("token", data.access_token);
-      // Nota: Verifique se o backend retorna 'user.name' dentro de 'data.user' conforme seu AuthService
-      localStorage.setItem("userName", data.user?.name || "Usuário");
+      if (error) throw error;
+
+      localStorage.setItem("token", data.session.access_token);
+      localStorage.setItem(
+        "userName",
+        data.user.user_metadata?.name || "Utilizador",
+      );
 
       toast.success(`Bem-vindo de volta!`);
       navigate("/dashboard");
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Email ou senha incorretos.");
+      toast.error(err.message || "Email ou palavra-passe incorretos.");
     } finally {
       setLoading(false);
     }
@@ -142,33 +131,33 @@ export default function Login() {
 
   const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!name.trim()) return toast.warning("Por favor, informe seu nome.");
-
-    if (!isPasswordValid) {
-      return toast.warning("A senha não atende aos requisitos de segurança.");
-    }
-
-    if (password !== confirmPassword) {
-      return toast.warning("As senhas não coincidem.");
-    }
+    if (!name.trim()) return toast.warning("Por favor, informe o seu nome.");
+    if (!isPasswordValid)
+      return toast.warning(
+        "A palavra-passe não atende aos requisitos de segurança.",
+      );
+    if (password !== confirmPassword)
+      return toast.warning("As palavras-passe não coincidem.");
 
     setLoading(true);
     try {
-      await axios.post(`${API_URL}/auth/register`, {
-        name,
+      const { error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
+        options: {
+          data: { name: name.trim() },
+        },
       });
-      toast.success("Conta criada com sucesso! Faça login.");
 
-      // UX: Troca para login e mantém o email preenchido para facilitar
+      if (error) throw error;
+
+      toast.success("Conta criada com sucesso! Verifique o seu email.");
       setIsRegister(false);
       setPassword("");
       setConfirmPassword("");
       setShowPassword(false);
     } catch (err: any) {
-      const msg = err.response?.data?.message;
-      toast.error(Array.isArray(msg) ? msg[0] : msg || "Erro ao cadastrar.");
+      toast.error(err.message || "Erro ao efetuar o registo.");
     } finally {
       setLoading(false);
     }

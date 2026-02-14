@@ -14,7 +14,7 @@ import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 // Define a estrutura do usuário injetado pelo JWT Strategy
 interface RequestWithUser {
   user: {
-    userId: number;
+    userId: string;
     email: string;
     role: string;
   };

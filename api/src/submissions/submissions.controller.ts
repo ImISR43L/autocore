@@ -16,7 +16,7 @@ import { Throttle } from '@nestjs/throttler';
 
 interface RequestWithUser {
   user: {
-    userId: number;
+    userId: string;
     email: string;
     role: string;
   };

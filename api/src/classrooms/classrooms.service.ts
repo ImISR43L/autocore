@@ -10,6 +10,7 @@ import { CreateClassroomDto } from './dto/create-classroom.dto';
 import { Classroom } from './entities/classroom.entity';
 import { User } from '../users/entities/user.entity';
 import { customAlphabet } from 'nanoid';
+import { stream } from 'exceljs';
 
 @Injectable()
 export class ClassroomsService {
@@ -20,7 +21,7 @@ export class ClassroomsService {
     private usersRepository: Repository<User>,
   ) {}
 
-  async create(createClassroomDto: CreateClassroomDto, ownerId: number) {
+  async create(createClassroomDto: CreateClassroomDto, ownerId: string) {
     // IMPLEMENTAÇÃO NANOID
     // Alfabeto personalizado: Removemos 0, O, I, L para evitar confusão visual
     const generateCode = customAlphabet('ABCDEFGHJKMNPQRSTUVWXYZ23456789', 6);
@@ -48,7 +49,7 @@ export class ClassroomsService {
     };
   }
 
-  async joinClassroom(code: string, userId: number) {
+  async joinClassroom(code: string, userId: string) {
     const classroom = await this.classroomsRepository.findOne({
       where: { code },
       relations: ['owner', 'students'],
@@ -74,7 +75,7 @@ export class ClassroomsService {
     return this.classroomsRepository.save(classroom);
   }
 
-  async findAll(userId: number) {
+  async findAll(userId: string) {
     const teaching = await this.classroomsRepository.find({
       where: { owner: { id: userId } },
       relations: ['owner', 'problems'],
@@ -91,7 +92,7 @@ export class ClassroomsService {
     ];
   }
 
-  async findOne(id: string, userId?: number) {
+  async findOne(id: string, userId?: string) {
     const classroom = await this.classroomsRepository.findOne({
       where: { id },
       relations: [
@@ -147,7 +148,7 @@ export class ClassroomsService {
     return classroom;
   }
 
-  async leave(id: string, userId: number) {
+  async leave(id: string, userId: string) {
     const classroom = await this.classroomsRepository.findOne({
       where: { id },
       relations: ['students'],
@@ -167,7 +168,7 @@ export class ClassroomsService {
     return this.classroomsRepository.save(classroom);
   }
 
-  async remove(id: string, userId: number) {
+  async remove(id: string, userId: string) {
     const classroom = await this.classroomsRepository.findOne({
       where: { id },
       relations: ['owner'],

@@ -1,26 +1,25 @@
 import axios from "axios";
-
-// ... (configuração da instância api existente)
+import { supabase } from "./supabase";
 
 export const api = axios.create({
-  baseURL: "http://localhost:3000", // Ajuste conforme seu env
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
 });
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
+api.interceptors.request.use(async (config) => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (session?.access_token) {
+    config.headers.set("Authorization", `Bearer ${session.access_token}`);
   }
 
   return config;
 });
 
-// --- ATUALIZAÇÃO DA FUNÇÃO DRY RUN ---
 export const dryRunProblem = async (payload: {
   starterCode: { name: string; content: string }[];
   testCases: { input: string; expectedOutput: string }[];
-  // Novos campos obrigatórios para o Wrapper funcionar
   parameters: { name: string; type: string }[];
   returnType?: string;
   language?: string;

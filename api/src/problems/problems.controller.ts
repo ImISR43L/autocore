@@ -18,7 +18,7 @@ import { DryRunDto } from './dto/dry-run.dto';
 // Interface para tipagem do Request
 interface RequestWithUser {
   user: {
-    userId: number;
+    userId: string;
     email: string;
     role: string;
   };

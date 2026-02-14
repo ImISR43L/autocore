@@ -12,12 +12,10 @@ services:
     env_file:
       - ./api/.env
     environment:
-      - DB_HOST=db
       - REDIS_HOST=redis
       - EXECUTOR_URL=http://go-judge:5050/run
       - NODE_ENV=development
     secrets:
-      - db_password
       - redis_password
       - jwt_secret
     # CORREÇÃO 1: Voltamos com o comando de inicialização
@@ -38,8 +36,6 @@ services:
     volumes:
       - /app/node_modules
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
       go-judge:
@@ -52,26 +48,6 @@ services:
         limits:
           cpus: "1.0"
           memory: 1.5G
-
-  db:
-    image: postgres:13
-    environment:
-      POSTGRES_USER: autocore_user
-      POSTGRES_DB: autocore_db
-      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
-    secrets:
-      - db_password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - backend_net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U autocore_user -d autocore_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    # Mantivemos a melhoria de logs
-    command: ["postgres", "-c", "log_statement=all"]
 
   redis:
     image: redis:alpine
@@ -156,5 +132,4 @@ networks:
     internal: true
 
 volumes:
-  postgres_data:
   redis_data:

@@ -21,7 +21,7 @@ export class ReportsService {
   ) {}
 
   // --- MÉTODO AUXILIAR (Reutiliza a lógica de busca) ---
-  private async fetchReportData(classroomId: string, requesterId: number) {
+  private async fetchReportData(classroomId: string, requesterId: string) {
     // 1. Validação de Segurança
     const classroom = await this.classroomsRepository.findOne({
       where: { id: classroomId },
@@ -71,7 +71,7 @@ export class ReportsService {
   // --- GERAÇÃO DE EXCEL (.xlsx) ---
   async generateClassroomExcel(
     classroomId: string,
-    requesterId: number,
+    requesterId: string,
   ): Promise<StreamableFile> {
     const { classroom, gradeMap } = await this.fetchReportData(
       classroomId,
@@ -144,7 +144,7 @@ export class ReportsService {
   // --- GERAÇÃO DE CSV (Mantido para retrocompatibilidade) ---
   async generateClassroomCSV(
     classroomId: string,
-    requesterId: number,
+    requesterId: string,
   ): Promise<StreamableFile> {
     const { classroom, gradeMap } = await this.fetchReportData(
       classroomId,

@@ -15,7 +15,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 // Interface para tipar o Request autenticado
 interface RequestWithUser {
   user: {
-    userId: number;
+    userId: string;
     email: string;
     role: string;
   };
@@ -50,7 +50,7 @@ export class ClassroomsController {
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req) {
     // Recebe string
-    return this.classroomsService.findOne(id, req.user.sub);
+    return this.classroomsService.findOne(id, req.user.userId);
   }
 
   @Delete(':id')

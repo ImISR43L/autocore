@@ -179,7 +179,7 @@ export class ProblemsService {
     return this.problemsRepository.find({ relations: ['classroom'] });
   }
 
-  async findOne(id: string, userId: number) {
+  async findOne(id: string, userId: string) {
     const problem = await this.problemsRepository.findOne({
       where: { id },
       relations: [
@@ -231,7 +231,7 @@ export class ProblemsService {
     return problem;
   }
 
-  async startExam(id: string, userId: number) {
+  async startExam(id: string, userId: string) {
     const problem = await this.problemsRepository.findOne({
       where: { id },
       relations: ['classroom', 'classroom.owner'],
@@ -249,7 +249,7 @@ export class ProblemsService {
     return this.problemsRepository.save(problem);
   }
 
-  async update(id: string, updateProblemDto: UpdateProblemDto, userId: number) {
+  async update(id: string, updateProblemDto: UpdateProblemDto, userId: string) {
     const problem = await this.problemsRepository.findOne({
       where: { id },
       relations: ['children', 'testCases', 'classroom', 'classroom.owner'],
@@ -324,7 +324,7 @@ export class ProblemsService {
     return this.problemsRepository.save(problem);
   }
 
-  async remove(id: string, userId: number) {
+  async remove(id: string, userId: string) {
     const problem = await this.problemsRepository.findOne({
       where: { id },
       relations: ['classroom', 'classroom.owner'],

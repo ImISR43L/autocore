@@ -49,7 +49,7 @@ export class SubmissionsService {
     ];
   }
 
-  async getTeacherStats(userId: number) {
+  async getTeacherStats(userId: string) {
     const problems = await this.problemsRepository.find({
       where: { classroom: { owner: { id: userId } } },
       select: ['id', 'title'],
@@ -73,7 +73,7 @@ export class SubmissionsService {
     return stats;
   }
 
-  async grade(id: string, gradeDto: GradeSubmissionDto, userId: number) {
+  async grade(id: string, gradeDto: GradeSubmissionDto, userId: string) {
     const submission = await this.submissionsRepository.findOne({
       where: { id },
       relations: ['problem', 'problem.classroom', 'problem.classroom.owner'],
@@ -87,7 +87,7 @@ export class SubmissionsService {
     return this.submissionsRepository.save(submission);
   }
 
-  async create(createSubmissionDto: CreateSubmissionDto, userId: number) {
+  async create(createSubmissionDto: CreateSubmissionDto, userId: string) {
     this.logger.log(
       `[DEBUG] Iniciando criação de submissão. UserID: ${userId}, ProblemID: ${createSubmissionDto.problem_id}`,
     );
@@ -180,7 +180,7 @@ export class SubmissionsService {
     return this.submissionsRepository.find({ relations: ['problem', 'user'] });
   }
 
-  async getClassroomStats(classroomId: string, userId: number) {
+  async getClassroomStats(classroomId: string, userId: string) {
     const problems = await this.problemsRepository.find({
       where: { classroom: { id: classroomId } },
       select: ['id', 'title'],

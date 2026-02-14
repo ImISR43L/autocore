@@ -19,7 +19,7 @@ export class AnnouncementsService {
     private classroomsRepository: Repository<Classroom>,
   ) {}
 
-  async create(createDto: CreateAnnouncementDto, userId: number) {
+  async create(createDto: CreateAnnouncementDto, userId: string) {
     const classroom = await this.classroomsRepository.findOne({
       where: { id: createDto.classroomId },
       relations: ['owner'],
@@ -40,7 +40,7 @@ export class AnnouncementsService {
     return this.announcementsRepository.save(announcement);
   }
 
-  async remove(id: string, userId: number) {
+  async remove(id: string, userId: string) {
     const announcement = await this.announcementsRepository.findOne({
       where: { id },
       relations: ['classroom', 'classroom.owner'],

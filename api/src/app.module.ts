@@ -6,8 +6,7 @@ import { AppService } from './app.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { WinstonModule } from 'nest-winston';
 import { winstonConfig } from './logger/winston.config';
-import { ConfigModule, ConfigService } from '@nestjs/config'; // <--- ConfigService
-import { getSecret } from './common/utils/secrets.util';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
@@ -16,16 +15,14 @@ import { ProblemsModule } from './problems/problems.module';
 import { SubmissionsModule } from './submissions/submissions.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { HealthModule } from './health/health.module';
-import { CacheModule } from '@nestjs/cache-manager'; // <--- Importe Cache
-import * as redisStore from 'cache-manager-redis-store'; // <--- Driver Redis
+import { CacheModule } from '@nestjs/cache-manager';
+import * as redisStore from 'cache-manager-redis-store';
 
 @Module({
   imports: [
     WinstonModule.forRoot(winstonConfig),
     ConfigModule.forRoot({ isGlobal: true }),
 
-    // OTIMIZAÇÃO: Cache Global com Redis
-    // Armazena problemas e testes na memória RAM do Redis
     CacheModule.registerAsync({
       isGlobal: true,
       imports: [ConfigModule],
@@ -33,7 +30,7 @@ import * as redisStore from 'cache-manager-redis-store'; // <--- Driver Redis
         store: redisStore,
         host: configService.get('REDIS_HOST') || 'redis',
         port: parseInt(configService.get('REDIS_PORT') || '6379'),
-        ttl: 3600, // 1 hora de cache padrão
+        ttl: 3600,
       }),
       inject: [ConfigService],
     }),
@@ -41,13 +38,16 @@ import * as redisStore from 'cache-manager-redis-store'; // <--- Driver Redis
     TypeOrmModule.forRootAsync({
       useFactory: () => ({
         type: 'postgres',
-        host: process.env.DB_HOST || 'db',
-        port: parseInt(process.env.DB_PORT || '5432'),
-        username: process.env.DB_USERNAME || 'autocore_user',
-        password: getSecret('DB_PASSWORD', 'db_password'),
-        database: process.env.DB_DATABASE || 'autocore_db',
+        host: process.env.DB_HOST,
+        port: parseInt(process.env.DB_PORT || '6543'),
+        username: process.env.DB_USERNAME,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_DATABASE || 'postgres',
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: process.env.NODE_ENV !== 'production',
+        synchronize: true,
+        ssl: {
+          rejectUnauthorized: false,
+        },
         extra: {
           max: 20,
           connectionTimeoutMillis: 5000,

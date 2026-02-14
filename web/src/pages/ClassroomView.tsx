@@ -111,8 +111,8 @@ interface Classroom {
   name: string;
   code: string;
   // Alterado: Adicionado 'name?: string'
-  owner: { id: number; email: string; name?: string };
-  students: { id: number; email: string; name?: string }[];
+  owner: { id: string; email: string; name?: string };
+  students: { id: string; email: string; name?: string }[];
   problems: Problem[];
   announcements: Announcement[];
 }

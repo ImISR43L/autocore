@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
-import axios from "axios";
+import { useState, useEffect } from "react";
+import { api } from "../lib/api";
+import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import {
   Plus,
@@ -39,7 +40,7 @@ interface Classroom {
   name: string;
   code: string;
   owner: {
-    id: number;
+    id: string;
     email: string;
   };
   problems?: Problem[];
@@ -61,16 +62,19 @@ export default function Dashboard() {
   const [joinCode, setJoinCode] = useState("");
 
   const navigate = useNavigate();
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-  const myUserId = useMemo(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return null;
-    try {
-      return JSON.parse(atob(token.split(".")[1])).sub;
-    } catch {
-      return null;
-    }
+  const [myUserId, setMyUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const getUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        setMyUserId(user.id);
+      }
+    };
+    getUser();
   }, []);
 
   const userName =
@@ -82,14 +86,16 @@ export default function Dashboard() {
 
   const fetchClassrooms = async () => {
     try {
-      const token = localStorage.getItem("token");
-      if (!token) {
+      // Validação delegada ao estado assíncrono do Supabase
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
         navigate("/");
         return;
       }
-      const res = await axios.get(`${API_URL}/classrooms`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+
+      const res = await api.get("/classrooms");
       setClassrooms(res.data);
     } catch (error) {
       console.error(error);
@@ -135,12 +141,7 @@ export default function Dashboard() {
   const handleCreateClassroom = async () => {
     if (!newClassName.trim()) return toast.warning("Nome inválido");
     try {
-      const token = localStorage.getItem("token");
-      await axios.post(
-        `${API_URL}/classrooms`,
-        { name: newClassName },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      await api.post("/classrooms", { name: newClassName });
       toast.success("Turma criada!");
       setShowCreateModal(false);
       setNewClassName("");
@@ -153,12 +154,7 @@ export default function Dashboard() {
   const handleJoinClassroom = async () => {
     if (!joinCode.trim()) return toast.warning("Código inválido");
     try {
-      const token = localStorage.getItem("token");
-      await axios.post(
-        `${API_URL}/classrooms/join`,
-        { code: joinCode },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      await api.post("/classrooms/join", { code: joinCode });
       toast.success("Você entrou na turma!");
       setShowJoinModal(false);
       setJoinCode("");
@@ -168,7 +164,8 @@ export default function Dashboard() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     localStorage.clear();
     navigate("/");
   };

@@ -1,7 +1,7 @@
 import {
   Entity,
   Column,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   OneToMany,
   ManyToMany,
   UpdateDateColumn,
@@ -12,8 +12,8 @@ import { Submission } from '../../submissions/entities/submission.entity';
 
 @Entity()
 export class User {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryColumn('uuid')
+  id: string;
 
   @Column({ unique: true })
   email: string;
@@ -21,20 +21,15 @@ export class User {
   @Column({ nullable: true })
   name: string;
 
-  @Column({ select: false })
-  password: string;
-
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
 
-  // Turmas que sou dono (Professor)
   @OneToMany(() => Classroom, (classroom) => classroom.owner)
   ownedClassrooms: Classroom[];
 
-  // Turmas que participo (Aluno)
   @ManyToMany(() => Classroom, (classroom) => classroom.students)
   joinedClassrooms: Classroom[];
 
