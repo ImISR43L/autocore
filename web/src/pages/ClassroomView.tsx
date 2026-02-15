@@ -45,6 +45,7 @@ import {
   MessageSquare, // Icone para comentários
   Paperclip,
   X,
+  Link2,
 } from "lucide-react";
 import {
   Panel,
@@ -290,6 +291,9 @@ export default function ClassroomView() {
   const [gradingComment, setGradingComment] = useState("");
 
   const [newAnnouncement, setNewAnnouncement] = useState("");
+  const [manualLinks, setManualLinks] = useState<string[]>([]);
+  const [showLinkInput, setShowLinkInput] = useState(false);
+  const [currentLink, setCurrentLink] = useState("");
   const [posting, setPosting] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]); // NOVO
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -951,7 +955,12 @@ export default function ClassroomView() {
 
   const handlePostAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAnnouncement.trim() && selectedFiles.length === 0) return;
+    if (
+      !newAnnouncement.trim() &&
+      selectedFiles.length === 0 &&
+      manualLinks.length === 0
+    )
+      return;
     setPosting(true);
 
     try {
@@ -960,6 +969,10 @@ export default function ClassroomView() {
 
       formData.append("content", newAnnouncement);
       formData.append("classroomId", String(classroom?.id));
+
+      if (manualLinks.length > 0) {
+        formData.append("manualLinks", JSON.stringify(manualLinks));
+      }
 
       selectedFiles.forEach((file) => {
         formData.append("files", file);
@@ -975,6 +988,8 @@ export default function ClassroomView() {
       toast.success("Aviso postado com sucesso!");
       setNewAnnouncement("");
       setSelectedFiles([]);
+      setManualLinks([]);
+      setShowLinkInput(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
       fetchClassroomData();
     } catch (error) {
@@ -1006,6 +1021,23 @@ export default function ClassroomView() {
       fetchClassroomData();
     } catch {
       toast.error("Erro.");
+    }
+  };
+
+  const handleAddLink = () => {
+    if (!currentLink.trim()) return;
+    let urlToTest = currentLink.trim();
+    if (!urlToTest.startsWith("http://") && !urlToTest.startsWith("https://")) {
+      urlToTest = "https://" + urlToTest;
+    }
+
+    try {
+      new URL(urlToTest);
+      setManualLinks((prev) => [...prev, urlToTest]);
+      setCurrentLink("");
+      setShowLinkInput(false);
+    } catch {
+      toast.error("URL inválida.");
     }
   };
 
@@ -1584,11 +1616,36 @@ export default function ClassroomView() {
                       />
 
                       {/* Fila de arquivos selecionados */}
-                      {selectedFiles.length > 0 && (
+                      {(selectedFiles.length > 0 || manualLinks.length > 0) && (
                         <div className="flex flex-wrap gap-2 pt-2">
+                          {manualLinks.map((link, idx) => (
+                            <div
+                              key={`link-${idx}`}
+                              className="flex items-center gap-2 bg-surface-hover border border-border px-3 py-1.5 rounded-full text-sm"
+                            >
+                              <Link2
+                                size={14}
+                                className="text-primary shrink-0"
+                              />
+                              <span className="truncate max-w-[150px] text-zinc-300">
+                                {new URL(link).hostname}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setManualLinks((prev) =>
+                                    prev.filter((_, i) => i !== idx),
+                                  )
+                                }
+                                className="text-muted hover:text-destructive transition-colors"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ))}
                           {selectedFiles.map((file, idx) => (
                             <div
-                              key={idx}
+                              key={`file-${idx}`}
                               className="flex items-center gap-2 bg-surface-hover border border-border px-3 py-1.5 rounded-full text-sm"
                             >
                               <Paperclip
@@ -1614,6 +1671,33 @@ export default function ClassroomView() {
                         </div>
                       )}
 
+                      {/* Input Condicional para Links */}
+                      {showLinkInput && (
+                        <div className="flex gap-2 pt-2 animate-in fade-in slide-in-from-top-2">
+                          <input
+                            type="url"
+                            placeholder="https://exemplo.com"
+                            value={currentLink}
+                            onChange={(e) => setCurrentLink(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAddLink();
+                              }
+                            }}
+                            className="flex-1 bg-background border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-primary transition-colors"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={handleAddLink}
+                            variant="secondary"
+                          >
+                            Adicionar
+                          </Button>
+                        </div>
+                      )}
+
                       <div className="flex justify-between items-center pt-2">
                         <div className="flex gap-2">
                           <input
@@ -1628,10 +1712,23 @@ export default function ClassroomView() {
                             variant="ghost"
                             size="sm"
                             onClick={() => fileInputRef.current?.click()}
-                            className="text-muted hover:text-primary"
+                            className="text-muted hover:text-primary px-3"
                           >
-                            <Paperclip size={18} className="mr-2" /> Adicionar
-                            Arquivo
+                            <Paperclip size={18} className="sm:mr-2" />{" "}
+                            <span className="hidden sm:inline">Arquivo</span>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowLinkInput(!showLinkInput)}
+                            className={cn(
+                              "text-muted hover:text-primary px-3",
+                              showLinkInput && "text-primary bg-primary/10",
+                            )}
+                          >
+                            <Link2 size={18} className="sm:mr-2" />{" "}
+                            <span className="hidden sm:inline">Link</span>
                           </Button>
                         </div>
                         <Button
@@ -1639,7 +1736,8 @@ export default function ClassroomView() {
                           disabled={
                             posting ||
                             (!newAnnouncement.trim() &&
-                              selectedFiles.length === 0)
+                              selectedFiles.length === 0 &&
+                              manualLinks.length === 0)
                           }
                           isLoading={posting}
                           className="px-6"
@@ -1719,37 +1817,37 @@ export default function ClassroomView() {
                                 </span>
                               </div>
                               {/* Renderização de Anexos (PDFs, Arquivos, etc) */}
-                              {a.attachments && a.attachments.length > 0 && (
-                                <div className="flex flex-wrap gap-3 mt-4 border-t border-border/50 pt-4">
-                                  {a.attachments.map((file, idx) => (
-                                    <a
-                                      key={idx}
-                                      href={file.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="flex items-center gap-3 bg-background border border-border rounded-lg p-3 hover:border-primary/50 transition-all min-w-[200px] max-w-[320px] group"
-                                    >
-                                      <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors shrink-0">
-                                        <FileText size={20} />
-                                      </div>
-                                      <div className="flex flex-col min-w-0">
-                                        <span className="text-sm font-semibold text-zinc-100 truncate group-hover:text-primary transition-colors">
-                                          {file.name}
-                                        </span>
-                                        <span className="text-xs text-muted">
-                                          {(file.size / 1024 / 1024).toFixed(2)}{" "}
-                                          MB •{" "}
-                                          {file.mimeType
-                                            .split("/")[1]
-                                            ?.toUpperCase() || "ARQUIVO"}
-                                        </span>
-                                      </div>
-                                    </a>
-                                  ))}
-                                </div>
-                              )}
                             </a>
                           ))}
+                          {a.attachments && a.attachments.length > 0 && (
+                            <div className="flex flex-wrap gap-3 mt-4 border-t border-border/50 pt-4">
+                              {a.attachments.map((file, idx) => (
+                                <a
+                                  key={idx}
+                                  href={file.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-3 bg-background border border-border rounded-lg p-3 hover:border-primary/50 transition-all min-w-[200px] max-w-[320px] group"
+                                >
+                                  <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors shrink-0">
+                                    <FileText size={20} />
+                                  </div>
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="text-sm font-semibold text-zinc-100 truncate group-hover:text-primary transition-colors">
+                                      {file.name}
+                                    </span>
+                                    <span className="text-xs text-muted">
+                                      {(file.size / 1024 / 1024).toFixed(2)} MB
+                                      •{" "}
+                                      {file.mimeType
+                                        .split("/")[1]
+                                        ?.toUpperCase() || "ARQUIVO"}
+                                    </span>
+                                  </div>
+                                </a>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </Card>

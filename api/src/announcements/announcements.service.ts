@@ -30,7 +30,17 @@ export class AnnouncementsService {
     files: Array<Express.Multer.File>,
     authorId: string,
   ) {
-    const links = await this.extractLinkMetadata(createAnnouncementDto.content);
+    let manualUrls: string[] = [];
+    if (createAnnouncementDto.manualLinks) {
+      try {
+        manualUrls = JSON.parse(createAnnouncementDto.manualLinks);
+      } catch (e) {}
+    }
+
+    // Combina os links explícitos com o texto para extrair metadados únicos
+    const textToScrape = `${createAnnouncementDto.content || ''} ${manualUrls.join(' ')}`;
+    const links = await this.extractLinkMetadata(textToScrape);
+
     const attachments: any[] = [];
 
     // Upload seguro via Backend com Service Role
@@ -64,7 +74,7 @@ export class AnnouncementsService {
     }
 
     const announcement = this.announcementsRepository.create({
-      content: createAnnouncementDto.content,
+      content: createAnnouncementDto.content || '',
       classroom: { id: createAnnouncementDto.classroomId },
       author: { id: authorId },
       links,

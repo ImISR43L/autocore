@@ -8,8 +8,8 @@ import {
 
 export class CreateAnnouncementDto {
   @IsString()
-  @IsNotEmpty()
-  content: string;
+  @IsOptional()
+  content?: string;
 
   @IsUUID()
   @IsNotEmpty()
@@ -18,4 +18,8 @@ export class CreateAnnouncementDto {
   @IsOptional()
   @IsArray()
   attachments?: any[];
+
+  @IsOptional()
+  @IsString()
+  manualLinks?: string;
 }
