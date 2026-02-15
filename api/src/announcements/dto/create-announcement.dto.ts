@@ -1,11 +1,21 @@
-import { IsNotEmpty, IsString, IsUUID } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsUUID,
+  IsOptional,
+  IsArray,
+} from 'class-validator';
 
 export class CreateAnnouncementDto {
   @IsString()
   @IsNotEmpty()
   content: string;
 
-  @IsNotEmpty()
   @IsUUID()
+  @IsNotEmpty()
   classroomId: string;
+
+  @IsOptional()
+  @IsArray()
+  attachments?: any[];
 }

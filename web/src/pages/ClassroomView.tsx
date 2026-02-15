@@ -43,6 +43,8 @@ import {
   History,
   GraduationCap, // Icone para a nota
   MessageSquare, // Icone para comentários
+  Paperclip,
+  X,
 } from "lucide-react";
 import {
   Panel,
@@ -289,6 +291,8 @@ export default function ClassroomView() {
 
   const [newAnnouncement, setNewAnnouncement] = useState("");
   const [posting, setPosting] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]); // NOVO
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [stats, setStats] = useState<StatData[]>([]);
   const [problemStats, setProblemStats] = useState<ProblemStat[]>([]);
 
@@ -947,22 +951,47 @@ export default function ClassroomView() {
 
   const handlePostAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAnnouncement.trim()) return;
+    if (!newAnnouncement.trim() && selectedFiles.length === 0) return;
     setPosting(true);
+
     try {
       const token = localStorage.getItem("token");
-      await axios.post(
-        `${API_URL}/announcements`,
-        { content: newAnnouncement, classroomId: classroom?.id },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      toast.success("Aviso postado!");
+      const formData = new FormData();
+
+      formData.append("content", newAnnouncement);
+      formData.append("classroomId", String(classroom?.id));
+
+      selectedFiles.forEach((file) => {
+        formData.append("files", file);
+      });
+
+      await axios.post(`${API_URL}/announcements`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      toast.success("Aviso postado com sucesso!");
       setNewAnnouncement("");
+      setSelectedFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       fetchClassroomData();
-    } catch {
-      toast.error("Erro.");
+    } catch (error) {
+      toast.error("Erro ao postar aviso.");
+      console.error(error);
     } finally {
       setPosting(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const files = Array.from(e.target.files);
+      const validFiles = files.filter((f) => f.size <= 20 * 1024 * 1024); // Máx 20MB
+      if (validFiles.length < files.length)
+        toast.warning("Alguns arquivos excedem o limite de 20MB.");
+      setSelectedFiles((prev) => [...prev, ...validFiles]);
     }
   };
 
@@ -1544,19 +1573,74 @@ export default function ClassroomView() {
                   <Card className="p-6 bg-surface border-border">
                     <form
                       onSubmit={handlePostAnnouncement}
-                      className="space-y-4"
+                      className="space-y-3"
                     >
                       <textarea
                         className="w-full bg-background border border-border rounded-lg p-4 text-base focus:outline-none focus:border-primary transition-colors resize-none"
-                        placeholder="Anuncie algo para a turma..."
+                        placeholder="Anuncie algo para a turma ou anexe materiais..."
                         rows={3}
                         value={newAnnouncement}
                         onChange={(e) => setNewAnnouncement(e.target.value)}
                       />
-                      <div className="flex justify-end">
+
+                      {/* Fila de arquivos selecionados */}
+                      {selectedFiles.length > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-2">
+                          {selectedFiles.map((file, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-2 bg-surface-hover border border-border px-3 py-1.5 rounded-full text-sm"
+                            >
+                              <Paperclip
+                                size={14}
+                                className="text-primary shrink-0"
+                              />
+                              <span className="truncate max-w-[150px] text-zinc-300">
+                                {file.name}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSelectedFiles((prev) =>
+                                    prev.filter((_, i) => i !== idx),
+                                  )
+                                }
+                                className="text-muted hover:text-destructive transition-colors"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex justify-between items-center pt-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="file"
+                            multiple
+                            className="hidden"
+                            ref={fileInputRef}
+                            onChange={handleFileSelect}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="text-muted hover:text-primary"
+                          >
+                            <Paperclip size={18} className="mr-2" /> Adicionar
+                            Arquivo
+                          </Button>
+                        </div>
                         <Button
                           type="submit"
-                          disabled={posting || !newAnnouncement.trim()}
+                          disabled={
+                            posting ||
+                            (!newAnnouncement.trim() &&
+                              selectedFiles.length === 0)
+                          }
                           isLoading={posting}
                           className="px-6"
                         >
@@ -1634,6 +1718,36 @@ export default function ClassroomView() {
                                   {link.url}
                                 </span>
                               </div>
+                              {/* Renderização de Anexos (PDFs, Arquivos, etc) */}
+                              {a.attachments && a.attachments.length > 0 && (
+                                <div className="flex flex-wrap gap-3 mt-4 border-t border-border/50 pt-4">
+                                  {a.attachments.map((file, idx) => (
+                                    <a
+                                      key={idx}
+                                      href={file.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-3 bg-background border border-border rounded-lg p-3 hover:border-primary/50 transition-all min-w-[200px] max-w-[320px] group"
+                                    >
+                                      <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors shrink-0">
+                                        <FileText size={20} />
+                                      </div>
+                                      <div className="flex flex-col min-w-0">
+                                        <span className="text-sm font-semibold text-zinc-100 truncate group-hover:text-primary transition-colors">
+                                          {file.name}
+                                        </span>
+                                        <span className="text-xs text-muted">
+                                          {(file.size / 1024 / 1024).toFixed(2)}{" "}
+                                          MB •{" "}
+                                          {file.mimeType
+                                            .split("/")[1]
+                                            ?.toUpperCase() || "ARQUIVO"}
+                                        </span>
+                                      </div>
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
                             </a>
                           ))}
                         </div>

@@ -6,10 +6,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Announcement } from './entities/announcement.entity';
-import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { Classroom } from '../classrooms/entities/classroom.entity';
-import { User } from '../users/entities/user.entity';
 import axios from 'axios';
+import { createClient } from '@supabase/supabase-js';
+import { InternalServerErrorException } from '@nestjs/common';
 
 @Injectable()
 export class AnnouncementsService {
@@ -20,15 +20,55 @@ export class AnnouncementsService {
     private classroomsRepository: Repository<Classroom>,
   ) {}
 
-  async create(createAnnouncementDto: any, authorId: string) {
+  private supabase = createClient(
+    process.env.SUPABASE_URL || '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  );
+
+  async create(
+    createAnnouncementDto: any,
+    files: Array<Express.Multer.File>,
+    authorId: string,
+  ) {
     const links = await this.extractLinkMetadata(createAnnouncementDto.content);
+    const attachments: any[] = [];
+
+    // Upload seguro via Backend com Service Role
+    for (const file of files) {
+      const fileExt = file.originalname.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+      const filePath = `announcements/${fileName}`;
+
+      const { error } = await this.supabase.storage
+        .from('class_attachments')
+        .upload(filePath, file.buffer, {
+          contentType: file.mimetype,
+        });
+
+      if (error) {
+        throw new InternalServerErrorException(
+          `Falha no upload do arquivo ${file.originalname}`,
+        );
+      }
+
+      const { data } = this.supabase.storage
+        .from('class_attachments')
+        .getPublicUrl(filePath);
+
+      attachments.push({
+        url: data.publicUrl,
+        name: file.originalname,
+        size: file.size,
+        mimeType: file.mimetype,
+      });
+    }
 
     const announcement = this.announcementsRepository.create({
-      ...createAnnouncementDto,
+      content: createAnnouncementDto.content,
       classroom: { id: createAnnouncementDto.classroomId },
       author: { id: authorId },
       links,
-      attachments: [],
+      attachments,
     });
 
     return this.announcementsRepository.save(announcement);
