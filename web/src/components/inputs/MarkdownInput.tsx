@@ -35,8 +35,8 @@ export function MarkdownInput({
             className={cn(
               "flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-all",
               !isPreview
-                ? "bg-zinc-700 text-white shadow-sm"
-                : "text-muted hover:text-zinc-100 hover:bg-white/5",
+                ? "bg-zinc-700 text-foreground shadow-sm"
+                : "text-muted hover:text-foreground hover:bg-white/5",
             )}
           >
             <Edit3 size={14} /> Editar
@@ -48,7 +48,7 @@ export function MarkdownInput({
               "flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-all",
               isPreview
                 ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted hover:text-zinc-100 hover:bg-white/5",
+                : "text-muted hover:text-foreground hover:bg-white/5",
             )}
           >
             <Eye size={14} /> Visualizar
@@ -72,7 +72,7 @@ export function MarkdownInput({
             {...register}
             // RESPONSIVIDADE: text-base no mobile evita zoom do iOS. text-sm no desktop (sm:text-sm).
             className={cn(
-              "w-full h-full bg-surface border border-border rounded-xl p-4 text-zinc-100 text-base sm:text-sm",
+              "w-full h-full bg-surface border border-border rounded-xl p-4 text-foreground text-base sm:text-sm",
               "focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none transition-all resize-none font-mono leading-relaxed",
               error &&
                 "border-destructive focus:border-destructive focus:ring-destructive/20",

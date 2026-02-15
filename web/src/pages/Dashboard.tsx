@@ -177,17 +177,17 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="min-h-screen bg-background text-zinc-100 flex flex-col font-sans selection:bg-primary/20">
+    <div className="min-h-screen bg-background text-foreground flex flex-col font-sans selection:bg-primary/20">
       {/* NAVBAR */}
       <nav className="sticky top-0 z-10 border-b border-border bg-surface/80 backdrop-blur-md px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center transition-all">
         <div className="flex items-center gap-3">
-          <div className="bg-primary/10 p-2 rounded-lg border border-primary/20">
+          <div className="bg-primary/10 p-2 rounded-lg border border-primary/20 dark:border-primary/10">
             <GraduationCap size={24} className="text-primary sm:w-7 sm:h-7" />
           </div>
-          <span className="font-bold text-lg sm:text-xl tracking-tight text-white hidden sm:inline-block">
+          <span className="font-bold text-lg sm:text-xl tracking-tight text-foreground hidden sm:inline-block">
             AutoCore
           </span>
-          <span className="font-bold text-lg tracking-tight text-white sm:hidden">
+          <span className="font-bold text-lg tracking-tight text-foreground sm:hidden">
             AC
           </span>
         </div>
@@ -206,7 +206,7 @@ export default function Dashboard() {
         {/* CABEÇALHO (Responsivo: Stack no mobile, Row no desktop) */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8 sm:mb-10">
           <div className="w-full md:w-auto">
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 sm:mb-3">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-2 sm:mb-3">
               Olá, <span className="text-primary">{userName}</span>!
             </h1>
             <p className="text-muted text-sm sm:text-lg">
@@ -249,7 +249,9 @@ export default function Dashboard() {
           </div>
           <div className="text-sm sm:text-base text-muted w-full sm:w-auto text-left">
             Mostrando{" "}
-            <strong className="text-white">{filteredClassrooms.length}</strong>{" "}
+            <strong className="text-foreground">
+              {filteredClassrooms.length}
+            </strong>{" "}
             turmas
           </div>
         </div>
@@ -275,19 +277,19 @@ export default function Dashboard() {
                   {/* Banner do Card */}
                   <div
                     className={cn(
-                      "h-16 sm:h-20 px-4 sm:px-6 flex items-center justify-between border-b border-white/5",
+                      "h-16 sm:h-20 px-4 sm:px-6 flex items-center justify-between border-b border-border bg-surface",
                       isOwner
-                        ? "bg-gradient-to-r from-emerald-900/40 to-surface"
-                        : "bg-gradient-to-r from-zinc-800/40 to-surface",
+                        ? "bg-gradient-to-r from-primary/15 dark:from-primary/10 to-transparent"
+                        : "bg-gradient-to-r from-muted/20 dark:from-white/5 to-transparent",
                     )}
                   >
                     {isOwner ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium text-emerald-400 border border-emerald-500/20">
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium text-primary-dark dark:text-primary border border-primary/20 dark:border-primary/10">
                         <Crown size={14} />{" "}
                         <span className="hidden xs:inline">Professor</span>
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 rounded-md bg-zinc-700/30 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium text-zinc-400 border border-zinc-700/50">
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-background/50 dark:bg-muted/10 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium text-foreground border border-border/80 dark:border-border/50">
                         <School size={14} />{" "}
                         <span className="hidden xs:inline">Aluno</span>
                       </span>
@@ -299,7 +301,7 @@ export default function Dashboard() {
 
                   {/* Corpo do Card */}
                   <div className="flex flex-1 flex-col p-4 sm:p-6">
-                    <h3 className="text-xl sm:text-2xl font-semibold text-white mb-4 sm:mb-6 line-clamp-1 group-hover:text-primary transition-colors">
+                    <h3 className="text-xl sm:text-2xl font-semibold text-foreground mb-4 sm:mb-6 line-clamp-1 group-hover:text-primary transition-colors">
                       {c.name}
                     </h3>
 
@@ -317,7 +319,7 @@ export default function Dashboard() {
                                 onClick={(e) =>
                                   navigateToAssignment(e, c.id, work.id)
                                 }
-                                className="flex items-center justify-between rounded-md bg-background/50 p-2 sm:p-3 text-xs sm:text-sm text-zinc-300 border border-border/50 hover:border-primary/30 hover:bg-background transition-colors"
+                                className="flex items-center justify-between rounded-md bg-background/50 p-2 sm:p-3 text-xs sm:text-sm text-foreground border border-border/50 hover:border-primary/30 hover:bg-background transition-colors"
                               >
                                 <span
                                   className="truncate max-w-[120px] sm:max-w-[160px]"
@@ -339,7 +341,7 @@ export default function Dashboard() {
                       )}
                     </div>
 
-                    <div className="mt-auto flex items-center justify-between border-t border-border pt-4 sm:pt-5 text-xs sm:text-sm text-muted group-hover:text-zinc-200 transition-colors">
+                    <div className="mt-auto flex items-center justify-between border-t border-border pt-4 sm:pt-5 text-xs sm:text-sm text-muted group-hover:text-foreground transition-colors">
                       <span>
                         {isOwner ? "Gerenciar Turma" : "Ver Todas Atividades"}
                       </span>
@@ -359,7 +361,7 @@ export default function Dashboard() {
             <div className="bg-surface p-4 sm:p-6 rounded-full mb-4 sm:mb-6 border border-border">
               <BookOpen size={40} className="text-muted sm:w-12 sm:h-12" />
             </div>
-            <h3 className="text-lg sm:text-xl font-medium text-white mb-2">
+            <h3 className="text-lg sm:text-xl font-medium text-foreground mb-2">
               Nenhuma turma encontrada
             </h3>
             <p className="text-muted text-sm sm:text-base max-w-md mb-6 sm:mb-8">
@@ -382,15 +384,15 @@ export default function Dashboard() {
 
       {/* MODAL: CRIAR TURMA */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-lg bg-surface border border-border rounded-xl shadow-2xl p-6 sm:p-8 animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4 sm:mb-6">
-              <h3 className="text-xl sm:text-2xl font-bold text-white">
+              <h3 className="text-xl sm:text-2xl font-bold text-foreground">
                 Criar Nova Turma
               </h3>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="text-muted hover:text-white transition-colors"
+                className="text-muted hover:text-foreground transition-colors"
               >
                 <X size={24} />
               </button>
@@ -431,15 +433,15 @@ export default function Dashboard() {
 
       {/* MODAL: ENTRAR EM TURMA */}
       {showJoinModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-lg bg-surface border border-border rounded-xl shadow-2xl p-6 sm:p-8 animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4 sm:mb-6">
-              <h3 className="text-xl sm:text-2xl font-bold text-white">
+              <h3 className="text-xl sm:text-2xl font-bold text-foreground">
                 Entrar em uma Turma
               </h3>
               <button
                 onClick={() => setShowJoinModal(false)}
-                className="text-muted hover:text-white transition-colors"
+                className="text-muted hover:text-foreground transition-colors"
               >
                 <X size={24} />
               </button>

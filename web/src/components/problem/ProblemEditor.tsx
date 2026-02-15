@@ -85,7 +85,7 @@ export function ProblemEditor({
         "flex items-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg text-xs md:text-sm font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary flex-1 md:flex-none justify-center whitespace-nowrap",
         activeTab === tab
           ? "bg-primary/10 text-primary border border-primary/20 shadow-sm"
-          : "text-muted hover:text-zinc-100 hover:bg-surface-hover",
+          : "text-muted hover:text-foreground hover:bg-surface-hover",
       )}
     >
       {icon}
@@ -94,7 +94,7 @@ export function ProblemEditor({
   );
 
   return (
-    <div className="h-full flex flex-col bg-background text-zinc-100 font-sans selection:bg-primary/20 relative">
+    <div className="h-full flex flex-col bg-background text-foreground font-sans selection:bg-primary/20 relative">
       <FormProvider {...methods}>
         <form
           onSubmit={handleSubmit(onFormSubmit)}
@@ -162,7 +162,7 @@ export function ProblemEditor({
                     placeholder="soma-de-vetores"
                     error={errors.slug?.message}
                     {...register("slug")}
-                    className="h-11 md:h-12 text-base bg-surface border-border font-mono text-muted focus:text-zinc-100"
+                    className="h-11 md:h-12 text-base bg-surface border-border font-mono text-muted focus:text-foreground"
                   />
                 </div>
 
@@ -215,7 +215,7 @@ export function ProblemEditor({
               >
                 <div className="bg-surface border border-border rounded-xl p-4 md:p-10 space-y-8 md:space-y-12 shadow-lg max-w-5xl mx-auto">
                   <section className="space-y-6 md:space-y-8">
-                    <h3 className="text-xl md:text-2xl font-bold text-zinc-100 border-b border-border pb-4 flex items-center gap-3">
+                    <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3">
                       <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
                         <Settings2 size={24} />
                       </div>
@@ -244,7 +244,7 @@ export function ProblemEditor({
                   </section>
 
                   <section className="space-y-6 md:space-y-8">
-                    <h3 className="text-xl md:text-2xl font-bold text-zinc-100 border-b border-border pb-4 flex items-center gap-3">
+                    <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3">
                       <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
                         <Clock size={24} />
                       </div>

@@ -13,8 +13,6 @@ import { MarkdownInput } from "../inputs/MarkdownInput";
 import {
   RefreshCw,
   Trash,
-  Type,
-  Link as LinkIcon,
   FileText,
   LayoutTemplate,
   ArrowLeft,
@@ -168,12 +166,12 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
     <div className="h-full flex flex-col relative bg-surface rounded-xl overflow-hidden border border-border shadow-2xl">
       {/* Modal Confirmação */}
       {showExitConfirmation && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/60 backdrop-blur-sm animate-in fade-in duration-200 p-4">
           <div className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full animate-in zoom-in-95">
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3 text-amber-500">
                 <AlertTriangle size={24} />
-                <h3 className="text-lg font-bold text-white">Cancelar?</h3>
+                <h3 className="text-lg font-bold text-foreground">Cancelar?</h3>
               </div>
               <p className="text-sm text-muted">
                 O seu progresso será salvo como rascunho.
@@ -265,7 +263,7 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
                       <input
                         {...register("slug")}
                         className={cn(
-                          "flex h-11 sm:h-12 w-full rounded-md border border-border bg-background px-3 py-2 pl-6 text-base text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-mono",
+                          "flex h-11 sm:h-12 w-full rounded-md border border-border bg-background px-3 py-2 pl-6 text-base text-foreground placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-mono",
                           errors.slug &&
                             "border-destructive focus:border-destructive",
                         )}
@@ -318,7 +316,7 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
                             "block font-semibold text-lg transition-colors",
                             problemType === "EXERCISE"
                               ? "text-primary"
-                              : "text-white",
+                              : "text-foreground",
                           )}
                         >
                           Exercício Prático
@@ -361,7 +359,7 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
                             "block font-semibold text-lg transition-colors",
                             problemType === "EXAM"
                               ? "text-primary"
-                              : "text-white",
+                              : "text-foreground",
                           )}
                         >
                           Prova / Avaliação

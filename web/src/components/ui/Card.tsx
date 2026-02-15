@@ -9,7 +9,7 @@ export function Card({
 }) {
   return (
     <div
-      className={`rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 shadow-sm ${className}`}
+      className={`rounded-lg border border-border bg-surface/50 p-4 shadow-sm ${className}`}
     >
       {children}
     </div>
@@ -26,10 +26,10 @@ export function CardHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between mb-4 border-b border-zinc-800 pb-4 last:mb-0 last:border-0 last:pb-0">
+    <div className="flex items-center justify-between mb-4 border-b border-border pb-4 last:mb-0 last:border-0 last:pb-0">
       <div>
-        <h3 className="text-lg font-semibold text-zinc-100">{title}</h3>
-        {description && <p className="text-sm text-zinc-400">{description}</p>}
+        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+        {description && <p className="text-sm text-muted">{description}</p>}
       </div>
       {action && <div>{action}</div>}
     </div>

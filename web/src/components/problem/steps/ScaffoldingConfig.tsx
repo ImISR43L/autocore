@@ -220,7 +220,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
     >
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border pb-3 flex-none">
         <div className="flex items-center gap-3 flex-wrap">
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <FileCode className="text-primary" size={20} />
             {isFullscreen ? "Modo Focado" : "Código Base"}
           </h3>
@@ -238,7 +238,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                     "px-3 py-1.5 text-xs font-medium rounded transition-all flex items-center gap-1.5",
                     isActive
                       ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted hover:text-zinc-200 hover:bg-surface-hover",
+                      : "text-muted hover:text-foreground hover:bg-surface-hover",
                   )}
                 >
                   {isActive && <Check size={12} />}
@@ -288,7 +288,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
           </Button>
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-2 text-muted hover:text-white transition-colors"
+            className="p-2 text-muted hover:text-foreground transition-colors"
           >
             {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </button>
@@ -305,8 +305,8 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
             className={cn(
               "px-4 py-2 text-sm font-medium border-b-2 transition-colors",
               viewLang === lang
-                ? "border-primary text-white"
-                : "border-transparent text-muted hover:text-zinc-300",
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted hover:text-foreground",
             )}
           >
             Configurar{" "}
@@ -333,7 +333,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                 className={cn(
                   "group flex items-center gap-2 px-4 py-2.5 text-sm cursor-pointer border-r border-border select-none min-w-[120px] justify-between transition-colors",
                   index === activeIndex
-                    ? "bg-surface text-white border-t-2 border-t-primary"
+                    ? "bg-surface text-foreground border-t-2 border-t-primary"
                     : "text-muted hover:bg-surface-hover",
                 )}
               >

@@ -35,7 +35,7 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
           {/* ... (Código da lista de parâmetros mantém igual) ... */}
           <div className="flex flex-wrap justify-between items-end border-b border-border pb-3 gap-3">
             <div>
-              <label className="text-sm font-semibold text-white flex items-center gap-2">
+              <label className="text-sm font-semibold text-foreground flex items-center gap-2">
                 Parâmetros de Entrada
               </label>
               <p className="text-xs text-muted mt-1">
@@ -58,7 +58,7 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
                 <p className="text-sm text-muted font-medium">
                   Nenhum parâmetro definido
                 </p>
-                <p className="text-xs text-zinc-500 mt-1">
+                <p className="text-xs text-muted mt-1">
                   A função será void() (sem argumentos).
                 </p>
               </div>
@@ -116,7 +116,7 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
         <div className="lg:col-span-1 space-y-6">
           {/* Card Tipo de Retorno */}
           <Card className="p-6 flex flex-col gap-5">
-            <div className="flex items-center gap-3 text-zinc-300 border-b border-border pb-3">
+            <div className="flex items-center gap-3 text-foreground border-b border-border pb-3">
               <div className="p-2 bg-primary/10 rounded-md text-primary">
                 <Type size={18} />
               </div>
@@ -124,7 +124,7 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
                 <span className="text-xs font-bold uppercase tracking-wider block text-muted">
                   Configuração
                 </span>
-                <span className="text-sm font-semibold text-white">
+                <span className="text-sm font-semibold text-foreground">
                   Saída da Função
                 </span>
               </div>
@@ -154,7 +154,7 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
 
           {/* NOVO: Card de Prazos para Exercícios */}
           <Card className="p-6 flex flex-col gap-5">
-            <div className="flex items-center gap-3 text-zinc-300 border-b border-border pb-3">
+            <div className="flex items-center gap-3 text-foreground border-b border-border pb-3">
               <div className="p-2 bg-primary/10 rounded-md text-primary">
                 <CalendarClock size={18} />
               </div>
@@ -162,7 +162,7 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
                 <span className="text-xs font-bold uppercase tracking-wider block text-muted">
                   Prazos
                 </span>
-                <span className="text-sm font-semibold text-white">
+                <span className="text-sm font-semibold text-foreground">
                   Agendamento
                 </span>
               </div>

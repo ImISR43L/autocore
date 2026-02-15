@@ -63,10 +63,10 @@ export default function CreateProblem() {
   };
 
   return (
-    <div className="h-screen w-full bg-background text-zinc-100 flex flex-col font-sans overflow-hidden">
+    <div className="h-screen w-full bg-background text-foreground flex flex-col font-sans overflow-hidden">
       <div className="p-4 md:p-6 pb-2 flex-none">
         <header>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">
             Nova Atividade
           </h1>
           <p className="text-muted text-sm mt-1">

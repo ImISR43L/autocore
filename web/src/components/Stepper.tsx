@@ -229,8 +229,8 @@ function Navigation() {
                   className={cn(
                     "text-sm font-medium hidden md:block transition-colors whitespace-nowrap",
                     isActive
-                      ? "text-white"
-                      : "text-muted group-hover:text-zinc-300",
+                      ? "text-foreground"
+                      : "text-muted group-hover:text-foreground",
                   )}
                 >
                   {step.label}

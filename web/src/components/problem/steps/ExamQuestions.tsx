@@ -51,14 +51,14 @@ export function ExamQuestions() {
   return (
     <div className="flex flex-col gap-6 h-full">
       <div className="flex justify-between items-center border-b border-gray-800 pb-2">
-        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+        <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
           <FileQuestion className="text-purple-500" size={20} />
           Questões da Prova
         </h3>
         <button
           type="button"
           onClick={handleAddQuestion}
-          className="flex items-center gap-1 text-sm bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded transition-colors"
+          className="flex items-center gap-1 text-sm bg-purple-600 hover:bg-purple-700 text-foreground px-3 py-1.5 rounded transition-colors"
         >
           <Plus size={16} /> Adicionar Questão
         </button>
@@ -97,7 +97,7 @@ export function ExamQuestions() {
                     <ChevronRight size={18} />
                   )}
                   <span
-                    className={`font-medium ${hasError ? "text-red-400" : "text-white"}`}
+                    className={`font-medium ${hasError ? "text-red-400" : "text-foreground"}`}
                   >
                     Questão {index + 1}:{" "}
                     {watch(`${basePath}.title`) || "Sem título"}
@@ -131,7 +131,7 @@ export function ExamQuestions() {
                       </label>
                       <input
                         {...register(`${basePath}.title`)}
-                        className="bg-gray-800 border border-gray-700 rounded p-2 text-white text-sm focus:border-purple-500 outline-none"
+                        className="bg-gray-800 border border-gray-700 rounded p-2 text-foreground text-sm focus:border-purple-500 outline-none"
                       />
                     </div>
                     <div className="flex flex-col gap-2">
@@ -140,7 +140,7 @@ export function ExamQuestions() {
                       </label>
                       <input
                         {...register(`${basePath}.slug`)}
-                        className="bg-gray-800 border border-gray-700 rounded p-2 text-white text-sm font-mono focus:border-purple-500 outline-none"
+                        className="bg-gray-800 border border-gray-700 rounded p-2 text-foreground text-sm font-mono focus:border-purple-500 outline-none"
                       />
                     </div>
                   </div>

@@ -25,13 +25,13 @@ export function Button({
         {
           "bg-primary text-primary-foreground hover:bg-primary-dark shadow-sm":
             variant === "primary",
-          "bg-surface-hover text-zinc-100 hover:bg-zinc-700 border border-border":
+          "bg-surface-hover text-foreground hover:bg-surface-hover border border-border":
             variant === "secondary",
-          "bg-transparent text-zinc-300 border border-border hover:bg-surface-hover hover:text-white":
+          "bg-transparent text-foregroundborder border-border hover:bg-surface-hover hover:text-foreground":
             variant === "outline",
           "bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20":
             variant === "danger",
-          "bg-transparent text-zinc-400 hover:text-white hover:bg-white/5":
+          "bg-transparent text-muted hover:text-foreground hover:bg-white/5":
             variant === "ghost",
 
           "h-8 px-3 text-xs": size === "sm",

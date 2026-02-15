@@ -4,25 +4,26 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: "#09090b", // Zinc 950
-        surface: "#18181b", // Zinc 900
-        "surface-hover": "#27272a", // Zinc 800
-        border: "#27272a", // Zinc 800
+        background: "var(--background)",
+        surface: "var(--surface)",
+        "surface-hover": "var(--surface-hover)",
+        border: "var(--border)",
+        foreground: "var(--foreground)",
 
         primary: {
-          DEFAULT: "#10b981", // Emerald 500
-          dark: "#059669", // Emerald 600
-          foreground: "#ffffff",
+          DEFAULT: "var(--primary)",
+          dark: "var(--primary-dark)",
+          foreground: "var(--primary-foreground)",
         },
 
         destructive: {
-          DEFAULT: "#ef4444", // Red 500
-          foreground: "#ffffff",
+          DEFAULT: "var(--destructive)",
+          foreground: "var(--destructive-foreground)",
         },
 
         muted: {
-          DEFAULT: "#a1a1aa", // Zinc 400
-          foreground: "#52525b", // Zinc 600
+          DEFAULT: "var(--muted)",
+          foreground: "var(--muted-foreground)",
         },
       },
     },

@@ -312,7 +312,6 @@ export default function ClassroomView() {
   const [showReportMenu, setShowReportMenu] = useState(false);
 
   // --- ESTADOS DE ACESSIBILIDADE ---
-  // --- ESTADOS DE ACESSIBILIDADE ---
   const [highContrast, setHighContrast] = useState(
     () => localStorage.getItem("a11y_highContrast") === "true",
   );
@@ -323,6 +322,21 @@ export default function ClassroomView() {
     () => localStorage.getItem("a11y_zenMode") === "true",
   );
   const [showA11yMenu, setShowA11yMenu] = useState(false);
+
+  const [isLightMode, setIsLightMode] = useState(
+    !document.documentElement.classList.contains("dark"),
+  );
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsLightMode(!document.documentElement.classList.contains("dark"));
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("a11y_highContrast", String(highContrast));
@@ -1324,7 +1338,7 @@ export default function ClassroomView() {
             className={cn(
               "px-5 py-3 text-sm cursor-pointer flex items-center gap-3 border-r border-border border-t-2 select-none min-w-fit",
               activeFileIndex === idx
-                ? "bg-background text-zinc-100 border-t-primary"
+                ? "bg-background text-foreground border-t-primary"
                 : "bg-surface text-muted border-t-transparent hover:bg-surface-hover",
             )}
           >
@@ -1341,7 +1355,7 @@ export default function ClassroomView() {
         ))}
         <div className="flex items-center px-3 min-w-[100px]">
           <input
-            className="bg-transparent border-none text-sm text-zinc-100 w-full focus:outline-none placeholder:text-muted/50"
+            className="bg-transparent border-none text-sm text-foreground w-full focus:outline-none placeholder:text-muted/50"
             placeholder="+ Novo..."
             value={newFileName}
             onChange={(e) => setNewFileName(e.target.value)}
@@ -1354,7 +1368,7 @@ export default function ClassroomView() {
         <Editor
           key={`${languageId}-${displayProblem?.id}-${activeFileIndex}`}
           height="100%"
-          theme={highContrast ? "hc-black" : "vs-dark"}
+          theme={highContrast ? "hc-black" : isLightMode ? "vs" : "vs-dark"}
           language={LANGUAGE_MAP[languageId] || "plaintext"}
           value={files[activeFileIndex]?.content || ""}
           onChange={handleCodeChange}
@@ -1398,7 +1412,7 @@ export default function ClassroomView() {
                   <div className="text-sm text-muted mb-2 font-semibold">
                     Entrada
                   </div>
-                  <code className="text-base font-mono block bg-black/20 p-2 rounded break-all whitespace-pre-wrap">
+                  <code className="text-base font-mono block bg-background/20 p-2 rounded break-all whitespace-pre-wrap">
                     {tc.input}
                   </code>
                 </div>
@@ -1406,7 +1420,7 @@ export default function ClassroomView() {
                   <div className="text-sm text-muted mb-2 font-semibold">
                     Saída
                   </div>
-                  <code className="text-base font-mono block text-emerald-400 bg-black/20 p-2 rounded break-all whitespace-pre-wrap">
+                  <code className="text-base font-mono block text-emerald-400 bg-background/20 p-2 rounded break-all whitespace-pre-wrap">
                     {tc.expectedOutput}
                   </code>
                 </div>
@@ -1505,19 +1519,24 @@ export default function ClassroomView() {
           className={cn(
             "rounded-xl border p-5 sm:p-6 mb-4 shadow-sm flex flex-col transition-colors motion-reduce:transition-none shrink-0",
             verdict === "Accepted"
-              ? "bg-emerald-900/10 border-emerald-500/30"
-              : "bg-red-900/10 border-red-500/30",
+              ? "bg-emerald-500/10 border-emerald-500/30"
+              : "bg-red-500/10 border-red-500/30",
           )}
         >
           <div className="flex items-center gap-3 font-bold mb-4 text-lg sm:text-xl shrink-0">
             {verdict === "Accepted" ? (
-              <CheckCircle className="text-emerald-500" size={24} />
+              <CheckCircle
+                className="text-emerald-600 dark:text-emerald-500"
+                size={24}
+              />
             ) : (
-              <XCircle className="text-red-500" size={24} />
+              <XCircle className="text-red-600 dark:text-red-500" size={24} />
             )}
             <span
               className={
-                verdict === "Accepted" ? "text-emerald-500" : "text-red-500"
+                verdict === "Accepted"
+                  ? "text-emerald-600 dark:text-emerald-500"
+                  : "text-red-600 dark:text-red-500"
               }
             >
               {verdict}
@@ -1530,7 +1549,7 @@ export default function ClassroomView() {
                 <div className="text-xs sm:text-sm text-muted mb-1 sm:mb-2 flex items-center gap-2 font-medium">
                   <Clock size={16} /> Tempo
                 </div>
-                <div className="font-mono text-lg sm:text-xl text-zinc-100">
+                <div className="font-mono text-lg sm:text-xl text-foreground">
                   {lastSubmission.executionTime}ms
                 </div>
               </div>
@@ -1538,7 +1557,7 @@ export default function ClassroomView() {
                 <div className="text-xs sm:text-sm text-muted mb-1 sm:mb-2 flex items-center gap-2 font-medium">
                   <Cpu size={16} /> Memória
                 </div>
-                <div className="font-mono text-lg sm:text-xl text-zinc-100">
+                <div className="font-mono text-lg sm:text-xl text-foreground">
                   {lastSubmission.memoryUsage}KB
                 </div>
               </div>
@@ -1548,13 +1567,16 @@ export default function ClassroomView() {
           <div className="mt-6 flex flex-col shrink-0">
             {/* Dica Semântica Exclusiva para Erros */}
             {getSemanticHint() && (
-              <div className="mb-5 p-4 bg-blue-950/50 border border-blue-400/40 rounded-lg flex items-start gap-3 shrink-0">
-                <BookOpen className="shrink-0 text-blue-300 mt-0.5" size={20} />
+              <div className="mb-5 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg flex items-start gap-3 shrink-0">
+                <BookOpen
+                  className="shrink-0 text-blue-600 dark:text-blue-400 mt-0.5"
+                  size={20}
+                />
                 <div>
-                  <h4 className="font-semibold text-blue-100 mb-1 text-xs sm:text-sm uppercase tracking-wide">
+                  <h4 className="font-semibold text-blue-700 dark:text-blue-100 mb-1 text-xs sm:text-sm uppercase tracking-wide">
                     Dica de Resolução
                   </h4>
-                  <p className="text-xs sm:text-sm text-blue-50 leading-relaxed">
+                  <p className="text-xs sm:text-sm text-blue-800 dark:text-blue-100 leading-relaxed">
                     {getSemanticHint()}
                   </p>
                 </div>
@@ -1586,17 +1608,17 @@ export default function ClassroomView() {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-background text-zinc-100 overflow-hidden font-sans selection:bg-primary/20">
+    <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden font-sans selection:bg-primary/20">
       {(!zenMode || activeTab !== "classwork") && (
         <header className="flex-none border-b border-border bg-surface px-4 py-3 md:px-6 md:py-4">
           <div className="flex items-center gap-4 mb-4">
             <Link
               to="/dashboard"
-              className="p-2 hover:bg-white/10 rounded-full text-muted hover:text-white transition-colors"
+              className="p-2 hover:bg-white/10 rounded-full text-muted hover:text-foreground transition-colors"
             >
               <ArrowLeft size={24} />
             </Link>
-            <h2 className="text-xl md:text-2xl font-semibold tracking-tight text-white truncate">
+            <h2 className="text-xl md:text-2xl font-semibold tracking-tight text-foreground truncate">
               {classroom.name}
             </h2>
           </div>
@@ -1617,7 +1639,7 @@ export default function ClassroomView() {
                     "pb-2 border-b-2 transition-colors px-1 whitespace-nowrap",
                     activeTab === tab.id
                       ? "border-primary text-primary"
-                      : "border-transparent text-muted hover:text-zinc-100",
+                      : "border-transparent text-muted hover:text-foreground",
                   )}
                 >
                   {tab.label}
@@ -1644,7 +1666,7 @@ export default function ClassroomView() {
                         <div
                           key={work.id}
                           onClick={() => handleGoToProblem(work.id)}
-                          className="text-base cursor-pointer hover:underline truncate text-zinc-300 hover:text-primary transition-colors"
+                          className="text-base cursor-pointer hover:underline truncate text-foreground hover:text-primary transition-colors"
                         >
                           {work.title}
                         </div>
@@ -1660,11 +1682,11 @@ export default function ClassroomView() {
 
               {/* Main Feed */}
               <div className="lg:col-span-3 space-y-6 md:space-y-8">
-                <div className="bg-gradient-to-r from-emerald-900/50 to-zinc-900 p-6 md:p-8 rounded-xl border border-primary/20 shadow-lg">
-                  <h1 className="text-2xl md:text-4xl font-bold mb-3 text-white">
+                <div className="bg-gradient-to-r from-primary/15 dark:from-primary/10 to-transparent bg-surface p-6 md:p-8 rounded-xl border border-primary/20 dark:border-primary/10 shadow-sm">
+                  <h1 className="text-2xl md:text-4xl font-bold mb-3 text-foreground">
                     {classroom.name}
                   </h1>
-                  <div className="text-sm md:text-base text-emerald-200/80 font-mono">
+                  <div className="text-sm md:text-base text-primary-dark dark:text-primary/80 font-mono">
                     Código: {classroom.code}
                   </div>
                 </div>
@@ -1695,7 +1717,7 @@ export default function ClassroomView() {
                                 size={14}
                                 className="text-primary shrink-0"
                               />
-                              <span className="truncate max-w-[150px] text-zinc-300">
+                              <span className="truncate max-w-[150px] text-foreground">
                                 {new URL(link).hostname}
                               </span>
                               <button
@@ -1720,7 +1742,7 @@ export default function ClassroomView() {
                                 size={14}
                                 className="text-primary shrink-0"
                               />
-                              <span className="truncate max-w-[150px] text-zinc-300">
+                              <span className="truncate max-w-[150px] text-foreground">
                                 {file.name}
                               </span>
                               <button
@@ -1826,7 +1848,7 @@ export default function ClassroomView() {
                             {a.author?.email.charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <div className="text-base font-medium text-white">
+                            <div className="text-base font-medium text-foreground">
                               {a.author?.email}
                             </div>
                             <div className="text-sm text-muted">
@@ -1847,7 +1869,7 @@ export default function ClassroomView() {
                           </Button>
                         )}
                       </div>
-                      <div className="text-base whitespace-pre-wrap text-zinc-300 leading-relaxed">
+                      <div className="text-base whitespace-pre-wrap text-foreground leading-relaxed">
                         {a.content}
                       </div>
 
@@ -1863,7 +1885,7 @@ export default function ClassroomView() {
                               className="flex flex-col sm:flex-row bg-background border border-border rounded-lg overflow-hidden hover:border-primary/50 transition-colors group"
                             >
                               {link.imageUrl && (
-                                <div className="w-full sm:w-48 h-32 sm:h-auto shrink-0 bg-zinc-900 border-b sm:border-b-0 sm:border-r border-border">
+                                <div className="w-full sm:w-48 h-32 sm:h-auto shrink-0 bg-surface border-b sm:border-b-0 sm:border-r border-border">
                                   <img
                                     src={link.imageUrl}
                                     alt="Preview"
@@ -1872,7 +1894,7 @@ export default function ClassroomView() {
                                 </div>
                               )}
                               <div className="p-3 sm:p-4 flex flex-col justify-center min-w-0 flex-1">
-                                <h4 className="text-sm font-semibold text-zinc-100 truncate group-hover:text-primary transition-colors">
+                                <h4 className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
                                   {link.title}
                                 </h4>
                                 {link.description && (
@@ -1897,11 +1919,11 @@ export default function ClassroomView() {
                                   rel="noopener noreferrer"
                                   className="flex items-center gap-3 bg-background border border-border rounded-lg p-3 hover:border-primary/50 transition-all min-w-[200px] max-w-[320px] group"
                                 >
-                                  <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors shrink-0">
+                                  <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-foreground transition-colors shrink-0">
                                     <FileText size={20} />
                                   </div>
                                   <div className="flex flex-col min-w-0">
-                                    <span className="text-sm font-semibold text-zinc-100 truncate group-hover:text-primary transition-colors">
+                                    <span className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
                                       {file.name}
                                     </span>
                                     <span className="text-xs text-muted">
@@ -1932,19 +1954,19 @@ export default function ClassroomView() {
             <div className="max-w-4xl mx-auto space-y-10">
               {/* Seção Professores */}
               <section>
-                <h3 className="text-emerald-500 font-semibold text-xl mb-6 px-2 border-b border-border pb-3 flex items-center justify-between">
+                <h3 className="text-primary-dark dark:text-primary font-semibold text-xl mb-6 px-2 border-b border-border pb-3 flex items-center justify-between">
                   Professores
                   <User size={20} />
                 </h3>
                 <Card className="bg-surface border-border">
                   <div className="flex items-center gap-5 p-4">
-                    <div className="w-12 h-12 rounded-full bg-emerald-900/50 text-emerald-400 flex items-center justify-center font-bold border border-emerald-500/20 text-lg">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 dark:bg-primary/20 text-primary-dark dark:text-primary flex items-center justify-center font-bold border border-primary/20 dark:border-primary/10 text-lg">
                       {(classroom.owner.name || classroom.owner.email)
                         .charAt(0)
                         .toUpperCase()}
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-zinc-200 font-medium text-lg truncate">
+                      <span className="text-foreground font-medium text-lg truncate">
                         {classroom.owner.name || classroom.owner.email}
                       </span>
                       {classroom.owner.name && (
@@ -1960,9 +1982,9 @@ export default function ClassroomView() {
               {/* Seção Estudantes */}
               <section>
                 <div className="flex items-center justify-between mb-6 px-2 border-b border-border pb-3">
-                  <h3 className="text-emerald-500 font-semibold text-xl flex items-center gap-3">
+                  <h3 className="text-primary-dark dark:text-primary font-semibold text-xl flex items-center gap-3">
                     Estudantes
-                    <span className="text-sm bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded-full">
+                    <span className="text-sm bg-primary/10 text-primary-dark dark:text-primary border border-primary/20 dark:border-primary/10 px-3 py-1 rounded-full">
                       {classroom.students.length}
                     </span>
                   </h3>
@@ -1988,11 +2010,11 @@ export default function ClassroomView() {
                         key={s.id}
                         className="flex items-center gap-5 p-4 hover:bg-surface-hover transition-colors"
                       >
-                        <div className="w-10 h-10 rounded-full bg-zinc-800 text-zinc-400 flex items-center justify-center font-bold text-base">
+                        <div className="w-10 h-10 rounded-full hover:bg-surface-hover text-muted flex items-center justify-center font-bold text-base">
                           {(s.name || s.email).charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1 flex flex-col justify-center">
-                          <div className="text-base text-zinc-200 font-medium truncate">
+                          <div className="text-base text-foreground font-medium truncate">
                             {s.name || s.email}
                           </div>
                           {s.name && (
@@ -2166,7 +2188,7 @@ export default function ClassroomView() {
                           setZenMode(!zenMode);
                           setShowA11yMenu(false);
                         }}
-                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between transition-colors text-zinc-300"
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between transition-colors text-foreground"
                         aria-pressed={zenMode}
                       >
                         Modo Foco (Oculta distrações){" "}
@@ -2180,7 +2202,7 @@ export default function ClassroomView() {
                           setHighContrast(!highContrast);
                           setShowA11yMenu(false);
                         }}
-                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between transition-colors text-zinc-300"
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between transition-colors text-foreground"
                         aria-pressed={highContrast}
                       >
                         Alto Contraste{" "}
@@ -2193,7 +2215,7 @@ export default function ClassroomView() {
                           setScreenReaderMode(!screenReaderMode);
                           setShowA11yMenu(false);
                         }}
-                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between transition-colors text-zinc-300"
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between transition-colors text-foreground"
                         aria-pressed={screenReaderMode}
                       >
                         Modo Leitor de Tela{" "}
@@ -2203,7 +2225,7 @@ export default function ClassroomView() {
                       </button>
                       <div className="px-4 py-3 text-xs text-muted border-t border-border mt-1 leading-relaxed">
                         Dica: Pressione{" "}
-                        <b className="text-zinc-200">Ctrl + M</b> no editor de
+                        <b className="text-foreground">Ctrl + M</b> no editor de
                         código para liberar o foco da tecla Tab (Escape Trap).
                       </div>
                     </div>
@@ -2244,7 +2266,7 @@ export default function ClassroomView() {
                     disabled={loading || !selectedProblemId || isBlocked}
                     isLoading={loading}
                     size="icon"
-                    className="h-11 w-11 bg-primary text-white"
+                    className="h-11 w-11 bg-primary text-foreground"
                   >
                     <div className="flex items-center justify-center">
                       <Plus className="rotate-45" size={24} />
@@ -2320,12 +2342,13 @@ export default function ClassroomView() {
                       </button>
 
                       <div className="h-px bg-border my-1" />
+
                       <button
                         onClick={() => setZenMode(!zenMode)}
                         className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between"
                         aria-pressed={zenMode}
                       >
-                        <span className="flex items-center gap-2 text-zinc-300">
+                        <span className="flex items-center gap-2 text-foreground">
                           {zenMode ? (
                             <Minimize size={16} />
                           ) : (
@@ -2342,7 +2365,7 @@ export default function ClassroomView() {
                         className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between"
                         aria-pressed={highContrast}
                       >
-                        <span className="flex items-center gap-2 text-zinc-300">
+                        <span className="flex items-center gap-2 text-foreground">
                           <Accessibility size={16} /> Alto Contraste
                         </span>
                         {highContrast && (
@@ -2353,7 +2376,7 @@ export default function ClassroomView() {
                         onClick={() => setScreenReaderMode(!screenReaderMode)}
                         className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between"
                       >
-                        <span className="flex items-center gap-2 text-zinc-300">
+                        <span className="flex items-center gap-2 text-foreground">
                           <Accessibility size={16} /> Leitor de Tela
                         </span>
                         {screenReaderMode && (
@@ -2361,7 +2384,7 @@ export default function ClassroomView() {
                         )}
                       </button>
                       <div className="px-4 py-2 text-xs text-muted">
-                        Dica: Use <b className="text-zinc-200">Ctrl + M</b> no
+                        Dica: Use <b className="text-foreground">Ctrl + M</b> no
                         editor para liberar o Tab.
                       </div>
                       <div className="h-px bg-border my-1" />
@@ -2436,7 +2459,7 @@ export default function ClassroomView() {
                       "flex flex-col items-center justify-center w-full h-full text-xs font-medium transition-colors",
                       mobileIdeTab === "problem"
                         ? "text-primary"
-                        : "text-muted hover:text-white",
+                        : "text-muted hover:text-foreground",
                     )}
                   >
                     <BookOpen size={20} className="mb-1" />
@@ -2448,7 +2471,7 @@ export default function ClassroomView() {
                       "flex flex-col items-center justify-center w-full h-full text-xs font-medium transition-colors",
                       mobileIdeTab === "editor"
                         ? "text-primary"
-                        : "text-muted hover:text-white",
+                        : "text-muted hover:text-foreground",
                     )}
                   >
                     <Code2 size={20} className="mb-1" />
@@ -2463,7 +2486,7 @@ export default function ClassroomView() {
                         "flex flex-col items-center justify-center w-full h-full text-xs font-medium transition-colors",
                         mobileIdeTab === "console"
                           ? "text-primary"
-                          : "text-muted hover:text-white",
+                          : "text-muted hover:text-foreground",
                       )}
                     >
                       <div className="relative">
@@ -2493,7 +2516,7 @@ export default function ClassroomView() {
           <div className="h-full overflow-y-auto p-4 md:p-8">
             <div className="max-w-7xl mx-auto space-y-8">
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <h2 className="text-2xl md:text-3xl font-bold text-zinc-100">
+                <h2 className="text-2xl md:text-3xl font-bold text-foreground">
                   Desempenho da Turma
                 </h2>
 
@@ -2514,13 +2537,13 @@ export default function ClassroomView() {
                     <div className="absolute right-0 mt-2 w-full md:w-56 bg-surface border border-border rounded-lg shadow-xl z-50 py-1">
                       <button
                         onClick={() => handleExport("csv")}
-                        className="w-full text-left px-5 py-3 text-base text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-3 transition-colors"
+                        className="w-full text-left px-5 py-3 text-base text-foreground hover:hover:bg-surface-hover hover:text-foreground flex items-center gap-3 transition-colors"
                       >
                         <FileText size={18} /> Formato CSV
                       </button>
                       <button
                         onClick={() => handleExport("xlsx")}
-                        className="w-full text-left px-5 py-3 text-base text-zinc-300 hover:bg-zinc-800 hover:text-white flex items-center gap-3 transition-colors"
+                        className="w-full text-left px-5 py-3 text-base text-foreground hover:hover:bg-surface-hover hover:text-foreground flex items-center gap-3 transition-colors"
                       >
                         <FileSpreadsheet size={18} /> Formato Excel
                       </button>
@@ -2614,11 +2637,11 @@ export default function ClassroomView() {
 
       {/* --- OVERLAYS --- */}
       {showSubmissions && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 md:p-6">
-          <div className="bg-[#09090b] w-full max-w-5xl max-h-[90vh] rounded-xl border border-zinc-800 flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 md:p-6">
+          <div className="bg-background w-full max-w-5xl max-h-[90vh] rounded-xl border border-border flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Header Modal */}
-            <div className="flex items-center justify-between p-4 md:p-6 border-b border-zinc-800 bg-surface">
-              <h3 className="text-xl md:text-2xl font-semibold text-white flex items-center gap-3">
+            <div className="flex items-center justify-between p-4 md:p-6 border-b border-border bg-surface">
+              <h3 className="text-xl md:text-2xl font-semibold text-foreground flex items-center gap-3">
                 <Clock size={24} className="text-primary" />
                 Histórico de Envios
               </h3>
@@ -2633,7 +2656,7 @@ export default function ClassroomView() {
             </div>
 
             {/* Filtros */}
-            <div className="p-4 border-b border-zinc-800 bg-surface/50 flex flex-col sm:flex-row items-center gap-4">
+            <div className="p-4 border-b border-border bg-surface/50 flex flex-col sm:flex-row items-center gap-4">
               <div className="flex items-center gap-2 text-sm text-muted font-medium uppercase tracking-wider whitespace-nowrap">
                 <Filter size={16} /> Filtros:
               </div>
@@ -2691,7 +2714,7 @@ export default function ClassroomView() {
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-800">
+                  <tbody className="divide-y divide-border">
                     {submissions
                       .filter(
                         (s) =>
@@ -2703,33 +2726,33 @@ export default function ClassroomView() {
                       .map((sub) => (
                         <tr
                           key={sub.id}
-                          className="hover:bg-zinc-900/50 transition-colors"
+                          className="hover:bg-surface/50 transition-colors"
                         >
                           <td className="px-6 py-4">
                             <span
                               className={cn(
-                                "px-3 py-1.5 rounded-full text-xs font-bold border whitespace-nowrap",
+                                "font-medium flex items-center gap-1.5",
                                 sub.status === "Accepted"
-                                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                                  : sub.status.includes("Error")
-                                    ? "bg-red-500/10 text-red-500 border-red-500/20"
-                                    : "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+                                  ? "text-emerald-600 dark:text-emerald-500"
+                                  : sub.status === "Pending"
+                                    ? "text-amber-600 dark:text-amber-500"
+                                    : "text-red-600 dark:text-red-500",
                               )}
                             >
                               {sub.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-zinc-300 whitespace-nowrap">
+                          <td className="px-6 py-4 text-foreground whitespace-nowrap">
                             {new Date(sub.createdAt).toLocaleString()}
                           </td>
-                          <td className="px-6 py-4 text-zinc-400 font-mono">
+                          <td className="px-6 py-4 text-muted font-mono">
                             {sub.executionTime}ms
                           </td>
-                          <td className="px-6 py-4 text-zinc-400 font-mono">
+                          <td className="px-6 py-4 text-muted font-mono">
                             {sub.memoryUsage}KB
                           </td>
                           {isOwner && (
-                            <td className="px-6 py-4 text-zinc-300">
+                            <td className="px-6 py-4 text-foreground">
                               <div className="flex items-center gap-3">
                                 <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold">
                                   {sub.user.email.charAt(0).toUpperCase()}
@@ -2772,12 +2795,12 @@ export default function ClassroomView() {
 
       {/* --- MODAL: DETALHES/NOTAS (OVERLAY) --- */}
       {(inspectingUser || showModal) && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 md:p-6">
-          <div className="bg-[#09090b] w-full max-w-7xl h-[90vh] rounded-xl border border-zinc-800 flex flex-col shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/90 backdrop-blur-sm p-4 md:p-6">
+          <div className="bg-background w-full max-w-7xl h-[90vh] rounded-xl border border-border flex flex-col shadow-2xl overflow-hidden">
             {/* Header Inspeção */}
-            <div className="flex items-center justify-between p-4 md:p-6 border-b border-zinc-800 bg-surface">
+            <div className="flex items-center justify-between p-4 md:p-6 border-b border-border bg-surface">
               <div>
-                <h2 className="text-xl md:text-2xl font-bold text-white mb-1">
+                <h2 className="text-xl md:text-2xl font-bold text-foreground mb-1">
                   {isOwner && inspectingUser
                     ? `Avaliando: ${inspectingUser.name || inspectingUser.email}`
                     : "Detalhes da Submissão"}
@@ -2806,8 +2829,8 @@ export default function ClassroomView() {
 
             <div className="flex-1 flex flex-col lg:flex-row min-h-0">
               {/* Lado Esquerdo: Código */}
-              <div className="flex-1 lg:border-r border-zinc-800 flex flex-col min-h-[300px]">
-                <div className="bg-zinc-900 p-3 border-b border-zinc-800 text-sm text-muted flex items-center justify-between">
+              <div className="flex-1 lg:border-r border-border flex flex-col min-h-[300px]">
+                <div className="bg-surface p-3 border-b border-border text-sm text-muted flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <FileCode size={18} />
                     Visualizador de Código
@@ -2815,7 +2838,7 @@ export default function ClassroomView() {
 
                   {/* Navegação de arquivos na inspeção */}
                   {(activeSubmission?.files?.length || 0) > 1 && (
-                    <div className="flex bg-black/20 rounded overflow-hidden">
+                    <div className="flex bg-background/20 rounded overflow-hidden">
                       {activeSubmission?.files.map((f, idx) => (
                         <button
                           key={idx}
@@ -2838,7 +2861,9 @@ export default function ClassroomView() {
                   <Editor
                     height="100%"
                     width="100%"
-                    theme={highContrast ? "hc-black" : "vs-dark"}
+                    theme={
+                      highContrast ? "hc-black" : isLightMode ? "vs" : "vs-dark"
+                    }
                     language="python"
                     value={
                       (isOwner &&
@@ -2859,10 +2884,10 @@ export default function ClassroomView() {
               </div>
 
               {/* Lado Direito: Feedback e Notas */}
-              <div className="w-full lg:w-[450px] bg-surface flex flex-col p-6 overflow-y-auto border-t lg:border-t-0 lg:border-l border-zinc-800 h-1/2 lg:h-full">
+              <div className="w-full lg:w-[450px] bg-surface flex flex-col p-6 overflow-y-auto border-t lg:border-t-0 lg:border-l border-border h-1/2 lg:h-full">
                 <div className="space-y-8">
                   {/* Status Card */}
-                  <Card className="bg-zinc-900 border-zinc-800 p-5">
+                  <Card className="bg-surface border-border p-5">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-sm text-muted uppercase font-bold tracking-wider">
                         Veredito
@@ -2889,10 +2914,10 @@ export default function ClassroomView() {
 
                   {/* Logs */}
                   <div>
-                    <h4 className="text-base font-bold text-white mb-3">
+                    <h4 className="text-base font-bold text-foreground mb-3">
                       Saída / Logs
                     </h4>
-                    <div className="bg-black rounded-lg p-4 text-sm font-mono text-zinc-300 max-h-60 overflow-y-auto border border-zinc-800">
+                    <div className="bg-background rounded-lg p-4 text-sm font-mono text-foreground max-h-60 overflow-y-auto border border-border">
                       <pre>
                         {activeSubmission?.output ||
                           selectedSubmission?.output ||
@@ -2903,8 +2928,8 @@ export default function ClassroomView() {
 
                   {/* Área de Nota (Apenas Professor) */}
                   {isOwner && (
-                    <div className="pt-8 border-t border-zinc-800 space-y-6">
-                      <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                    <div className="pt-8 border-t border-border space-y-6">
+                      <h4 className="text-lg font-bold text-foreground flex items-center gap-2">
                         <Settings size={20} /> Avaliação Manual
                       </h4>
 
@@ -2926,7 +2951,7 @@ export default function ClassroomView() {
                           Comentários
                         </label>
                         <textarea
-                          className="w-full bg-black/20 border border-zinc-800 rounded-lg p-3 text-base text-white resize-none h-32 focus:outline-none focus:border-primary transition-colors"
+                          className="w-full bg-background/20 border border-border rounded-lg p-3 text-base text-foreground resize-none h-32 focus:outline-none focus:border-primary transition-colors"
                           placeholder="Feedback para o aluno..."
                           value={gradingComment}
                           onChange={(e) => setGradingComment(e.target.value)}
@@ -2946,8 +2971,8 @@ export default function ClassroomView() {
                   {!isOwner &&
                     (selectedSubmission?.grade != null ||
                       selectedSubmission?.teacherComment) && (
-                      <div className="pt-8 border-t border-zinc-800 space-y-6">
-                        <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                      <div className="pt-8 border-t border-border space-y-6">
+                        <h4 className="text-lg font-bold text-foreground flex items-center gap-2">
                           <GraduationCap size={20} className="text-primary" />{" "}
                           Feedback do Professor
                         </h4>
@@ -2968,7 +2993,7 @@ export default function ClassroomView() {
                             <div className="flex items-center gap-2 text-sm text-muted font-medium">
                               <MessageSquare size={16} /> Comentários:
                             </div>
-                            <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">
+                            <div className="p-4 bg-surface border border-border rounded-lg text-foreground text-sm leading-relaxed whitespace-pre-wrap">
                               {selectedSubmission.teacherComment}
                             </div>
                           </div>

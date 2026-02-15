@@ -29,7 +29,7 @@ export function ExamReview() {
   return (
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-10">
       <div className="border-b border-gray-800 pb-2">
-        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+        <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
           <CheckCircle className="text-green-500" size={20} />
           Revisão da Prova
         </h3>
@@ -53,7 +53,7 @@ export function ExamReview() {
                 <span className="block text-xs text-gray-500 uppercase">
                   Período de Realização
                 </span>
-                <div className="text-sm text-white font-medium mt-0.5">
+                <div className="text-sm text-foreground font-medium mt-0.5">
                   {formatDate(values.startDate)}{" "}
                   <span className="text-gray-500 mx-1">até</span>{" "}
                   {formatDate(values.deadline)}
@@ -69,7 +69,7 @@ export function ExamReview() {
                 <span className="block text-xs text-gray-500 uppercase">
                   Limite de Tempo (Execução)
                 </span>
-                <div className="text-sm text-white font-medium mt-0.5">
+                <div className="text-sm text-foreground font-medium mt-0.5">
                   {values.timeLimit
                     ? `${values.timeLimit / 1000} segundos`
                     : "Sem limite"}
@@ -87,7 +87,7 @@ export function ExamReview() {
                 <span className="block text-xs text-gray-500 uppercase">
                   Tentativas Permitidas
                 </span>
-                <div className="text-sm text-white font-medium mt-0.5">
+                <div className="text-sm text-foreground font-medium mt-0.5">
                   {values.maxAttempts && values.maxAttempts > 0
                     ? `${values.maxAttempts} tentativas`
                     : "Ilimitadas"}
@@ -103,7 +103,7 @@ export function ExamReview() {
                 <span className="block text-xs text-gray-500 uppercase">
                   Limite de Memória
                 </span>
-                <div className="text-sm text-white font-medium mt-0.5">
+                <div className="text-sm text-foreground font-medium mt-0.5">
                   {values.memoryLimit
                     ? `${values.memoryLimit} MB`
                     : "Padrão (256 MB)"}
@@ -143,7 +143,7 @@ export function ExamReview() {
                     {idx + 1}
                   </span>
                   <div>
-                    <span className="block text-sm font-medium text-white">
+                    <span className="block text-sm font-medium text-foreground">
                       {q.title || "Sem título"}
                     </span>
                     <span className="text-xs text-gray-500 font-mono">

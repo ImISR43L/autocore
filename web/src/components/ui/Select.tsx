@@ -15,7 +15,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     return (
       <div className={cn("flex flex-col gap-1.5 w-full", containerClassName)}>
         {label && (
-          <label className="text-sm font-medium text-zinc-300">{label}</label>
+          <label className="text-sm font-medium text-foreground">{label}</label>
         )}
         <div className="relative">
           <select
@@ -24,8 +24,8 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
               "flex h-11 w-full appearance-none !bg-none items-center justify-between rounded-md px-3 py-2 text-sm transition-colors",
 
               // Cores e Bordas (Design System Emerald/Zinc)
-              "bg-surface border border-border text-zinc-100",
-              "placeholder:text-muted focus:placeholder:text-zinc-500",
+              "bg-surface border border-border text-foreground",
+              "placeholder:text-muted focus:placeholder:text-muted",
 
               // Estados de Foco (Anel Emerald)
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",

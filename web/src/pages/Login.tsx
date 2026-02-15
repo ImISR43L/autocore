@@ -26,10 +26,8 @@ export default function Login() {
   const [isRegister, setIsRegister] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // MELHORIA 1: Estado para evitar o "Flash" da tela de login se já tiver token
-  const [isCheckingSession, setIsCheckingSession] = useState(
-    !!localStorage.getItem("token"),
-  );
+  // Estado para evitar o "Flash" da tela de login se já tiver token
+  const [isCheckingSession] = useState(!!localStorage.getItem("token"));
 
   const [showPassword, setShowPassword] = useState(false);
 
@@ -39,504 +37,273 @@ export default function Login() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
 
-  // MELHORIA 2: Refs para gestão de foco automático
+  // Refs para gestão de foco automático
   const nameInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
 
   const navigate = useNavigate();
 
-  // --- VERIFICAÇÃO DE SESSÃO (ANTI-FLASH) ---
+  // Novos Requisitos de segurança de senha
+  const [passwordRequirements, setPasswordRequirements] = useState<
+    PasswordRequirement[]
+  >([
+    { id: 1, label: "Mínimo de 6 caracteres", regex: /.{6,}/, met: false },
+    {
+      id: 2,
+      label: "Pelo menos uma letra maiúscula",
+      regex: /[A-Z]/,
+      met: false,
+    },
+    {
+      id: 3,
+      label: "Pelo menos uma letra minúscula",
+      regex: /[a-z]/,
+      met: false,
+    },
+    { id: 4, label: "Pelo menos um número", regex: /[0-9]/, met: false },
+  ]);
+
+  // Atualiza os requisitos em tempo real enquanto digita
   useEffect(() => {
-    const verifySession = async () => {
-      // Verifica a sessão local gerenciada pelo Supabase
-      const { data } = await supabase.auth.getSession();
-
-      if (data.session) {
-        // Sessão válida detectada
-        navigate("/dashboard");
-      } else {
-        // Sem sessão, limpa resquícios antigos e libera a interface
-        localStorage.removeItem("token");
-        localStorage.removeItem("userName");
-        setIsCheckingSession(false);
-      }
-    };
-
-    verifySession();
-  }, [navigate]);
-
-  // --- GESTÃO DE FOCO AUTOMÁTICO ---
-  useEffect(() => {
-    // Só foca se o formulário estiver visível (não estiver checando sessão)
-    if (!isCheckingSession) {
-      if (isRegister) {
-        // Pequeno timeout para garantir que o DOM atualizou
-        setTimeout(() => nameInputRef.current?.focus(), 50);
-      } else {
-        setTimeout(() => emailInputRef.current?.focus(), 50);
-      }
+    if (isRegister) {
+      setPasswordRequirements((reqs) =>
+        reqs.map((req) => ({ ...req, met: req.regex.test(password) })),
+      );
     }
-  }, [isRegister, isCheckingSession]);
+  }, [password, isRegister]);
 
-  // Requisitos da senha
-  const passwordRequirements: PasswordRequirement[] = [
-    { id: 1, label: "Mínimo 6 caracteres", regex: /.{6,}/, met: false },
-    { id: 2, label: "Letra maiúscula", regex: /[A-Z]/, met: false },
-    { id: 3, label: "Letra minúscula", regex: /[a-z]/, met: false },
-    { id: 4, label: "Número", regex: /[0-9]/, met: false },
-  ];
+  // Foco automático ao alternar entre Login e Cadastro
+  useEffect(() => {
+    if (isRegister && nameInputRef.current) {
+      nameInputRef.current.focus();
+    } else if (!isRegister && emailInputRef.current) {
+      emailInputRef.current.focus();
+    }
+  }, [isRegister]);
 
-  const getPasswordStatus = () => {
-    return passwordRequirements.map((req) => ({
-      ...req,
-      met: req.regex.test(password),
-    }));
-  };
-
-  const statusList = getPasswordStatus();
-  const isPasswordValid = statusList.every((req) => req.met);
-
-  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+  // Lógica de Autenticação (Login)
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const form = e.currentTarget;
-    const emailInput = form.elements.namedItem("email") as HTMLInputElement;
-    const passwordInput = form.elements.namedItem(
-      "password",
-    ) as HTMLInputElement;
-
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: emailInput.value.trim(),
-        password: passwordInput.value,
+        email,
+        password,
       });
 
       if (error) throw error;
 
-      localStorage.setItem("token", data.session.access_token);
-      localStorage.setItem(
-        "userName",
-        data.user.user_metadata?.name || "Utilizador",
-      );
-
-      toast.success(`Bem-vindo de volta!`);
-      navigate("/dashboard");
-    } catch (err: any) {
-      toast.error(err.message || "Email ou palavra-passe incorretos.");
+      if (data?.session) {
+        localStorage.setItem("token", data.session.access_token);
+        toast.success("Login efetuado com sucesso!");
+        navigate("/dashboard");
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao efetuar login.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
+  // Lógica de Autenticação (Cadastro)
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return toast.warning("Por favor, informe o seu nome.");
-    if (!isPasswordValid)
-      return toast.warning(
-        "A palavra-passe não atende aos requisitos de segurança.",
-      );
-    if (password !== confirmPassword)
-      return toast.warning("As palavras-passe não coincidem.");
+
+    if (password !== confirmPassword) {
+      return toast.error("As senhas não coincidem.");
+    }
+
+    const allReqsMet = passwordRequirements.every((req) => req.met);
+    if (!allReqsMet) {
+      return toast.error("A senha não atende a todos os requisitos.");
+    }
 
     setLoading(true);
+
     try {
-      const { error } = await supabase.auth.signUp({
-        email: email.trim(),
+      const { data, error } = await supabase.auth.signUp({
+        email,
         password,
         options: {
-          data: { name: name.trim() },
+          data: { full_name: name },
         },
       });
 
       if (error) throw error;
 
-      toast.success("Conta criada com sucesso! Verifique o seu email.");
-      setIsRegister(false);
-      setPassword("");
-      setConfirmPassword("");
-      setShowPassword(false);
-    } catch (err: any) {
-      toast.error(err.message || "Erro ao efetuar o registo.");
+      if (data?.session) {
+        localStorage.setItem("token", data.session.access_token);
+        toast.success("Conta criada com sucesso!");
+        navigate("/dashboard");
+      } else {
+        toast.success("Verifique seu email para confirmar o cadastro.");
+        setIsRegister(false);
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao criar conta.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleForgotPassword = (e: React.MouseEvent) => {
-    e.preventDefault();
-    toast.info(
-      "Contate a secretaria ou seu professor para redefinir a senha.",
-      {
-        icon: <AlertCircle size={18} className="text-blue-400" />,
-      },
-    );
-  };
-
-  // RENDERIZAÇÃO: Tela de Loading Fullscreen enquanto verifica sessão
   if (isCheckingSession) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#0a0a0a",
-          flexDirection: "column",
-          gap: "20px",
-        }}
-      >
-        <Loader2 className="animate-spin text-green-500" size={48} />
-        <span style={{ color: "#666", fontSize: "0.9rem" }}>
-          Verificando credenciais...
-        </span>
-      </div>
-    );
+    navigate("/dashboard");
+    return null;
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#0a0a0a",
-        padding: "20px",
-      }}
-    >
-      <div
-        className="login-card-redesigned"
-        style={{
-          width: "100%",
-          maxWidth: "420px",
-          background: "#161616",
-          border: "1px solid #333",
-          borderRadius: "12px",
-          padding: "40px",
-          boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
-        }}
-      >
-        {/* CABEÇALHO */}
-        <div style={{ textAlign: "center", marginBottom: "30px" }}>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: "50px",
-              height: "50px",
-              background: "linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%)",
-              borderRadius: "12px",
-              marginBottom: "15px",
-              boxShadow: "0 8px 16px rgba(46, 125, 50, 0.2)",
-            }}
-          >
-            <GraduationCap size={28} color="#fff" />
+    <div className="min-h-screen w-full flex items-center justify-center bg-background font-sans text-foreground p-4 relative overflow-hidden">
+      {/* Decoração de fundo opcional (brilho suave) */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[100px] -z-10 pointer-events-none" />
+
+      {/* Formulário Centralizado */}
+      <div className="w-full max-w-md bg-surface p-8 sm:p-10 rounded-2xl border border-border shadow-2xl relative z-10">
+        {/* Cabeçalho do Formulário */}
+        <div className="flex flex-col items-center text-center mb-8">
+          <div className="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center mb-4 border border-primary/20 shadow-sm">
+            <GraduationCap size={32} className="text-primary" />
           </div>
-          <h1
-            style={{
-              color: "#fff",
-              fontSize: "1.5rem",
-              fontWeight: "700",
-              margin: "0 0 5px 0",
-              letterSpacing: "-0.5px",
-            }}
-          >
-            AutoCore
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2 tracking-tight">
+            {isRegister ? "Criar Conta" : "Plataforma Autocore"}
           </h1>
-          <p style={{ color: "#888", fontSize: "0.9rem", margin: 0 }}>
+          <p className="text-muted text-sm">
             {isRegister
-              ? "Crie sua conta acadêmica"
-              : "Entre para continuar estudando"}
+              ? "Preencha os dados abaixo para começar."
+              : "Faça login para continuar seus estudos."}
           </p>
         </div>
 
-        {/* FORMULÁRIO */}
         <form
           onSubmit={isRegister ? handleRegister : handleLogin}
-          style={{ display: "flex", flexDirection: "column", gap: "15px" }}
+          className="space-y-5"
         >
+          {/* Nome (Apenas Cadastro) */}
           {isRegister && (
-            <div className="form-group">
-              <label htmlFor="name" className="input-label">
-                Nome Completo
-              </label>
+            <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+              <label className="input-label">Nome Completo</label>
               <input
-                ref={nameInputRef} // Ref para foco
-                id="name"
-                name="name"
+                ref={nameInputRef}
                 type="text"
+                required
+                className="modern-input"
+                placeholder="João da Silva"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ex: João Silva"
-                className="modern-input"
-                disabled={loading}
-                autoComplete="name"
-                required
               />
             </div>
           )}
 
-          <div className="form-group">
-            <label htmlFor="email" className="input-label">
-              Email
-            </label>
+          {/* Email */}
+          <div>
+            <label className="input-label">E-mail</label>
             <input
-              ref={!isRegister ? emailInputRef : undefined} // Ref para foco no Login
-              id="email"
-              name="email"
+              ref={emailInputRef}
               type="email"
+              required
+              className="modern-input"
+              placeholder="aluno@instituicao.edu.br"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="aluno@exemplo.com"
-              className="modern-input"
-              disabled={loading}
-              autoComplete="email"
-              required
             />
           </div>
 
-          <div className="form-group">
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: "6px",
-              }}
-            >
-              <label htmlFor="password" className="input-label">
-                Senha
-              </label>
-              {!isRegister && (
-                <button
-                  type="button"
-                  onClick={handleForgotPassword}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#4caf50",
-                    fontSize: "0.75rem",
-                    cursor: "pointer",
-                    padding: 0,
-                  }}
-                >
-                  Esqueceu?
-                </button>
-              )}
-            </div>
-
-            <div style={{ position: "relative" }}>
+          {/* Senha */}
+          <div>
+            <label className="input-label">Senha</label>
+            <div className="relative">
               <input
-                id="password"
-                name="password"
                 type={showPassword ? "text" : "password"}
+                required
+                className="modern-input pr-10"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="modern-input"
-                style={{ paddingRight: "40px" }}
-                disabled={loading}
-                autoComplete={isRegister ? "new-password" : "current-password"}
-                required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                style={{
-                  position: "absolute",
-                  right: "10px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "none",
-                  border: "none",
-                  color: "#666",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                }}
-                tabIndex={-1}
-                aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground transition-colors focus:outline-none"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
-
-            {/* CAMPO CONFIRMAR SENHA */}
-            {isRegister && (
-              <div style={{ marginTop: "15px" }}>
-                <label htmlFor="confirmPassword" className="input-label">
-                  Confirmar Senha
-                </label>
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repita a senha"
-                  className="modern-input"
-                  disabled={loading}
-                  autoComplete="new-password"
-                  required
-                  style={{
-                    borderColor:
-                      confirmPassword && password !== confirmPassword
-                        ? "#f44336"
-                        : undefined,
-                  }}
-                />
-              </div>
-            )}
-
-            {/* CHECKLIST DE SENHA */}
-            {isRegister && (
-              <div
-                style={{
-                  marginTop: "10px",
-                  background: "#222",
-                  padding: "10px",
-                  borderRadius: "6px",
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "8px",
-                }}
-              >
-                {statusList.map((req) => (
-                  <div
-                    key={req.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                    }}
-                  >
-                    {req.met ? (
-                      <Check size={12} className="text-green-500" />
-                    ) : (
-                      <X size={12} className="text-red-500" />
-                    )}
-                    <span
-                      style={{
-                        fontSize: "0.7rem",
-                        color: req.met ? "#ccc" : "#666",
-                      }}
-                    >
-                      {req.label}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
+          {/* Requisitos de Senha (Apenas Cadastro) */}
+          {isRegister && password.length > 0 && (
+            <div className="bg-background border border-border rounded-lg p-3 space-y-1.5 animate-in fade-in">
+              <p className="text-xs font-semibold text-foreground mb-2">
+                Requisitos da senha:
+              </p>
+              {passwordRequirements.map((req) => (
+                <div key={req.id} className="flex items-center gap-2 text-xs">
+                  {req.met ? (
+                    <Check size={14} className="text-primary" />
+                  ) : (
+                    <X size={14} className="text-muted" />
+                  )}
+                  <span className={req.met ? "text-primary" : "text-muted"}>
+                    {req.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Confirmar Senha (Apenas Cadastro) */}
+          {isRegister && (
+            <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+              <label className="input-label">Confirmar Senha</label>
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                className="modern-input"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+              {confirmPassword && password !== confirmPassword && (
+                <p className="text-destructive text-xs mt-1.5 flex items-center gap-1">
+                  <AlertCircle size={12} /> As senhas não coincidem
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Botão Principal */}
           <button
             type="submit"
             disabled={loading}
-            className="modern-button"
-            style={{
-              marginTop: "10px",
-              background: "#4caf50",
-              color: "white",
-              padding: "12px",
-              borderRadius: "8px",
-              border: "none",
-              fontSize: "0.95rem",
-              fontWeight: "600",
-              cursor: loading ? "not-allowed" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "8px",
-              transition: "background 0.2s",
-              opacity: loading ? 0.7 : 1,
-            }}
-            onMouseEnter={(e) =>
-              !loading && (e.currentTarget.style.background = "#43a047")
-            }
-            onMouseLeave={(e) =>
-              !loading && (e.currentTarget.style.background = "#4caf50")
-            }
+            className="w-full h-11 bg-primary hover:bg-primary-dark text-primary-foreground font-semibold rounded-md transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-70 disabled:cursor-not-allowed shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30"
           >
             {loading ? (
-              <Loader2 className="animate-spin" size={18} />
+              <Loader2 size={18} className="animate-spin" />
             ) : (
               <>
-                {isRegister ? "Criar Conta" : "Entrar"}
-                {!loading && <ArrowRight size={16} />}
+                {isRegister ? "Criar Conta" : "Entrar"} <ArrowRight size={18} />
               </>
             )}
           </button>
         </form>
 
-        {/* FOOTER / TOGGLE */}
-        <div
-          style={{
-            marginTop: "25px",
-            textAlign: "center",
-            paddingTop: "20px",
-            borderTop: "1px solid #222",
-          }}
-        >
-          <p style={{ color: "#666", fontSize: "0.85rem", margin: 0 }}>
-            {isRegister ? "Já tem acesso?" : "Primeiro acesso?"}{" "}
-            <button
-              onClick={() => {
-                setIsRegister(!isRegister);
-                setPassword("");
-                setConfirmPassword("");
-                setName("");
-                setShowPassword(false);
-              }}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#4caf50",
-                fontWeight: "600",
-                cursor: "pointer",
-                padding: "0 5px",
-                fontSize: "0.85rem",
-              }}
-            >
-              {isRegister ? "Fazer Login" : "Cadastre-se"}
-            </button>
-          </p>
-        </div>
+        {/* Alternar entre Login / Cadastro */}
+        <p className="text-center text-muted text-sm mt-8">
+          {isRegister ? "Já possui uma conta?" : "Ainda não tem acesso?"}
+          <button
+            onClick={() => {
+              setIsRegister(!isRegister);
+              setPassword("");
+              setConfirmPassword("");
+              setName("");
+              setShowPassword(false);
+            }}
+            className="ml-2 text-primary font-semibold hover:underline focus:outline-none bg-transparent border-none cursor-pointer"
+          >
+            {isRegister ? "Fazer Login" : "Cadastre-se"}
+          </button>
+        </p>
       </div>
-
-      <style>{`
-        .modern-input {
-          width: 100%;
-          padding: 10px 14px;
-          background: #0a0a0a;
-          border: 1px solid #333;
-          border-radius: 6px;
-          color: white;
-          font-size: 0.9rem;
-          outline: none;
-          transition: all 0.2s ease;
-        }
-        .modern-input:focus {
-          border-color: #4caf50;
-          box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.1);
-          background: #111;
-        }
-        .modern-input:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-        .modern-input::placeholder {
-          color: #444;
-        }
-        .input-label {
-          display: block;
-          color: #ccc;
-          font-size: 0.8rem;
-          margin-bottom: 6px;
-          font-weight: 500;
-        }
-      `}</style>
     </div>
   );
 }

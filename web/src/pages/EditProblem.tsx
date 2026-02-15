@@ -109,21 +109,21 @@ export default function EditProblem() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center text-zinc-400">
+      <div className="min-h-screen bg-background flex items-center justify-center text-muted">
         <Loader2 className="animate-spin mr-2" /> Carregando...
       </div>
     );
   }
 
   return (
-    <div className="h-screen w-full bg-background text-zinc-100 flex flex-col font-sans overflow-hidden">
+    <div className="h-screen w-full bg-background text-foreground flex flex-col font-sans overflow-hidden">
       {showExitModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full animate-in zoom-in-95">
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3 text-amber-500">
                 <AlertTriangle size={24} />
-                <h3 className="text-lg font-bold text-white">
+                <h3 className="text-lg font-bold text-foreground">
                   Sair da edição?
                 </h3>
               </div>
@@ -148,12 +148,12 @@ export default function EditProblem() {
           variant="outline"
           size="icon"
           onClick={handleBack}
-          className="border-border hover:bg-surface text-muted hover:text-white"
+          className="border-border hover:bg-surface text-muted hover:text-foreground"
         >
           <ArrowLeft size={20} />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
             Editar Atividade
           </h1>
           <p className="text-muted text-sm">

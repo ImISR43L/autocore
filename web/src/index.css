@@ -3,28 +3,66 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  /* Paleta "Dark Academia / Modern IDE" */
-  --bg-app: #121212; /* Fundo principal bem escuro */
-  --bg-surface: #1e1e1e; /* Fundo de cards/painéis */
-  --bg-input: #2d2d2d; /* Fundo de inputs */
-  --bg-hover: #2a2a2a; /* Hover em listas */
+@layer base {
+  :root {
+    /* Modo Claro (Prevenção de Haló e Dislexia) */
+    --background: #fafafa;
+    --surface: #f4f4f5;
+    --surface-hover: #e4e4e7;
+    --border: #d4d4d8;
+    --foreground: #27272a;
 
-  --primary: #3b82f6; /* Azul Foco (Pedagógico/Tech) */
-  --primary-hover: #2563eb;
+    --primary: #10b981;
+    --primary-dark: #059669;
+    --primary-foreground: #ffffff;
 
-  --text-main: #e5e7eb; /* Texto principal (quase branco) */
-  --text-muted: #9ca3af; /* Texto secundário */
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
 
-  --border: #404040; /* Bordas sutis */
+    --muted: #71717a;
+    --muted-foreground: #52525b;
+  }
 
-  --success: #10b981;
-  --error: #ef4444;
-  --warning: #f59e0b;
+  .dark {
+    /* Modo Escuro Original */
+    --background: #09090b;
+    --surface: #18181b;
+    --surface-hover: #27272a;
+    --border: #27272a;
+    --foreground: #f4f4f5;
 
-  --radius: 6px; /* Bordas levemente arredondadas */
-  --shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --primary: #10b981;
+    --primary-dark: #059669;
+    --primary-foreground: #ffffff;
+
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+
+    --muted: #a1a1aa;
+    --muted-foreground: #d4d4d8;
+  }
+}
+
+@layer components {
+  .modern-input {
+    @apply w-full px-3.5 py-2.5 bg-background border border-border rounded-md text-foreground text-sm outline-none transition-all;
+  }
+
+  .modern-input:focus {
+    @apply border-primary ring-2 ring-[#10b981]/10 bg-surface;
+  }
+
+  .modern-input:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .modern-input::placeholder {
+    @apply text-muted;
+  }
+
+  .input-label {
+    @apply block mb-1.5 text-[0.85rem] text-muted font-medium;
+  }
 }
 
 html,
@@ -33,8 +71,8 @@ body {
   padding: 0;
   width: 100%;
   height: 100%;
-  background-color: var(--bg-app);
-  color: var(--text-main);
+  background-color: var(--background);
+  color: var(--foreground);
   font-family:
     "Inter",
     system-ui,
@@ -68,8 +106,4 @@ a:hover {
 
 button {
   font-family: inherit;
-}
-
-.dark {
-  --muted-foreground: 240 5% 64.9%;
 }

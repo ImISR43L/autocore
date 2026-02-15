@@ -302,7 +302,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
             "px-6 py-3 border-b-2 font-medium text-sm transition-colors flex items-center gap-2",
             activeMainTab === "code"
               ? "border-primary text-primary bg-primary/5"
-              : "border-transparent text-muted hover:text-zinc-100 hover:bg-surface",
+              : "border-transparent text-muted hover:text-foreground hover:bg-surface",
           )}
           onClick={() => setActiveMainTab("code")}
         >
@@ -314,7 +314,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
             "px-6 py-3 border-b-2 font-medium text-sm transition-colors flex items-center gap-2",
             activeMainTab === "tests"
               ? "border-primary text-primary bg-primary/5"
-              : "border-transparent text-muted hover:text-zinc-100 hover:bg-surface",
+              : "border-transparent text-muted hover:text-foreground hover:bg-surface",
             isMissingRequiredTests &&
               activeMainTab !== "tests" &&
               "text-destructive",
@@ -349,7 +349,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
           <div className="border-b border-border pb-2 flex flex-wrap justify-between items-end flex-none gap-3">
             <div className="flex items-center gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                   <Code2 className="text-primary" size={20} />
                   {isSolutionFullscreen
                     ? "Edição: Gabarito"
@@ -394,7 +394,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
               <button
                 type="button"
                 onClick={() => setIsSolutionFullscreen(!isSolutionFullscreen)}
-                className="p-2 text-muted hover:text-white transition-colors"
+                className="p-2 text-muted hover:text-foreground transition-colors"
               >
                 {isSolutionFullscreen ? (
                   <Minimize2 size={18} />
@@ -423,8 +423,8 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                 className={cn(
                   "px-4 py-2 text-sm font-medium border-b-2 transition-colors",
                   viewLang === lang
-                    ? "border-primary text-white"
-                    : "border-transparent text-muted hover:text-zinc-300",
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted hover:text-foreground",
                 )}
               >
                 Gabarito{" "}
@@ -450,7 +450,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                   className={cn(
                     "px-4 py-2 text-sm cursor-pointer border-r border-border select-none",
                     index === activeSolutionTab
-                      ? "bg-surface text-white border-t-2 border-t-primary"
+                      ? "bg-surface text-foreground border-t-2 border-t-primary"
                       : "text-muted hover:bg-surface-hover",
                   )}
                 >
@@ -513,7 +513,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
       >
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-border pb-3 gap-4">
           <div>
-            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
               <FlaskConical className="text-primary" size={20} /> Testes &
               Validação
             </h3>
@@ -593,7 +593,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                   .map((res: any, i: number) => (
                     <div
                       key={i}
-                      className="bg-black/40 p-2 rounded text-xs border border-destructive/30"
+                      className="bg-background/40 p-2 rounded text-xs border border-destructive/30"
                     >
                       <div className="font-mono text-muted mb-1">
                         Input: {res.input}
@@ -639,7 +639,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                     Caso #{index + 1}
                   </span>
                   <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer text-xs text-muted hover:text-zinc-300 select-none">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs text-muted hover:text-foreground select-none">
                       <input
                         type="checkbox"
                         {...register(getName(`testCases.${index}.isHidden`))}
@@ -668,7 +668,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                     </label>
                     <textarea
                       {...register(getName(`testCases.${index}.input`))}
-                      className="w-full bg-background border border-border rounded-md p-3 text-base text-zinc-100 font-mono resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary transition-all min-h-[80px]"
+                      className="w-full bg-background border border-border rounded-md p-3 text-base text-foreground font-mono resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary transition-all min-h-[80px]"
                       placeholder="Ex: 10 20"
                     />
                   </div>
@@ -681,7 +681,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                         getName(`testCases.${index}.expectedOutput`),
                       )}
                       className={cn(
-                        "w-full bg-background border rounded-md p-3 text-base text-zinc-100 font-mono resize-none focus-visible:outline-none focus-visible:ring-2 transition-all min-h-[80px]",
+                        "w-full bg-background border rounded-md p-3 text-base text-foreground font-mono resize-none focus-visible:outline-none focus-visible:ring-2 transition-all min-h-[80px]",
                         expectedError
                           ? "border-destructive focus-visible:ring-destructive focus-visible:border-destructive"
                           : "border-border focus-visible:ring-primary focus-visible:border-primary",
