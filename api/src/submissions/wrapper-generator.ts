@@ -77,7 +77,17 @@ export class WrapperGenerator {
   private static findEntryFileIndex(files: any[], langId: number): number {
     const config = this.LANGUAGE_CONFIG[langId];
     if (!config) return -1;
-    return files.findIndex((f) => f.name.endsWith(config.ext));
+
+    // 1. Busca prioritariamente pelo nome exato do arquivo principal (ex: main.py)
+    // O findIndex garante que apenas o PRIMEIRO arquivo compatível seja retornado.
+    let index = files.findIndex((f) => f.name === config.standardName);
+
+    // 2. Fallback: Se não achar o nome padrão, pega o primeiro com a extensão correta
+    if (index === -1) {
+      index = files.findIndex((f) => f.name.endsWith(config.ext));
+    }
+
+    return index;
   }
 
   private static generatePythonWrapper(problem: Problem): string {

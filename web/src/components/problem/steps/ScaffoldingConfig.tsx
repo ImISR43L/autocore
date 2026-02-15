@@ -325,16 +325,50 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                   render={({ field: inputField }) => (
                     <input
                       {...inputField}
-                      className="bg-transparent outline-none w-20 sm:w-24 truncate text-sm"
+                      readOnly={index === 0}
+                      className={cn(
+                        "bg-transparent outline-none w-20 sm:w-24 truncate text-sm transition-opacity",
+                        index === 0 && "cursor-default opacity-80",
+                      )}
                       onClick={(e) => e.stopPropagation()}
-                      onBlur={() => {
-                        if (!inputField.value) inputField.onChange("file.txt");
+                      onBlur={(e) => {
+                        if (index === 0) return; // O principal é imutável
+
+                        let newName = e.target.value.trim();
+                        if (!newName) newName = "file.txt";
+
+                        const standardNames = [
+                          "main.py",
+                          "index.js",
+                          "main.cpp",
+                          "main.java",
+                          "main.c",
+                        ];
+                        const isDuplicate = fields.some(
+                          (f: any, i) =>
+                            i !== index &&
+                            f.name?.toLowerCase() === newName.toLowerCase(),
+                        );
+
+                        if (standardNames.includes(newName.toLowerCase())) {
+                          toast.error(
+                            "Este nome é reservado para o arquivo principal.",
+                          );
+                          inputField.onChange(`helper_${newName}`);
+                        } else if (isDuplicate) {
+                          toast.error("Já existe um arquivo com este nome.");
+                          inputField.onChange(`copy_${newName}`);
+                        } else {
+                          inputField.onChange(newName);
+                        }
                       }}
                     />
                   )}
                 />
               </div>
-              {fields.length > 1 && (
+
+              {/* Bloqueia a exclusão do arquivo principal (index === 0) */}
+              {fields.length > 1 && index !== 0 && (
                 <Trash2
                   size={14}
                   className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
