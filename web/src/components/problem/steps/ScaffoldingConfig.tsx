@@ -8,14 +8,12 @@ import {
   File,
   Maximize2,
   Minimize2,
-  ChevronDown,
-  AlertTriangle,
   RefreshCw,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/Button";
-import { Card } from "../../ui/Card";
 
 const Editor = lazy(() => import("@monaco-editor/react"));
 
@@ -40,7 +38,7 @@ const TEMPLATES: Record<LangKey, { name: string; content: string }> = {
     content: "def solve():\n    pass",
   },
   javascript: {
-    name: "main.js",
+    name: "index.js",
     content: `/*\n * Recebe o input como string e deve retornar o resultado.\n * O sistema trata a leitura/escrita.\n */\nfunction solve(input) {\n    // TODO: Implementar lógica\n    return 0;\n}`,
   },
   cpp: {
@@ -49,14 +47,18 @@ const TEMPLATES: Record<LangKey, { name: string; content: string }> = {
   },
 };
 
+const STANDARD_NAMES = [
+  "main.py",
+  "index.js",
+  "main.cpp",
+  "main.java",
+  "main.c",
+];
+
 export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
-  const { control, watch, setValue } = useFormContext();
+  const { control, watch, setValue, getValues } = useFormContext();
   const [activeIndex, setActiveIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-
-  const [currentLang, setCurrentLang] = useState<LangKey>("python");
-  const [pendingLang, setPendingLang] = useState<LangKey | null>(null);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const getName = (name: string) => (basePath ? `${basePath}.${name}` : name);
 
@@ -66,17 +68,32 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
   });
 
   const parameters = watch(getName("parameters")) || [];
-  const firstFileName = watch(getName(`starterCode.0.name`));
-  const firstFileContent = watch(getName(`starterCode.0.content`));
+  const allowedLanguages: LangKey[] = watch(getName("allowedLanguages")) || [
+    "python",
+  ];
+  const [viewLang, setViewLang] = useState<LangKey>(
+    allowedLanguages[0] || "python",
+  );
 
+  // Filtra os arquivos que pertencem à linguagem visualizada atualmente (ou plaintext)
+  const visibleFiles = useMemo(() => {
+    return fields
+      .map((field: any, index) => ({ field, index }))
+      .filter(({ field }) => {
+        const extLang = getLanguageFromExt(field.name || "");
+        return extLang === viewLang || extLang === "plaintext";
+      });
+  }, [fields, viewLang]);
+
+  // Garante que o índice ativo seja um arquivo visível na aba atual
   useEffect(() => {
-    if (firstFileName) {
-      const detected = getLanguageFromExt(firstFileName) as LangKey;
-      if (["python", "javascript", "cpp"].includes(detected)) {
-        setCurrentLang((prev) => (prev !== detected ? detected : prev));
-      }
+    if (
+      visibleFiles.length > 0 &&
+      !visibleFiles.find((f) => f.index === activeIndex)
+    ) {
+      setActiveIndex(visibleFiles[0].index);
     }
-  }, [firstFileName]);
+  }, [viewLang, visibleFiles, activeIndex]);
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -88,106 +105,108 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
     return () => window.removeEventListener("keydown", handleEsc);
   }, [isFullscreen]);
 
+  const toggleLanguage = (lang: LangKey) => {
+    const current = new Set(allowedLanguages);
+    if (current.has(lang)) {
+      if (current.size === 1)
+        return toast.error("É necessário permitir pelo menos uma linguagem.");
+      current.delete(lang);
+
+      // Remove os arquivos associados à linguagem desativada
+      const newStarter = getValues(getName("starterCode")).filter(
+        (f: any) => getLanguageFromExt(f.name) !== lang,
+      );
+      setValue(getName("starterCode"), newStarter, { shouldDirty: true });
+
+      if (viewLang === lang) setViewLang(Array.from(current)[0] as LangKey);
+    } else {
+      current.add(lang);
+      const template = TEMPLATES[lang];
+      // Adiciona o template da nova linguagem se ele ainda não existir
+      const existing = getValues(getName("starterCode")) || [];
+      if (!existing.some((f: any) => f.name === template.name)) {
+        setValue(
+          getName("starterCode"),
+          [...existing, { name: template.name, content: template.content }],
+          { shouldDirty: true },
+        );
+      }
+      setViewLang(lang);
+    }
+    setValue(getName("allowedLanguages"), Array.from(current), {
+      shouldDirty: true,
+    });
+  };
+
+  // --- LÓGICA DE SINCRONIA DE PARÂMETROS (Baseado na viewLang) ---
+  const currentMainFileMeta = useMemo(() => {
+    return visibleFiles.find((f) => STANDARD_NAMES.includes(f.field.name));
+  }, [visibleFiles]);
+
+  const currentMainFileContent = currentMainFileMeta
+    ? watch(getName(`starterCode.${currentMainFileMeta.index}.content`))
+    : null;
+
   const expectedParamsString = useMemo(() => {
     if (!parameters || parameters.length === 0) return "";
-
-    if (currentLang === "python" || currentLang === "javascript") {
+    if (viewLang === "python" || viewLang === "javascript") {
       return parameters.map((p: any) => p.name).join(", ");
-    } else if (currentLang === "cpp") {
+    } else if (viewLang === "cpp") {
       const typeMap: Record<string, string> = {
         int: "int",
-        integer: "int",
         float: "double",
         string: "string",
         boolean: "bool",
-        char: "char",
       };
       return parameters
         .map((p: any) => `${typeMap[p.type] || "auto"} ${p.name}`)
         .join(", ");
     }
     return "";
-  }, [parameters, currentLang]);
+  }, [parameters, viewLang]);
 
   const isParamsOutOfSync = useMemo(() => {
-    if (!firstFileContent) return false;
+    if (!currentMainFileContent) return false;
     let regex: RegExp;
-    if (currentLang === "python") regex = /def\s+solve\s*\(([^)]*)\)/;
-    else if (currentLang === "javascript")
+    if (viewLang === "python") regex = /def\s+solve\s*\(([^)]*)\)/;
+    else if (viewLang === "javascript")
       regex = /function\s+solve\s*\(([^)]*)\)/;
     else regex = /(?:int|void)\s+(?:solve|main)\s*\(([^)]*)\)/;
 
-    const match = firstFileContent.match(regex);
+    const match = currentMainFileContent.match(regex);
     if (!match) return false;
     return match[1].trim() !== expectedParamsString;
-  }, [firstFileContent, expectedParamsString, currentLang]);
+  }, [currentMainFileContent, expectedParamsString, viewLang]);
 
   const handleSyncParams = () => {
-    if (!firstFileContent) return;
+    if (!currentMainFileContent || !currentMainFileMeta) return;
     let regex: RegExp;
-    if (currentLang === "python") regex = /(def\s+solve\s*\()([^)]*)(\))/;
-    else if (currentLang === "javascript")
+    if (viewLang === "python") regex = /(def\s+solve\s*\()([^)]*)(\))/;
+    else if (viewLang === "javascript")
       regex = /(function\s+solve\s*\()([^)]*)(\))/;
     else regex = /((?:int|void)\s+(?:solve|main)\s*\()([^)]*)(\))/;
 
-    const newContent = firstFileContent.replace(
+    const newContent = currentMainFileContent.replace(
       regex,
       `$1${expectedParamsString}$3`,
     );
-    if (newContent !== firstFileContent) {
-      setValue(getName(`starterCode.0.content`), newContent, {
-        shouldDirty: true,
-      });
-      toast.success("Parâmetros atualizados!");
+    if (newContent !== currentMainFileContent) {
+      setValue(
+        getName(`starterCode.${currentMainFileMeta.index}.content`),
+        newContent,
+        { shouldDirty: true },
+      );
+      toast.success(`Parâmetros sincronizados para ${viewLang.toUpperCase()}!`);
     } else {
       toast.info("Função principal não encontrada.");
     }
   };
 
-  const handleLanguageChange = (newLang: LangKey) => {
-    if (newLang === currentLang) return;
-
-    if (fields.length > 0) {
-      const currentTemplate = TEMPLATES[currentLang]?.content || "";
-      const isDirty =
-        firstFileContent && firstFileContent.trim() !== currentTemplate.trim();
-
-      if (isDirty) {
-        setPendingLang(newLang);
-        setShowConfirmModal(true);
-      } else {
-        applyLanguageSwitch(newLang);
-      }
-    } else {
-      applyLanguageSwitch(newLang);
-    }
-  };
-
-  const applyLanguageSwitch = (lang: LangKey) => {
-    const template = TEMPLATES[lang];
-    setCurrentLang(lang);
-
-    if (fields.length > 0) {
-      setValue(
-        getName(`starterCode.0`),
-        { name: template.name, content: template.content },
-        { shouldDirty: true },
-      );
-      setActiveIndex(0);
-    } else {
-      append({ name: template.name, content: template.content });
-      setActiveIndex(0);
-    }
-
-    setShowConfirmModal(false);
-    setPendingLang(null);
-  };
-
   const handleAddFile = () => {
     const extMap = { python: ".py", javascript: ".js", cpp: ".cpp" };
-    const ext = extMap[currentLang];
+    const ext = extMap[viewLang];
     append({ name: `module${ext}`, content: "" });
-    setActiveIndex(fields.length);
+    setActiveIndex(fields.length); // O append joga pro final do array global
   };
 
   return (
@@ -199,43 +218,42 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
           : "relative",
       )}
     >
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in p-4">
-          <Card className="p-6 max-w-sm w-full space-y-4 bg-surface border-border">
-            <div className="flex items-center gap-3 text-amber-500">
-              <AlertTriangle size={24} />
-              <h3 className="text-lg font-bold text-white">
-                Alterar Linguagem?
-              </h3>
-            </div>
-            <p className="text-sm text-muted">
-              Isso substituirá seu código atual pelo template.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <Button
-                variant="ghost"
-                onClick={() => setShowConfirmModal(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                variant="primary"
-                onClick={() => pendingLang && applyLanguageSwitch(pendingLang)}
-              >
-                Confirmar
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Toolbar Responsiva */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-border pb-2 flex-none">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border pb-3 flex-none">
         <div className="flex items-center gap-3 flex-wrap">
           <h3 className="text-lg font-semibold text-white flex items-center gap-2">
             <FileCode className="text-primary" size={20} />
             {isFullscreen ? "Modo Focado" : "Código Base"}
           </h3>
+
+          {/* SELETORES DE LINGUAGEM PERMITIDA */}
+          <div className="flex gap-2 ml-2 bg-surface p-1 rounded-md border border-border">
+            {(["python", "javascript", "cpp"] as LangKey[]).map((lang) => {
+              const isActive = allowedLanguages.includes(lang);
+              return (
+                <button
+                  key={lang}
+                  type="button"
+                  onClick={() => toggleLanguage(lang)}
+                  className={cn(
+                    "px-3 py-1.5 text-xs font-medium rounded transition-all flex items-center gap-1.5",
+                    isActive
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted hover:text-zinc-200 hover:bg-surface-hover",
+                  )}
+                >
+                  {isActive && <Check size={12} />}
+                  {lang === "javascript"
+                    ? "JS"
+                    : lang === "python"
+                      ? "Python"
+                      : "C++"}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           {parameters.length > 0 && (
             <Button
               size="sm"
@@ -243,50 +261,27 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
               onClick={handleSyncParams}
               disabled={!isParamsOutOfSync}
               className={cn(
-                "h-7 text-xs px-2 transition-all border",
+                "h-9 text-xs px-3 transition-all border",
                 isParamsOutOfSync
                   ? "border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 animate-pulse"
                   : "border-transparent text-muted opacity-50 hover:bg-transparent cursor-default",
               )}
             >
               <RefreshCw
-                size={12}
-                className={cn("mr-1", isParamsOutOfSync && "animate-spin-slow")}
+                size={14}
+                className={cn("mr-2", isParamsOutOfSync && "animate-spin-slow")}
               />
-              {isParamsOutOfSync
-                ? "Sincronizar Assinatura"
-                : "Assinatura Sincronizada"}
+              {isParamsOutOfSync ? "Sincronizar Assinatura" : "Sincronizado"}
             </Button>
           )}
-        </div>
-
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <div className="relative flex-1 sm:flex-none">
-            <select
-              value={currentLang}
-              onChange={(e) => handleLanguageChange(e.target.value as LangKey)}
-              className="h-9 w-full appearance-none bg-surface border border-border rounded-md px-3 pr-8 text-sm text-zinc-100 focus:ring-1 focus:ring-primary outline-none cursor-pointer"
-            >
-              <option value="python">Python</option>
-              <option value="javascript">JavaScript</option>
-              <option value="cpp">C++</option>
-            </select>
-            <ChevronDown
-              size={14}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
-            />
-          </div>
-
           <Button
             size="sm"
             variant="secondary"
             onClick={handleAddFile}
             className="h-9"
           >
-            <Plus size={14} />{" "}
-            <span className="hidden xs:inline ml-1">Arquivo</span>
+            <Plus size={14} className="mr-1" /> Arquivo
           </Button>
-
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
             className="p-2 text-muted hover:text-white transition-colors"
@@ -296,92 +291,105 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
         </div>
       </div>
 
+      {/* ABAS DE VISUALIZAÇÃO DE CÓDIGO (APENAS LINGUAGENS ATIVAS) */}
+      <div className="flex gap-1 border-b border-border/50">
+        {allowedLanguages.map((lang) => (
+          <button
+            key={`view-${lang}`}
+            type="button"
+            onClick={() => setViewLang(lang)}
+            className={cn(
+              "px-4 py-2 text-sm font-medium border-b-2 transition-colors",
+              viewLang === lang
+                ? "border-primary text-white"
+                : "border-transparent text-muted hover:text-zinc-300",
+            )}
+          >
+            Configurar{" "}
+            {lang === "javascript"
+              ? "JS"
+              : lang.charAt(0).toUpperCase() + lang.slice(1)}
+          </button>
+        ))}
+      </div>
+
       <div
         className={cn(
           "border border-border rounded-md overflow-hidden bg-surface flex flex-col shadow-lg",
-          isFullscreen ? "flex-1" : "flex-1 min-h-[400px]", // Garante altura mínima mas permite flexibilidade
+          isFullscreen ? "flex-1" : "flex-1 min-h-[400px]",
         )}
       >
         <div className="flex bg-background/50 overflow-x-auto no-scrollbar flex-none border-b border-border">
-          {fields.map((field, index) => (
-            <div
-              key={field.id}
-              onClick={() => setActiveIndex(index)}
-              className={cn(
-                "group flex items-center gap-2 px-4 py-2.5 text-sm cursor-pointer border-r border-border select-none min-w-[120px] justify-between transition-colors",
-                index === activeIndex
-                  ? "bg-surface text-white border-t-2 border-t-primary"
-                  : "text-muted hover:bg-surface-hover",
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <File
-                  size={14}
-                  className={index === activeIndex ? "text-primary" : ""}
-                />
-                <Controller
-                  control={control}
-                  name={getName(`starterCode.${index}.name`)}
-                  render={({ field: inputField }) => (
-                    <input
-                      {...inputField}
-                      readOnly={index === 0}
-                      className={cn(
-                        "bg-transparent outline-none w-20 sm:w-24 truncate text-sm transition-opacity",
-                        index === 0 && "cursor-default opacity-80",
-                      )}
-                      onClick={(e) => e.stopPropagation()}
-                      onBlur={(e) => {
-                        if (index === 0) return; // O principal é imutável
+          {visibleFiles.map(({ field, index }) => {
+            const isMainFile = STANDARD_NAMES.includes(field.name);
+            return (
+              <div
+                key={field.id}
+                onClick={() => setActiveIndex(index)}
+                className={cn(
+                  "group flex items-center gap-2 px-4 py-2.5 text-sm cursor-pointer border-r border-border select-none min-w-[120px] justify-between transition-colors",
+                  index === activeIndex
+                    ? "bg-surface text-white border-t-2 border-t-primary"
+                    : "text-muted hover:bg-surface-hover",
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <File
+                    size={14}
+                    className={index === activeIndex ? "text-primary" : ""}
+                  />
+                  <Controller
+                    control={control}
+                    name={getName(`starterCode.${index}.name`)}
+                    render={({ field: inputField }) => (
+                      <input
+                        {...inputField}
+                        readOnly={isMainFile}
+                        className={cn(
+                          "bg-transparent outline-none w-20 sm:w-24 truncate text-sm transition-opacity",
+                          isMainFile && "cursor-default opacity-80",
+                        )}
+                        onClick={(e) => e.stopPropagation()}
+                        onBlur={(e) => {
+                          if (isMainFile) return;
+                          let newName = e.target.value.trim();
+                          if (!newName) newName = "file.txt";
 
-                        let newName = e.target.value.trim();
-                        if (!newName) newName = "file.txt";
-
-                        const standardNames = [
-                          "main.py",
-                          "index.js",
-                          "main.cpp",
-                          "main.java",
-                          "main.c",
-                        ];
-                        const isDuplicate = fields.some(
-                          (f: any, i) =>
-                            i !== index &&
-                            f.name?.toLowerCase() === newName.toLowerCase(),
-                        );
-
-                        if (standardNames.includes(newName.toLowerCase())) {
-                          toast.error(
-                            "Este nome é reservado para o arquivo principal.",
+                          const isDuplicate = fields.some(
+                            (f: any, i) =>
+                              i !== index &&
+                              f.name?.toLowerCase() === newName.toLowerCase(),
                           );
-                          inputField.onChange(`helper_${newName}`);
-                        } else if (isDuplicate) {
-                          toast.error("Já existe um arquivo com este nome.");
-                          inputField.onChange(`copy_${newName}`);
-                        } else {
-                          inputField.onChange(newName);
-                        }
-                      }}
-                    />
-                  )}
-                />
-              </div>
 
-              {/* Bloqueia a exclusão do arquivo principal (index === 0) */}
-              {fields.length > 1 && index !== 0 && (
-                <Trash2
-                  size={14}
-                  className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const newIndex = index === 0 ? 0 : index - 1;
-                    remove(index);
-                    setActiveIndex(newIndex);
-                  }}
-                />
-              )}
-            </div>
-          ))}
+                          if (STANDARD_NAMES.includes(newName.toLowerCase())) {
+                            toast.error(
+                              "Este nome é reservado para arquivos principais.",
+                            );
+                            inputField.onChange(`helper_${newName}`);
+                          } else if (isDuplicate) {
+                            toast.error("Já existe um arquivo com este nome.");
+                            inputField.onChange(`copy_${newName}`);
+                          } else {
+                            inputField.onChange(newName);
+                          }
+                        }}
+                      />
+                    )}
+                  />
+                </div>
+                {!isMainFile && (
+                  <Trash2
+                    size={14}
+                    className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      remove(index);
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <div className="flex-1 relative min-h-0">
@@ -392,19 +400,20 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
               </div>
             }
           >
-            {fields.length > 0 && fields[activeIndex] && (
+            {visibleFiles.length > 0 && fields[activeIndex] && (
               <Controller
                 control={control}
                 name={getName(`starterCode.${activeIndex}.content`)}
                 render={({ field }) => (
                   <div className="absolute inset-0">
                     <Editor
-                      key={`${fields[activeIndex].id}-${currentLang}-${activeIndex}`}
+                      key={`${fields[activeIndex].id}-${activeIndex}`}
                       height="100%"
                       width="100%"
                       theme="vs-dark"
-                      path={`${basePath ? basePath + "-" : ""}${fields[activeIndex].id}-${currentLang}-${activeIndex}`}
-                      language={currentLang}
+                      language={getLanguageFromExt(
+                        (fields[activeIndex] as any).name,
+                      )}
                       value={field.value}
                       onChange={(value) => field.onChange(value)}
                       options={{
@@ -419,9 +428,9 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                 )}
               />
             )}
-            {fields.length === 0 && (
+            {visibleFiles.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center text-muted">
-                Nenhum arquivo selecionado.
+                Nenhum arquivo para esta linguagem.
               </div>
             )}
           </Suspense>

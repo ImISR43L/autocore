@@ -62,7 +62,7 @@ export class Problem {
   teacherNotes: string;
 
   @Column('simple-array', { nullable: true })
-  allowedLanguages: number[];
+  allowedLanguages: string[];
 
   @Column('simple-array', { nullable: true })
   tags: string[];

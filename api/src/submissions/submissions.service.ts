@@ -102,15 +102,36 @@ export class SubmissionsService {
       throw new NotFoundException('Problema não encontrado');
     }
 
-    // Validações de Prazo
-    if (problem.type === ProblemType.EXAM && problem.startDate) {
+    // Validações de Prazo e Acesso
+    if (problem.startDate) {
       const now = new Date();
       if (now < problem.startDate) {
-        throw new ForbiddenException('A prova ainda não começou.');
+        throw new ForbiddenException('A atividade ainda não começou.');
       }
     }
+
     if (problem.deadline && new Date() > problem.deadline) {
       throw new ForbiddenException('O prazo de entrega já encerrou.');
+    }
+
+    // Validação de Linguagem Permitida
+    const languageMap: Record<number, string> = {
+      71: 'python',
+      63: 'javascript',
+      54: 'cpp',
+    };
+
+    const submittedLangString = languageMap[createSubmissionDto.language_id];
+
+    if (
+      problem.allowedLanguages &&
+      problem.allowedLanguages.length > 0 &&
+      submittedLangString &&
+      !problem.allowedLanguages.includes(submittedLangString)
+    ) {
+      throw new ForbiddenException(
+        'A linguagem selecionada não é permitida para esta atividade.',
+      );
     }
 
     // Criação da Entidade

@@ -1,4 +1,4 @@
-import { useState, useEffect, Suspense, lazy, useMemo, useRef } from "react";
+import { useState, useEffect, Suspense, lazy, useMemo } from "react";
 import { useFormContext, useFieldArray, Controller } from "react-hook-form";
 import {
   FlaskConical,
@@ -22,12 +22,20 @@ import { toast } from "sonner";
 import { Button } from "../../ui/Button";
 import { cn } from "../../../lib/utils";
 
-// Editor Lazy Loading
 const Editor = lazy(() => import("@monaco-editor/react"));
 
 interface ValidationConfigProps {
   basePath?: string;
 }
+
+type LangKey = "python" | "javascript" | "cpp";
+const STANDARD_NAMES = [
+  "main.py",
+  "index.js",
+  "main.cpp",
+  "main.java",
+  "main.c",
+];
 
 const getLanguageFromExt = (filename: string) => {
   if (!filename) return "plaintext";
@@ -53,9 +61,6 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
   const [runResults, setRunResults] = useState<any>(null);
   const [activeSolutionTab, setActiveSolutionTab] = useState(0);
   const [isSolutionFullscreen, setIsSolutionFullscreen] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState<"code" | "tests">("code");
-
-  // KEY MESTRA: Controla o ciclo de vida do Editor para forçar atualizações
   const [remountKey, setRemountKey] = useState(0);
 
   const getName = (name: string) => (basePath ? `${basePath}.${name}` : name);
@@ -66,27 +71,60 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     fields: testFields,
     append: appendTest,
     remove: removeTest,
-  } = useFieldArray({ control, name: getName("testCases") });
+  } = useFieldArray({
+    control,
+    name: getName("testCases"),
+  });
 
   const { fields: solutionFields } = useFieldArray({
     control,
     name: getName("solutionCode"),
   });
 
-  // Watchers
-  const starterCode = watch(getName("starterCode"));
-  const firstSolutionName = watch(getName(`solutionCode.0.name`));
-  const firstSolutionContent = watch(getName(`solutionCode.0.content`)); // Necessário para sync de params
-  const parameters = watch(getName("parameters")) || []; // Necessário para sync de params
-
+  // Watchers Base
+  const starterCode = watch(getName("starterCode")) || [];
+  const parameters = watch(getName("parameters")) || [];
   const returnType = watch(getName("returnType")) || "void";
-  const testCases = watch(`${basePath}testCases`) || [];
+  const allowedLanguages: LangKey[] = watch(getName("allowedLanguages")) || [
+    "python",
+  ];
+
+  // Abas e Visualização
+  const [activeMainTab, setActiveMainTab] = useState<"code" | "tests">("code");
+  const [viewLang, setViewLang] = useState<LangKey>(
+    allowedLanguages[0] || "python",
+  );
+
+  // Ajusta a linguagem de visualização caso a linguagem atual seja removida na aba anterior
+  useEffect(() => {
+    if (allowedLanguages.length > 0 && !allowedLanguages.includes(viewLang)) {
+      setViewLang(allowedLanguages[0]);
+    }
+  }, [allowedLanguages, viewLang]);
 
   const requiresTestCases =
-    parameters.length > 0 && returnType !== "void" && returnType !== "";
-  const isMissingRequiredTests = requiresTestCases && testCases.length === 0;
+    parameters.length > 0 && returnType !== "void" && returnType.trim() !== "";
+  const isMissingRequiredTests = requiresTestCases && testFields.length === 0;
 
-  // Utils
+  // Filtra arquivos da solução pela linguagem selecionada
+  const visibleFiles = useMemo(() => {
+    return solutionFields
+      .map((field: any, index) => ({ field, index }))
+      .filter(({ field }) => {
+        const extLang = getLanguageFromExt(field.name || "");
+        return extLang === viewLang || extLang === "plaintext";
+      });
+  }, [solutionFields, viewLang]);
+
+  useEffect(() => {
+    if (
+      visibleFiles.length > 0 &&
+      !visibleFiles.find((f) => f.index === activeSolutionTab)
+    ) {
+      setActiveSolutionTab(visibleFiles[0].index);
+    }
+  }, [viewLang, visibleFiles, activeSolutionTab]);
+
   const cleanCopy = (files: any[]) => {
     if (!files) return [];
     return JSON.parse(JSON.stringify(files)).map((file: any) => {
@@ -96,138 +134,105 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     });
   };
 
-  // --- FORCE UPDATE ENGINE ---
-  const forceUpdateSolution = (newCode: any[], reason: string) => {
-    console.log(`>>> [ValidationConfig] Force Update Triggered: ${reason}`);
-
+  const forceUpdateSolution = (newCode: any[]) => {
     setValue(getName("solutionCode"), newCode, {
       shouldDirty: true,
       shouldTouch: true,
       shouldValidate: true,
     });
-
-    setTimeout(() => {
-      setRemountKey((prev) => prev + 1);
-    }, 0);
+    setTimeout(() => setRemountKey((prev) => prev + 1), 0);
   };
 
-  // --- SINCRONIA AUTOMÁTICA (SC -> VAL) ---
+  // Sincronia Automática (StarterCode -> SolutionCode)
   useEffect(() => {
-    const currentStarter = starterCode || [];
     const currentSolution = getValues(getName("solutionCode")) || [];
+    if (starterCode.length === 0) return;
 
-    if (currentStarter.length === 0) return;
-
-    const starterJson = JSON.stringify(cleanCopy(currentStarter));
+    const starterJson = JSON.stringify(cleanCopy(starterCode));
     const solutionJson = JSON.stringify(cleanCopy(currentSolution));
 
-    // 1. Se não há solução, copia.
     if (currentSolution.length === 0) {
-      forceUpdateSolution(
-        cleanCopy(currentStarter),
-        "First Load / Empty Solution",
-      );
+      forceUpdateSolution(cleanCopy(starterCode));
       return;
     }
 
-    // 2. Se a linguagem mudou, copia.
-    const starterLang = getLanguageFromExt(currentStarter[0]?.name || "");
-    const solutionLang = getLanguageFromExt(currentSolution[0]?.name || "");
-    if (starterLang !== solutionLang && solutionLang !== "plaintext") {
-      forceUpdateSolution(
-        cleanCopy(currentStarter),
-        `Language Change (${solutionLang} -> ${starterLang})`,
-      );
-      toast.info(`Gabarito atualizado para ${starterLang}.`);
-      return;
-    }
-
-    // 3. Se o conteúdo mudou E o gabarito não foi "tocado" (dirty)
     if (starterJson !== solutionJson) {
       const isSolutionDirty = dirtyFields?.[getName("solutionCode")];
       if (!isSolutionDirty) {
-        forceUpdateSolution(
-          cleanCopy(currentStarter),
-          "Content Sync (Not Dirty)",
-        );
+        forceUpdateSolution(cleanCopy(starterCode));
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(starterCode)]);
 
-  const currentLang = useMemo(
-    () => getLanguageFromExt(firstSolutionName || ""),
-    [firstSolutionName],
-  );
+  // Lógica de Sincronia de Parâmetros
+  const currentMainFileMeta = useMemo(() => {
+    return visibleFiles.find((f) => STANDARD_NAMES.includes(f.field.name));
+  }, [visibleFiles]);
 
-  // --- LÓGICA DE SINCRONIA DE PARÂMETROS ---
+  const currentMainFileContent = currentMainFileMeta
+    ? watch(getName(`solutionCode.${currentMainFileMeta.index}.content`))
+    : null;
+
   const expectedParamsString = useMemo(() => {
     if (!parameters || parameters.length === 0) return "";
-
-    if (currentLang === "python" || currentLang === "javascript") {
+    if (viewLang === "python" || viewLang === "javascript") {
       return parameters.map((p: any) => p.name).join(", ");
-    } else if (currentLang === "cpp") {
-      // Mapeamento básico para C++ (pode ser expandido)
+    } else if (viewLang === "cpp") {
       const typeMap: Record<string, string> = {
         int: "int",
-        integer: "int",
         float: "double",
         string: "string",
         boolean: "bool",
-        char: "char",
       };
       return parameters
         .map((p: any) => `${typeMap[p.type] || "auto"} ${p.name}`)
         .join(", ");
     }
     return "";
-  }, [parameters, currentLang]);
+  }, [parameters, viewLang]);
 
   const isParamsOutOfSync = useMemo(() => {
-    if (!firstSolutionContent) return false;
+    if (!currentMainFileContent) return false;
     let regex: RegExp;
-    if (currentLang === "python") regex = /def\s+solve\s*\(([^)]*)\)/;
-    else if (currentLang === "javascript")
+    if (viewLang === "python") regex = /def\s+solve\s*\(([^)]*)\)/;
+    else if (viewLang === "javascript")
       regex = /function\s+solve\s*\(([^)]*)\)/;
-    else if (currentLang === "cpp")
-      regex = /(?:int|void)\s+(?:solve|main)\s*\(([^)]*)\)/;
-    else return false;
+    else regex = /(?:int|void)\s+(?:solve|main)\s*\(([^)]*)\)/;
 
-    const match = firstSolutionContent.match(regex);
+    const match = currentMainFileContent.match(regex);
     if (!match) return false;
     return match[1].trim() !== expectedParamsString;
-  }, [firstSolutionContent, expectedParamsString, currentLang]);
+  }, [currentMainFileContent, expectedParamsString, viewLang]);
 
   const handleSyncParams = () => {
-    if (!firstSolutionContent) return;
+    if (!currentMainFileContent || !currentMainFileMeta) return;
     let regex: RegExp;
-    if (currentLang === "python") regex = /(def\s+solve\s*\()([^)]*)(\))/;
-    else if (currentLang === "javascript")
+    if (viewLang === "python") regex = /(def\s+solve\s*\()([^)]*)(\))/;
+    else if (viewLang === "javascript")
       regex = /(function\s+solve\s*\()([^)]*)(\))/;
-    else if (currentLang === "cpp")
-      regex = /((?:int|void)\s+(?:solve|main)\s*\()([^)]*)(\))/;
-    else return;
+    else regex = /((?:int|void)\s+(?:solve|main)\s*\()([^)]*)(\))/;
 
-    const newContent = firstSolutionContent.replace(
+    const newContent = currentMainFileContent.replace(
       regex,
       `$1${expectedParamsString}$3`,
     );
 
-    // Atualiza apenas o conteúdo do arquivo
     const currentCode = getValues(getName("solutionCode"));
-    if (currentCode && currentCode[0]) {
-      currentCode[0].content = newContent;
-      // Usa o forceUpdate para garantir visualização imediata
-      forceUpdateSolution(currentCode, "Parameter Sync");
-      toast.success("Parâmetros do gabarito atualizados!");
+    if (currentCode && currentCode[currentMainFileMeta.index]) {
+      currentCode[currentMainFileMeta.index].content = newContent;
+      forceUpdateSolution(currentCode);
+      toast.success(
+        `Parâmetros sincronizados no gabarito de ${viewLang.toUpperCase()}!`,
+      );
     }
   };
 
   const handleResetSolution = () => {
     const latestStarter = getValues(getName("starterCode"));
     if (latestStarter && latestStarter.length > 0) {
-      forceUpdateSolution(cleanCopy(latestStarter), "Manual Reset Button");
-      setActiveSolutionTab(0);
+      forceUpdateSolution(cleanCopy(latestStarter));
+      setActiveSolutionTab(visibleFiles[0]?.index || 0);
       toast.success("Gabarito restaurado para o template original.");
     } else {
       toast.warning("Não há código base para restaurar.");
@@ -244,13 +249,19 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
   };
 
   const handleDryRun = async () => {
-    const sCode = getValues(getName("solutionCode"));
+    const allSCode = getValues(getName("solutionCode")) || [];
     const tCases = getValues(getName("testCases"));
     const params = getValues(getName("parameters"));
     const retType = getValues(getName("returnType"));
 
+    // Pega apenas os arquivos da linguagem sendo visualizada no momento
+    const sCode = allSCode.filter((f: any) => {
+      const extLang = getLanguageFromExt(f.name);
+      return extLang === viewLang || extLang === "plaintext";
+    });
+
     if (!sCode?.length)
-      return toast.error("Escreva uma solução de referência.");
+      return toast.error(`Escreva uma solução em ${viewLang.toUpperCase()}.`);
     if (!tCases?.length) return toast.error("Adicione casos de teste.");
 
     setIsRunning(true);
@@ -265,11 +276,12 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
         testCases: sanitize(tCases),
         parameters: sanitize(params),
         returnType: retType,
-        language: getLanguageFromExt(sCode[0].name),
+        language: viewLang, // O backend agora saberá qual a linguagem alvo
       });
 
       setRunResults(result);
-      if (result.success) toast.success("Solução válida!");
+      if (result.success)
+        toast.success(`Solução em ${viewLang.toUpperCase()} válida!`);
       else toast.warning("Solução falhou em alguns testes.");
     } catch (error: any) {
       console.error(error);
@@ -282,7 +294,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 w-full pb-8">
-      {/* --- NAVEGAÇÃO POR ABAS --- */}
+      {/* NAVEGAÇÃO POR ABAS (CÓDIGO vs TESTES) */}
       <div className="flex border-b border-border">
         <button
           type="button"
@@ -294,8 +306,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
           )}
           onClick={() => setActiveMainTab("code")}
         >
-          <Code2 size={18} />
-          Código & Configuração
+          <Code2 size={18} /> Código & Configuração
         </button>
         <button
           type="button"
@@ -310,8 +321,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
           )}
           onClick={() => setActiveMainTab("tests")}
         >
-          <FlaskConical size={18} />
-          Casos de Teste
+          <FlaskConical size={18} /> Casos de Teste
           {isMissingRequiredTests && (
             <AlertTriangle
               size={16}
@@ -321,10 +331,10 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
         </button>
       </div>
 
-      {/* --- ABA 1: EDITOR DO GABARITO --- */}
+      {/* ABA 1: EDITOR DO GABARITO */}
       <div
         className={cn(
-          "flex flex-col gap-6",
+          "flex flex-col gap-4",
           activeMainTab !== "code" && "hidden",
         )}
       >
@@ -374,7 +384,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                   />
                   {isParamsOutOfSync
                     ? "Sincronizar Assinatura"
-                    : "Assinatura Sincronizada"}
+                    : "Sincronizado"}
                 </Button>
               )}
             </div>
@@ -397,9 +407,31 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                 onClick={handleResetSolution}
                 className="h-8 text-xs"
               >
-                <RotateCcw size={12} className="mr-1" /> Restaurar do Template
+                <RotateCcw size={12} className="mr-1" /> Restaurar Tudo
               </Button>
             </div>
+          </div>
+
+          {/* Sub-Abas de Linguagem para o Gabarito */}
+          <div className="flex gap-1 border-b border-border/50">
+            {allowedLanguages.map((lang) => (
+              <button
+                key={`val-view-${lang}`}
+                type="button"
+                onClick={() => setViewLang(lang)}
+                className={cn(
+                  "px-4 py-2 text-sm font-medium border-b-2 transition-colors",
+                  viewLang === lang
+                    ? "border-primary text-white"
+                    : "border-transparent text-muted hover:text-zinc-300",
+                )}
+              >
+                Gabarito{" "}
+                {lang === "javascript"
+                  ? "JS"
+                  : lang.charAt(0).toUpperCase() + lang.slice(1)}
+              </button>
+            ))}
           </div>
 
           <div
@@ -410,7 +442,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
             )}
           >
             <div className="flex bg-background/50 overflow-x-auto no-scrollbar flex-none border-b border-border">
-              {solutionFields.map((field, index) => (
+              {visibleFiles.map(({ field, index }) => (
                 <div
                   key={field.id}
                   onClick={() => setActiveSolutionTab(index)}
@@ -433,7 +465,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                   </div>
                 }
               >
-                {solutionFields.length > 0 &&
+                {visibleFiles.length > 0 &&
                   solutionFields[activeSolutionTab] && (
                     <Controller
                       control={control}
@@ -471,7 +503,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
         </div>
       </div>
 
-      {/* --- ABA 2: CASOS DE TESTE --- */}
+      {/* ABA 2: CASOS DE TESTE */}
       <div
         className={cn(
           "flex flex-col gap-6 w-full",
@@ -510,7 +542,8 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
               ) : (
                 <Play size={16} className="mr-2" />
               )}
-              Validar Solução
+              Validar Solução (
+              {viewLang === "javascript" ? "JS" : viewLang.toUpperCase()})
             </Button>
             <Button
               size="sm"
@@ -544,7 +577,9 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                   runResults.success ? "text-primary" : "text-destructive"
                 }
               >
-                {runResults.success ? "Sucesso!" : "Falha nos testes."}
+                {runResults.success
+                  ? `Sucesso em ${viewLang.toUpperCase()}!`
+                  : "Falha nos testes."}
               </span>
             </div>
             {!runResults.success && runResults.results && (
@@ -590,7 +625,6 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
             const expectedError = getError(
               getName(`testCases.${index}.expectedOutput`),
             );
-
             return (
               <div
                 key={field.id}
@@ -660,7 +694,6 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
             );
           })}
 
-          {/* VALIDAÇÃO VISUAL DE TESTES VAZIOS */}
           {testFields.length === 0 && (
             <div
               className={cn(
@@ -688,8 +721,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                 }
                 className="mt-4"
               >
-                <Plus size={16} className="mr-2" />
-                Adicionar Primeiro Teste
+                <Plus size={16} className="mr-2" /> Adicionar Primeiro Teste
               </Button>
             </div>
           )}

@@ -114,9 +114,9 @@ export class CreateProblemDto {
   teacherNotes?: string;
 
   @IsArray()
-  @IsNumber({}, { each: true })
+  @IsString({ each: true })
   @IsOptional()
-  allowedLanguages?: number[];
+  allowedLanguages?: string[];
 
   @IsArray()
   @IsString({ each: true })

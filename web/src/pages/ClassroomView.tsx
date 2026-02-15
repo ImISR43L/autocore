@@ -104,6 +104,7 @@ interface Problem {
   children?: Problem[];
   parent?: { id: string };
   starterCode?: FileEntry[];
+  allowedLanguages?: string[]; // <-- Novo Campo
 }
 
 interface Classroom {
@@ -203,6 +204,16 @@ const LANGUAGE_MAP: Record<number, string> = {
   60: "go",
 };
 
+const getLanguageFromExt = (filename: string) => {
+  if (!filename) return "plaintext";
+  if (filename.endsWith(".js")) return "javascript";
+  if (filename.endsWith(".ts")) return "typescript";
+  if (filename.endsWith(".py")) return "python";
+  if (filename.endsWith(".java")) return "java";
+  if (filename.endsWith(".cpp") || filename.endsWith(".c")) return "cpp";
+  return "plaintext";
+};
+
 export default function ClassroomView() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const { id } = useParams();
@@ -298,6 +309,37 @@ export default function ClassroomView() {
     currentProblem?.children && currentProblem.children.length > 0
       ? currentProblem.children[activeChildIndex]
       : currentProblem;
+
+  const allowedLanguageOptions = useMemo(() => {
+    if (
+      !displayProblem ||
+      !displayProblem.allowedLanguages ||
+      displayProblem.allowedLanguages.length === 0
+    ) {
+      return LANGUAGES; // Fallback para atividades antigas
+    }
+    return LANGUAGES.filter((l) =>
+      displayProblem.allowedLanguages!.includes(LANGUAGE_MAP[l.id]),
+    );
+  }, [displayProblem]);
+
+  // Força a seleção de uma linguagem permitida ao trocar de atividade
+  useEffect(() => {
+    if (
+      !displayProblem ||
+      !displayProblem.allowedLanguages ||
+      displayProblem.allowedLanguages.length === 0
+    )
+      return;
+
+    const currentLangStr = LANGUAGE_MAP[languageId];
+    if (!displayProblem.allowedLanguages.includes(currentLangStr)) {
+      const firstAllowed = LANGUAGES.find((l) =>
+        displayProblem.allowedLanguages!.includes(LANGUAGE_MAP[l.id]),
+      );
+      if (firstAllowed) setLanguageId(firstAllowed.id);
+    }
+  }, [displayProblem, languageId]);
 
   const activeTabRef = useRef(activeTab);
   const displayProblemRef = useRef(displayProblem);
@@ -632,6 +674,7 @@ export default function ClassroomView() {
     const lang = LANGUAGES.find((l) => l.id === languageId);
     if (!lang || !displayProblem) return;
 
+    const currentLangStr = LANGUAGE_MAP[languageId];
     const storageKey = getStorageKey(displayProblem.id, languageId);
     const savedFilesJson = storageKey ? localStorage.getItem(storageKey) : null;
 
@@ -648,10 +691,18 @@ export default function ClassroomView() {
       }
     }
 
+    // Filtra o starterCode baseando-se na linguagem selecionada
     if (displayProblem.starterCode && displayProblem.starterCode.length > 0) {
-      setFiles(displayProblem.starterCode);
-      setActiveFileIndex(0);
-      return;
+      const langFiles = displayProblem.starterCode.filter((f) => {
+        const extLang = getLanguageFromExt(f.name);
+        return extLang === currentLangStr || extLang === "plaintext";
+      });
+
+      if (langFiles.length > 0) {
+        setFiles(langFiles);
+        setActiveFileIndex(0);
+        return;
+      }
     }
 
     const defaultFile = {
@@ -758,10 +809,27 @@ export default function ClassroomView() {
   const handleResetCode = () => {
     if (!confirm("Isso apagará todas as alterações. Continuar?")) return;
     if (displayProblem) {
+      const currentLangStr = LANGUAGE_MAP[languageId];
       const key = getStorageKey(displayProblem.id, languageId);
       if (key) localStorage.removeItem(key);
+
       if (displayProblem.starterCode && displayProblem.starterCode.length > 0) {
-        setFiles(displayProblem.starterCode);
+        const langFiles = displayProblem.starterCode.filter((f) => {
+          const extLang = getLanguageFromExt(f.name);
+          return extLang === currentLangStr || extLang === "plaintext";
+        });
+
+        if (langFiles.length > 0) {
+          setFiles(langFiles);
+        } else {
+          const lang = LANGUAGES.find((l) => l.id === languageId);
+          setFiles([
+            {
+              name: lang?.fileName || "main.txt",
+              content: lang?.defaultCode || "",
+            },
+          ]);
+        }
       } else {
         const lang = LANGUAGES.find((l) => l.id === languageId);
         setFiles([
@@ -1745,7 +1813,7 @@ export default function ClassroomView() {
                   onChange={(e) => setLanguageId(Number(e.target.value))}
                   className="w-48 h-11 text-base"
                 >
-                  {LANGUAGES.map((l) => (
+                  {allowedLanguageOptions.map((l) => (
                     <option key={l.id} value={l.id}>
                       {l.name}
                     </option>
@@ -1860,7 +1928,7 @@ export default function ClassroomView() {
                           }
                           className="w-full bg-background border border-border rounded p-2 text-sm"
                         >
-                          {LANGUAGES.map((l) => (
+                          {allowedLanguageOptions.map((l) => (
                             <option key={l.id} value={l.id}>
                               {l.name}
                             </option>
