@@ -47,6 +47,8 @@ import {
   X,
   Link2,
   Accessibility,
+  Maximize,
+  Minimize,
 } from "lucide-react";
 import {
   Panel,
@@ -310,21 +312,27 @@ export default function ClassroomView() {
   const [showReportMenu, setShowReportMenu] = useState(false);
 
   // --- ESTADOS DE ACESSIBILIDADE ---
-  const [highContrast, setHighContrast] = useState(() => {
-    return localStorage.getItem("a11y_highContrast") === "true";
-  });
-  const [screenReaderMode, setScreenReaderMode] = useState(() => {
-    return localStorage.getItem("a11y_screenReaderMode") === "true";
-  });
+  // --- ESTADOS DE ACESSIBILIDADE ---
+  const [highContrast, setHighContrast] = useState(
+    () => localStorage.getItem("a11y_highContrast") === "true",
+  );
+  const [screenReaderMode, setScreenReaderMode] = useState(
+    () => localStorage.getItem("a11y_screenReaderMode") === "true",
+  );
+  const [zenMode, setZenMode] = useState(
+    () => localStorage.getItem("a11y_zenMode") === "true",
+  );
   const [showA11yMenu, setShowA11yMenu] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("a11y_highContrast", String(highContrast));
   }, [highContrast]);
-
   useEffect(() => {
     localStorage.setItem("a11y_screenReaderMode", String(screenReaderMode));
   }, [screenReaderMode]);
+  useEffect(() => {
+    localStorage.setItem("a11y_zenMode", String(zenMode));
+  }, [zenMode]);
 
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
@@ -1472,18 +1480,36 @@ export default function ClassroomView() {
     </div>
   );
 
+  // --- TRATAMENTO SEMÂNTICO DE ERROS (Acessibilidade Cognitiva) ---
+  const getSemanticHint = () => {
+    if (!verdict || verdict === "Accepted" || verdict === "Processando...")
+      return null;
+    switch (verdict) {
+      case "Compilation Error":
+        return "Há um erro gramatical no código (Syntax Error). Verifique pontos e vírgulas, chaves não fechadas ou nomes de comandos digitados incorretamente.";
+      case "Runtime Error":
+        return "O código rodou, mas falhou no meio do processo. Procure por divisões por zero, acesso a listas fora do limite ou variáveis nulas.";
+      case "Time Limit Exceeded":
+        return "O programa demorou muito para responder. É provável que haja um 'loop infinito' (ex: um laço while que nunca atinge a condição de parada).";
+      case "Wrong Answer":
+        return "A saída do seu código não é exatamente igual ao esperado no exemplo. Cuidado com espaços extras, letras maiúsculas/minúsculas e quebras de linha.";
+      default:
+        return "Ocorreu um erro técnico inesperado no servidor de avaliação.";
+    }
+  };
+
   const consoleContent = (
-    <div className="h-full overflow-y-auto bg-background p-6">
+    <div className="h-full overflow-y-auto bg-background p-4 sm:p-6 flex flex-col">
       {verdict ? (
         <div
           className={cn(
-            "rounded-xl border p-6 mb-8 mt-2 shadow-sm",
+            "rounded-xl border p-5 sm:p-6 mb-4 shadow-sm flex flex-col transition-colors motion-reduce:transition-none shrink-0",
             verdict === "Accepted"
               ? "bg-emerald-900/10 border-emerald-500/30"
               : "bg-red-900/10 border-red-500/30",
           )}
         >
-          <div className="flex items-center gap-3 font-bold mb-4 text-xl">
+          <div className="flex items-center gap-3 font-bold mb-4 text-lg sm:text-xl shrink-0">
             {verdict === "Accepted" ? (
               <CheckCircle className="text-emerald-500" size={24} />
             ) : (
@@ -1499,40 +1525,61 @@ export default function ClassroomView() {
           </div>
 
           {lastSubmission && (
-            <div className="grid grid-cols-2 gap-4 mt-6">
-              <div className="bg-background p-4 rounded-lg border border-border">
-                <div className="text-sm text-muted mb-2 flex items-center gap-2 font-medium">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4 mt-2 shrink-0">
+              <div className="bg-background p-3 sm:p-4 rounded-lg border border-border">
+                <div className="text-xs sm:text-sm text-muted mb-1 sm:mb-2 flex items-center gap-2 font-medium">
                   <Clock size={16} /> Tempo
                 </div>
-                <div className="font-mono text-xl text-white">
+                <div className="font-mono text-lg sm:text-xl text-zinc-100">
                   {lastSubmission.executionTime}ms
                 </div>
               </div>
-              <div className="bg-background p-4 rounded-lg border border-border">
-                <div className="text-sm text-muted mb-2 flex items-center gap-2 font-medium">
+              <div className="bg-background p-3 sm:p-4 rounded-lg border border-border">
+                <div className="text-xs sm:text-sm text-muted mb-1 sm:mb-2 flex items-center gap-2 font-medium">
                   <Cpu size={16} /> Memória
                 </div>
-                <div className="font-mono text-xl text-white">
+                <div className="font-mono text-lg sm:text-xl text-zinc-100">
                   {lastSubmission.memoryUsage}KB
                 </div>
               </div>
             </div>
           )}
 
-          <div className="mt-6">
-            <div className="text-sm font-bold text-muted mb-3 uppercase tracking-wider">
-              LOGS DO SISTEMA
+          <div className="mt-6 flex flex-col shrink-0">
+            {/* Dica Semântica Exclusiva para Erros */}
+            {getSemanticHint() && (
+              <div className="mb-5 p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg flex items-start gap-3 shrink-0">
+                <BookOpen className="shrink-0 text-blue-400 mt-0.5" size={20} />
+                <div>
+                  <h4 className="font-semibold text-blue-300 mb-1 text-xs sm:text-sm uppercase tracking-wide">
+                    Dica de Resolução
+                  </h4>
+                  <p className="text-xs sm:text-sm text-blue-200 leading-relaxed">
+                    {getSemanticHint()}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="text-xs sm:text-sm font-bold text-muted mb-3 uppercase tracking-wider shrink-0">
+              {verdict === "Accepted"
+                ? "Saída do Programa"
+                : "Logs Técnicos / Detalhes"}
             </div>
-            <LogViewer
-              logs={lastSubmission?.output || lastSubmission?.stderr || ""}
-              status={(lastSubmission?.status as any) || "Pending"}
-            />
+            <div className="shrink-0 overflow-hidden rounded-lg border border-border/50">
+              <LogViewer
+                logs={lastSubmission?.output || lastSubmission?.stderr || ""}
+                status={(lastSubmission?.status as any) || "Pending"}
+              />
+            </div>
           </div>
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center h-full text-muted space-y-4">
+        <div className="flex flex-col items-center justify-center h-full text-muted space-y-4 min-h-[200px] shrink-0">
           <Terminal size={48} className="opacity-20" />
-          <p>Execute seu código para ver os resultados aqui.</p>
+          <p className="text-sm sm:text-base text-center px-4">
+            Execute seu código para ver os resultados aqui.
+          </p>
         </div>
       )}
     </div>
@@ -1540,43 +1587,45 @@ export default function ClassroomView() {
 
   return (
     <div className="flex flex-col h-screen bg-background text-zinc-100 overflow-hidden font-sans selection:bg-primary/20">
-      <header className="flex-none border-b border-border bg-surface px-4 py-3 md:px-6 md:py-4">
-        <div className="flex items-center gap-4 mb-4">
-          <Link
-            to="/dashboard"
-            className="p-2 hover:bg-white/10 rounded-full text-muted hover:text-white transition-colors"
-          >
-            <ArrowLeft size={24} />
-          </Link>
-          <h2 className="text-xl md:text-2xl font-semibold tracking-tight text-white truncate">
-            {classroom.name}
-          </h2>
-        </div>
+      {(!zenMode || activeTab !== "classwork") && (
+        <header className="flex-none border-b border-border bg-surface px-4 py-3 md:px-6 md:py-4">
+          <div className="flex items-center gap-4 mb-4">
+            <Link
+              to="/dashboard"
+              className="p-2 hover:bg-white/10 rounded-full text-muted hover:text-white transition-colors"
+            >
+              <ArrowLeft size={24} />
+            </Link>
+            <h2 className="text-xl md:text-2xl font-semibold tracking-tight text-white truncate">
+              {classroom.name}
+            </h2>
+          </div>
 
-        <nav className="flex gap-6 text-base font-medium overflow-x-auto no-scrollbar">
-          {[
-            { id: "stream", label: "Mural" },
-            { id: "classwork", label: "Atividades" },
-            { id: "people", label: "Pessoas" },
-            isOwner ? { id: "analytics", label: "Estatísticas" } : null,
-          ]
-            .filter(Boolean)
-            .map((tab: any) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={cn(
-                  "pb-2 border-b-2 transition-colors px-1 whitespace-nowrap",
-                  activeTab === tab.id
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted hover:text-zinc-100",
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-        </nav>
-      </header>
+          <nav className="flex gap-6 text-base font-medium overflow-x-auto no-scrollbar">
+            {[
+              { id: "stream", label: "Mural" },
+              { id: "classwork", label: "Atividades" },
+              { id: "people", label: "Pessoas" },
+              isOwner ? { id: "analytics", label: "Estatísticas" } : null,
+            ]
+              .filter(Boolean)
+              .map((tab: any) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={cn(
+                    "pb-2 border-b-2 transition-colors px-1 whitespace-nowrap",
+                    activeTab === tab.id
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted hover:text-zinc-100",
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+          </nav>
+        </header>
+      )}
 
       <main className="flex-1 overflow-hidden relative">
         {/* -- STREAMS -- */}
@@ -2076,6 +2125,29 @@ export default function ClassroomView() {
 
                 <div className="w-px h-8 bg-border mx-2" />
 
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-11 w-11"
+                  onClick={handleResetCode}
+                  title="Resetar Código"
+                >
+                  <RefreshCw size={20} />
+                </Button>
+
+                {zenMode && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 mr-2 motion-reduce:transition-none"
+                    onClick={() => setZenMode(false)}
+                    title="Sair do Modo Foco"
+                    aria-label="Sair do Modo Foco"
+                  >
+                    <Minimize size={20} />
+                  </Button>
+                )}
+
                 <div className="relative">
                   <Button
                     variant="ghost"
@@ -2091,13 +2163,27 @@ export default function ClassroomView() {
                     <div className="absolute right-0 mt-2 w-72 bg-surface border border-border rounded-lg shadow-xl z-50 py-2 animate-in fade-in zoom-in-95">
                       <button
                         onClick={() => {
+                          setZenMode(!zenMode);
+                          setShowA11yMenu(false);
+                        }}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between transition-colors text-zinc-300"
+                        aria-pressed={zenMode}
+                      >
+                        Modo Foco (Oculta distrações){" "}
+                        {zenMode && (
+                          <CheckCircle size={16} className="text-primary" />
+                        )}
+                      </button>
+                      <div className="h-px bg-border my-1" />
+                      <button
+                        onClick={() => {
                           setHighContrast(!highContrast);
                           setShowA11yMenu(false);
                         }}
                         className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between transition-colors text-zinc-300"
                         aria-pressed={highContrast}
                       >
-                        Alto Contraste (hc-black){" "}
+                        Alto Contraste{" "}
                         {highContrast && (
                           <CheckCircle size={16} className="text-primary" />
                         )}
@@ -2108,7 +2194,6 @@ export default function ClassroomView() {
                           setShowA11yMenu(false);
                         }}
                         className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between transition-colors text-zinc-300"
-                        title="Otimiza a leitura do editor para tecnologias assistivas"
                         aria-pressed={screenReaderMode}
                       >
                         Modo Leitor de Tela{" "}
@@ -2124,16 +2209,6 @@ export default function ClassroomView() {
                     </div>
                   )}
                 </div>
-
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-11 w-11"
-                  onClick={handleResetCode}
-                  title="Resetar Código"
-                >
-                  <RefreshCw size={20} />
-                </Button>
 
                 <Select
                   value={languageId}
@@ -2244,17 +2319,28 @@ export default function ClassroomView() {
                         <RefreshCw size={16} /> Resetar Código
                       </button>
 
-                      <button
-                        onClick={handleResetCode}
-                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center gap-2"
-                      >
-                        <RefreshCw size={16} /> Resetar Código
-                      </button>
-
                       <div className="h-px bg-border my-1" />
+                      <button
+                        onClick={() => setZenMode(!zenMode)}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between"
+                        aria-pressed={zenMode}
+                      >
+                        <span className="flex items-center gap-2 text-zinc-300">
+                          {zenMode ? (
+                            <Minimize size={16} />
+                          ) : (
+                            <Maximize size={16} />
+                          )}{" "}
+                          Modo Foco
+                        </span>
+                        {zenMode && (
+                          <CheckCircle size={16} className="text-primary" />
+                        )}
+                      </button>
                       <button
                         onClick={() => setHighContrast(!highContrast)}
                         className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between"
+                        aria-pressed={highContrast}
                       >
                         <span className="flex items-center gap-2 text-zinc-300">
                           <Accessibility size={16} /> Alto Contraste
