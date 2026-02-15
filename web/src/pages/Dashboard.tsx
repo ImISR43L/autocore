@@ -64,21 +64,32 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [userName, setUserName] = useState("Visitante");
 
   useEffect(() => {
     const getUser = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
       if (user) {
         setMyUserId(user.id);
+
+        // Fallback progressivo: full_name -> name -> prefixo do e-mail -> Visitante
+        const metaName =
+          user.user_metadata?.full_name || user.user_metadata?.name;
+
+        if (metaName && metaName.trim() !== "") {
+          setUserName(metaName.split(" ")[0]);
+        } else if (user.email) {
+          setUserName(user.email.split("@")[0]);
+        } else {
+          setUserName("Visitante");
+        }
       }
     };
     getUser();
   }, []);
-
-  const userName =
-    localStorage.getItem("userName")?.split(" ")[0] || "Visitante";
 
   useEffect(() => {
     fetchClassrooms();

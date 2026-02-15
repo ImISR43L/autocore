@@ -81,7 +81,7 @@ interface Announcement {
   id: string;
   content: string;
   createdAt: string;
-  author: { email: string };
+  author: { id?: string; email: string; name?: string };
   links?: AnnouncementLink[];
   attachments?: any[];
 }
@@ -1845,11 +1845,13 @@ export default function ClassroomView() {
                       <div className="flex items-start justify-between mb-4 border-b border-border pb-4">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-sm">
-                            {a.author?.email.charAt(0).toUpperCase()}
+                            {(a.author?.name || a.author?.email)
+                              .charAt(0)
+                              .toUpperCase()}
                           </div>
                           <div>
                             <div className="text-base font-medium text-foreground">
-                              {a.author?.email}
+                              {a.author?.name || a.author?.email}
                             </div>
                             <div className="text-sm text-muted">
                               {new Date(a.createdAt).toLocaleDateString()}
