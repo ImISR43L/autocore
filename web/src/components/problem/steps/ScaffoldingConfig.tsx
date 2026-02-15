@@ -263,13 +263,17 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
               className={cn(
                 "h-9 text-xs px-3 transition-all border",
                 isParamsOutOfSync
-                  ? "border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 animate-pulse"
+                  ? "border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 animate-pulse motion-reduce:animate-none"
                   : "border-transparent text-muted opacity-50 hover:bg-transparent cursor-default",
               )}
             >
               <RefreshCw
                 size={14}
-                className={cn("mr-2", isParamsOutOfSync && "animate-spin-slow")}
+                className={cn(
+                  "mr-2",
+                  isParamsOutOfSync &&
+                    "animate-spin-slow motion-reduce:animate-none",
+                )}
               />
               {isParamsOutOfSync ? "Sincronizar Assinatura" : "Sincronizado"}
             </Button>
@@ -378,14 +382,17 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                   />
                 </div>
                 {!isMainFile && (
-                  <Trash2
-                    size={14}
-                    className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
+                  <button
+                    type="button"
+                    aria-label="Remover arquivo"
                     onClick={(e) => {
                       e.stopPropagation();
                       remove(index);
                     }}
-                  />
+                    className="p-2 -mr-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive/10 text-muted hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded transition-all"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 )}
               </div>
             );

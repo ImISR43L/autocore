@@ -325,7 +325,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
           {isMissingRequiredTests && (
             <AlertTriangle
               size={16}
-              className="text-destructive animate-pulse"
+              className="text-destructive animate-pulse motion-reduce:animate-none"
             />
           )}
         </button>
@@ -371,7 +371,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                   className={cn(
                     "h-7 text-xs px-2 transition-all border",
                     isParamsOutOfSync
-                      ? "border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 animate-pulse"
+                      ? "border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 animate-pulse motion-reduce:animate-none"
                       : "border-transparent text-muted opacity-50 hover:bg-transparent cursor-default",
                   )}
                 >
@@ -379,7 +379,8 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                     size={12}
                     className={cn(
                       "mr-1",
-                      isParamsOutOfSync && "animate-spin-slow",
+                      isParamsOutOfSync &&
+                        "animate-spin-slow motion-reduce:animate-none",
                     )}
                   />
                   {isParamsOutOfSync
@@ -538,7 +539,10 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
               className="flex-1 sm:flex-none border-primary text-primary hover:bg-primary/10"
             >
               {isRunning ? (
-                <Loader2 size={16} className="animate-spin mr-2" />
+                <Loader2
+                  size={16}
+                  className="animate-spin motion-reduce:animate-none mr-2"
+                />
               ) : (
                 <Play size={16} className="mr-2" />
               )}
@@ -648,8 +652,9 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                     </label>
                     <button
                       type="button"
+                      aria-label={`Remover caso de teste ${index + 1}`}
                       onClick={() => removeTest(index)}
-                      className="text-muted hover:text-destructive transition-colors"
+                      className="p-2 -mr-2 text-muted hover:text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded transition-all"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -663,7 +668,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                     </label>
                     <textarea
                       {...register(getName(`testCases.${index}.input`))}
-                      className="w-full bg-background border border-border rounded-md p-3 text-base text-zinc-100 font-mono resize-none focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all min-h-[80px]"
+                      className="w-full bg-background border border-border rounded-md p-3 text-base text-zinc-100 font-mono resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary transition-all min-h-[80px]"
                       placeholder="Ex: 10 20"
                     />
                   </div>
@@ -676,10 +681,10 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                         getName(`testCases.${index}.expectedOutput`),
                       )}
                       className={cn(
-                        "w-full bg-background border rounded-md p-3 text-base text-zinc-100 font-mono resize-none focus:outline-none transition-all min-h-[80px]",
+                        "w-full bg-background border rounded-md p-3 text-base text-zinc-100 font-mono resize-none focus-visible:outline-none focus-visible:ring-2 transition-all min-h-[80px]",
                         expectedError
-                          ? "border-destructive focus:border-destructive"
-                          : "border-border focus:border-primary focus:ring-1 focus:ring-primary/20",
+                          ? "border-destructive focus-visible:ring-destructive focus-visible:border-destructive"
+                          : "border-border focus-visible:ring-primary focus-visible:border-primary",
                       )}
                       placeholder="Ex: 30"
                     />
@@ -704,7 +709,10 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
               )}
             >
               {isMissingRequiredTests ? (
-                <AlertTriangle size={32} className="mx-auto mb-2" />
+                <AlertTriangle
+                  size={32}
+                  className="mx-auto mb-2 text-destructive animate-pulse motion-reduce:animate-none"
+                />
               ) : (
                 <FlaskConical size={32} className="mx-auto mb-2 opacity-50" />
               )}

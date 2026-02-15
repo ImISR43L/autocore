@@ -28,7 +28,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
               "placeholder:text-muted focus:placeholder:text-zinc-500",
 
               // Estados de Foco (Anel Emerald)
-              "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",
 
               // Espaçamento para o ícone (não sobrepor texto longo)
               "pr-10",
