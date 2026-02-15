@@ -41,11 +41,12 @@ import {
   BookOpen,
   Code2,
   History,
-  GraduationCap, // Icone para a nota
-  MessageSquare, // Icone para comentários
+  GraduationCap,
+  MessageSquare,
   Paperclip,
   X,
   Link2,
+  Accessibility,
 } from "lucide-react";
 import {
   Panel,
@@ -307,6 +308,23 @@ export default function ClassroomView() {
   const [activeChildIndex, setActiveChildIndex] = useState(0);
 
   const [showReportMenu, setShowReportMenu] = useState(false);
+
+  // --- ESTADOS DE ACESSIBILIDADE ---
+  const [highContrast, setHighContrast] = useState(() => {
+    return localStorage.getItem("a11y_highContrast") === "true";
+  });
+  const [screenReaderMode, setScreenReaderMode] = useState(() => {
+    return localStorage.getItem("a11y_screenReaderMode") === "true";
+  });
+  const [showA11yMenu, setShowA11yMenu] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem("a11y_highContrast", String(highContrast));
+  }, [highContrast]);
+
+  useEffect(() => {
+    localStorage.setItem("a11y_screenReaderMode", String(screenReaderMode));
+  }, [screenReaderMode]);
 
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
@@ -1328,7 +1346,7 @@ export default function ClassroomView() {
         <Editor
           key={`${languageId}-${displayProblem?.id}-${activeFileIndex}`}
           height="100%"
-          theme="vs-dark"
+          theme={highContrast ? "hc-black" : "vs-dark"}
           language={LANGUAGE_MAP[languageId] || "plaintext"}
           value={files[activeFileIndex]?.content || ""}
           onChange={handleCodeChange}
@@ -1339,6 +1357,7 @@ export default function ClassroomView() {
             fontSize: 16,
             scrollBeyondLastLine: false,
             padding: { top: 16 },
+            accessibilitySupport: screenReaderMode ? "on" : "auto", // <-- Trava de Leitor
           }}
         />
       </div>
@@ -2057,6 +2076,55 @@ export default function ClassroomView() {
 
                 <div className="w-px h-8 bg-border mx-2" />
 
+                <div className="relative">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11"
+                    onClick={() => setShowA11yMenu(!showA11yMenu)}
+                    title="Acessibilidade"
+                    aria-label="Menu de Acessibilidade"
+                  >
+                    <Accessibility size={20} />
+                  </Button>
+                  {showA11yMenu && (
+                    <div className="absolute right-0 mt-2 w-72 bg-surface border border-border rounded-lg shadow-xl z-50 py-2 animate-in fade-in zoom-in-95">
+                      <button
+                        onClick={() => {
+                          setHighContrast(!highContrast);
+                          setShowA11yMenu(false);
+                        }}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between transition-colors text-zinc-300"
+                        aria-pressed={highContrast}
+                      >
+                        Alto Contraste (hc-black){" "}
+                        {highContrast && (
+                          <CheckCircle size={16} className="text-primary" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setScreenReaderMode(!screenReaderMode);
+                          setShowA11yMenu(false);
+                        }}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between transition-colors text-zinc-300"
+                        title="Otimiza a leitura do editor para tecnologias assistivas"
+                        aria-pressed={screenReaderMode}
+                      >
+                        Modo Leitor de Tela{" "}
+                        {screenReaderMode && (
+                          <CheckCircle size={16} className="text-primary" />
+                        )}
+                      </button>
+                      <div className="px-4 py-3 text-xs text-muted border-t border-border mt-1 leading-relaxed">
+                        Dica: Pressione{" "}
+                        <b className="text-zinc-200">Ctrl + M</b> no editor de
+                        código para liberar o foco da tecla Tab (Escape Trap).
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <Button
                   variant="ghost"
                   size="icon"
@@ -2176,6 +2244,42 @@ export default function ClassroomView() {
                         <RefreshCw size={16} /> Resetar Código
                       </button>
 
+                      <button
+                        onClick={handleResetCode}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center gap-2"
+                      >
+                        <RefreshCw size={16} /> Resetar Código
+                      </button>
+
+                      <div className="h-px bg-border my-1" />
+                      <button
+                        onClick={() => setHighContrast(!highContrast)}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-2 text-zinc-300">
+                          <Accessibility size={16} /> Alto Contraste
+                        </span>
+                        {highContrast && (
+                          <CheckCircle size={16} className="text-primary" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setScreenReaderMode(!screenReaderMode)}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-2 text-zinc-300">
+                          <Accessibility size={16} /> Leitor de Tela
+                        </span>
+                        {screenReaderMode && (
+                          <CheckCircle size={16} className="text-primary" />
+                        )}
+                      </button>
+                      <div className="px-4 py-2 text-xs text-muted">
+                        Dica: Use <b className="text-zinc-200">Ctrl + M</b> no
+                        editor para liberar o Tab.
+                      </div>
+                      <div className="h-px bg-border my-1" />
+
                       <div className="px-4 py-2 border-t border-border mt-1">
                         <label className="text-xs text-muted block mb-1">
                           Linguagem
@@ -2208,7 +2312,7 @@ export default function ClassroomView() {
                   <Panel defaultSize={60} minSize={30}>
                     {editorContent}
                   </Panel>
-                  <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 transition-colors cursor-col-resize" />
+                  <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 focus-visible:bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-surface transition-colors cursor-col-resize" />
                   <Panel defaultSize={40} minSize={20}>
                     {isOwner ? (
                       // Se for professor, ocupa todo o painel direito com detalhes, sem console
@@ -2648,7 +2752,7 @@ export default function ClassroomView() {
                   <Editor
                     height="100%"
                     width="100%"
-                    theme="vs-dark"
+                    theme={highContrast ? "hc-black" : "vs-dark"}
                     language="python"
                     value={
                       (isOwner &&
@@ -2662,6 +2766,7 @@ export default function ClassroomView() {
                       fontSize: 16,
                       scrollBeyondLastLine: false,
                       automaticLayout: true,
+                      accessibilitySupport: screenReaderMode ? "on" : "auto", // <-- Trava de Leitor
                     }}
                   />
                 </div>
