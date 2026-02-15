@@ -1548,13 +1548,13 @@ export default function ClassroomView() {
           <div className="mt-6 flex flex-col shrink-0">
             {/* Dica Semântica Exclusiva para Erros */}
             {getSemanticHint() && (
-              <div className="mb-5 p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg flex items-start gap-3 shrink-0">
-                <BookOpen className="shrink-0 text-blue-400 mt-0.5" size={20} />
+              <div className="mb-5 p-4 bg-blue-950/50 border border-blue-400/40 rounded-lg flex items-start gap-3 shrink-0">
+                <BookOpen className="shrink-0 text-blue-300 mt-0.5" size={20} />
                 <div>
-                  <h4 className="font-semibold text-blue-300 mb-1 text-xs sm:text-sm uppercase tracking-wide">
+                  <h4 className="font-semibold text-blue-100 mb-1 text-xs sm:text-sm uppercase tracking-wide">
                     Dica de Resolução
                   </h4>
-                  <p className="text-xs sm:text-sm text-blue-200 leading-relaxed">
+                  <p className="text-xs sm:text-sm text-blue-50 leading-relaxed">
                     {getSemanticHint()}
                   </p>
                 </div>

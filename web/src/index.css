@@ -69,3 +69,7 @@ a:hover {
 button {
   font-family: inherit;
 }
+
+.dark {
+  --muted-foreground: 240 5% 64.9%;
+}
