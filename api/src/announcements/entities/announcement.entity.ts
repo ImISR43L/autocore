@@ -26,4 +26,10 @@ export class Announcement {
     onDelete: 'CASCADE', // Se apagar a turma, apaga os avisos
   })
   classroom: Classroom;
+
+  @Column({ type: 'jsonb', nullable: true, default: [] })
+  attachments: any[];
+
+  @Column({ type: 'jsonb', nullable: true, default: [] })
+  links: any[];
 }

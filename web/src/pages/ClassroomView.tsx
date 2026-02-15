@@ -64,11 +64,20 @@ import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
 
 // --- INTERFACES ---
+interface AnnouncementLink {
+  url: string;
+  title: string;
+  description: string;
+  imageUrl: string;
+}
+
 interface Announcement {
   id: string;
   content: string;
   createdAt: string;
   author: { email: string };
+  links?: AnnouncementLink[];
+  attachments?: any[];
 }
 
 interface Parameter {
@@ -1591,6 +1600,44 @@ export default function ClassroomView() {
                       <div className="text-base whitespace-pre-wrap text-zinc-300 leading-relaxed">
                         {a.content}
                       </div>
+
+                      {/* Renderização de Links (Preview) */}
+                      {a.links && a.links.length > 0 && (
+                        <div className="flex flex-col gap-3 mt-5 border-t border-border/50 pt-4">
+                          {a.links.map((link, idx) => (
+                            <a
+                              key={idx}
+                              href={link.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex flex-col sm:flex-row bg-background border border-border rounded-lg overflow-hidden hover:border-primary/50 transition-colors group"
+                            >
+                              {link.imageUrl && (
+                                <div className="w-full sm:w-48 h-32 sm:h-auto shrink-0 bg-zinc-900 border-b sm:border-b-0 sm:border-r border-border">
+                                  <img
+                                    src={link.imageUrl}
+                                    alt="Preview"
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              )}
+                              <div className="p-3 sm:p-4 flex flex-col justify-center min-w-0 flex-1">
+                                <h4 className="text-sm font-semibold text-zinc-100 truncate group-hover:text-primary transition-colors">
+                                  {link.title}
+                                </h4>
+                                {link.description && (
+                                  <p className="text-xs text-muted line-clamp-2 mt-1">
+                                    {link.description}
+                                  </p>
+                                )}
+                                <span className="text-xs text-muted/50 mt-2 truncate">
+                                  {link.url}
+                                </span>
+                              </div>
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </Card>
                   ))}
                 </div>
