@@ -15,6 +15,7 @@ import {
   Maximize2,
   Minimize2,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import { dryRunProblem } from "../../../lib/api";
 import { toast } from "sonner";
@@ -52,6 +53,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
   const [runResults, setRunResults] = useState<any>(null);
   const [activeSolutionTab, setActiveSolutionTab] = useState(0);
   const [isSolutionFullscreen, setIsSolutionFullscreen] = useState(false);
+  const [activeMainTab, setActiveMainTab] = useState<"code" | "tests">("code");
 
   // KEY MESTRA: Controla o ciclo de vida do Editor para forçar atualizações
   const [remountKey, setRemountKey] = useState(0);
@@ -73,10 +75,16 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
 
   // Watchers
   const starterCode = watch(getName("starterCode"));
-  const solutionCode = watch(getName("solutionCode"));
   const firstSolutionName = watch(getName(`solutionCode.0.name`));
   const firstSolutionContent = watch(getName(`solutionCode.0.content`)); // Necessário para sync de params
   const parameters = watch(getName("parameters")) || []; // Necessário para sync de params
+
+  const returnType = watch(getName("returnType")) || "void";
+  const testCases = watch(`${basePath}testCases`) || [];
+
+  const requiresTestCases =
+    parameters.length > 0 && returnType !== "void" && returnType !== "";
+  const isMissingRequiredTests = requiresTestCases && testCases.length === 0;
 
   // Utils
   const cleanCopy = (files: any[]) => {
@@ -273,148 +281,203 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
   };
 
   return (
-    <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500 w-full pb-8">
-      {/* SEÇÃO 1: EDITOR DO GABARITO */}
+    <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 w-full pb-8">
+      {/* --- NAVEGAÇÃO POR ABAS --- */}
+      <div className="flex border-b border-border">
+        <button
+          type="button"
+          className={cn(
+            "px-6 py-3 border-b-2 font-medium text-sm transition-colors flex items-center gap-2",
+            activeMainTab === "code"
+              ? "border-primary text-primary bg-primary/5"
+              : "border-transparent text-muted hover:text-zinc-100 hover:bg-surface",
+          )}
+          onClick={() => setActiveMainTab("code")}
+        >
+          <Code2 size={18} />
+          Código & Configuração
+        </button>
+        <button
+          type="button"
+          className={cn(
+            "px-6 py-3 border-b-2 font-medium text-sm transition-colors flex items-center gap-2",
+            activeMainTab === "tests"
+              ? "border-primary text-primary bg-primary/5"
+              : "border-transparent text-muted hover:text-zinc-100 hover:bg-surface",
+            isMissingRequiredTests &&
+              activeMainTab !== "tests" &&
+              "text-destructive",
+          )}
+          onClick={() => setActiveMainTab("tests")}
+        >
+          <FlaskConical size={18} />
+          Casos de Teste
+          {isMissingRequiredTests && (
+            <AlertTriangle
+              size={16}
+              className="text-destructive animate-pulse"
+            />
+          )}
+        </button>
+      </div>
+
+      {/* --- ABA 1: EDITOR DO GABARITO --- */}
       <div
         className={cn(
-          "flex flex-col gap-3 transition-all duration-300",
-          isSolutionFullscreen
-            ? "fixed inset-0 z-50 bg-background p-4 h-screen w-screen"
-            : "w-full",
+          "flex flex-col gap-6",
+          activeMainTab !== "code" && "hidden",
         )}
       >
-        <div className="border-b border-border pb-2 flex flex-wrap justify-between items-end flex-none gap-3">
-          <div className="flex items-center gap-3">
-            <div>
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Code2 className="text-primary" size={20} />
-                {isSolutionFullscreen
-                  ? "Edição: Gabarito"
-                  : "Solução de Referência"}
-              </h3>
-              {!isSolutionFullscreen && (
-                <p className="text-sm text-muted">Código validador (oculto).</p>
+        <div
+          className={cn(
+            "flex flex-col gap-3 transition-all duration-300",
+            isSolutionFullscreen
+              ? "fixed inset-0 z-50 bg-background p-4 h-screen w-screen"
+              : "w-full",
+          )}
+        >
+          <div className="border-b border-border pb-2 flex flex-wrap justify-between items-end flex-none gap-3">
+            <div className="flex items-center gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Code2 className="text-primary" size={20} />
+                  {isSolutionFullscreen
+                    ? "Edição: Gabarito"
+                    : "Solução de Referência"}
+                </h3>
+                {!isSolutionFullscreen && (
+                  <p className="text-sm text-muted">
+                    Código validador (oculto).
+                  </p>
+                )}
+              </div>
+
+              {parameters.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSyncParams}
+                  disabled={!isParamsOutOfSync}
+                  className={cn(
+                    "h-7 text-xs px-2 transition-all border",
+                    isParamsOutOfSync
+                      ? "border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 animate-pulse"
+                      : "border-transparent text-muted opacity-50 hover:bg-transparent cursor-default",
+                  )}
+                >
+                  <RefreshCw
+                    size={12}
+                    className={cn(
+                      "mr-1",
+                      isParamsOutOfSync && "animate-spin-slow",
+                    )}
+                  />
+                  {isParamsOutOfSync
+                    ? "Sincronizar Assinatura"
+                    : "Assinatura Sincronizada"}
+                </Button>
               )}
             </div>
 
-            {/* BOTÃO DE SINCRONIZAÇÃO DE VARIÁVEIS - AGORA VISÍVEL E CONSISTENTE */}
-            {parameters.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsSolutionFullscreen(!isSolutionFullscreen)}
+                className="p-2 text-muted hover:text-white transition-colors"
+              >
+                {isSolutionFullscreen ? (
+                  <Minimize2 size={18} />
+                ) : (
+                  <Maximize2 size={18} />
+                )}
+              </button>
               <Button
                 size="sm"
-                variant="outline"
-                onClick={handleSyncParams}
-                disabled={!isParamsOutOfSync}
-                className={cn(
-                  "h-7 text-xs px-2 transition-all border",
-                  isParamsOutOfSync
-                    ? "border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 animate-pulse"
-                    : "border-transparent text-muted opacity-50 hover:bg-transparent cursor-default",
-                )}
+                variant="ghost"
+                onClick={handleResetSolution}
+                className="h-8 text-xs"
               >
-                <RefreshCw
-                  size={12}
-                  className={cn(
-                    "mr-1",
-                    isParamsOutOfSync && "animate-spin-slow",
-                  )}
-                />
-                {isParamsOutOfSync
-                  ? "Sincronizar Assinatura"
-                  : "Assinatura Sincronizada"}
+                <RotateCcw size={12} className="mr-1" /> Restaurar do Template
               </Button>
+            </div>
+          </div>
+
+          <div
+            key={`editor-container-${remountKey}`}
+            className={cn(
+              "border border-border rounded-md overflow-hidden bg-surface flex flex-col shadow-lg",
+              isSolutionFullscreen ? "flex-1" : "h-[400px]",
             )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsSolutionFullscreen(!isSolutionFullscreen)}
-              className="p-2 text-muted hover:text-white transition-colors"
-            >
-              {isSolutionFullscreen ? (
-                <Minimize2 size={18} />
-              ) : (
-                <Maximize2 size={18} />
-              )}
-            </button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleResetSolution}
-              className="h-8 text-xs"
-            >
-              <RotateCcw size={12} className="mr-1" /> Restaurar do Template
-            </Button>
-          </div>
-        </div>
-
-        {/* CONTAINER COM KEY PARA FORÇAR REMONTAGEM COMPLETA */}
-        <div
-          key={`editor-container-${remountKey}`}
-          className={cn(
-            "border border-border rounded-md overflow-hidden bg-surface flex flex-col shadow-lg",
-            isSolutionFullscreen ? "flex-1" : "h-[400px]",
-          )}
-        >
-          <div className="flex bg-background/50 overflow-x-auto no-scrollbar flex-none border-b border-border">
-            {solutionFields.map((field, index) => (
-              <div
-                key={field.id}
-                onClick={() => setActiveSolutionTab(index)}
-                className={cn(
-                  "px-4 py-2 text-sm cursor-pointer border-r border-border select-none",
-                  index === activeSolutionTab
-                    ? "bg-surface text-white border-t-2 border-t-primary"
-                    : "text-muted hover:bg-surface-hover",
-                )}
-              >
-                {watch(getName(`solutionCode.${index}.name`))}
-              </div>
-            ))}
-          </div>
-          <div className="flex-1 relative min-h-0">
-            <Suspense
-              fallback={
-                <div className="flex items-center justify-center h-full text-muted">
-                  Carregando...
+          >
+            <div className="flex bg-background/50 overflow-x-auto no-scrollbar flex-none border-b border-border">
+              {solutionFields.map((field, index) => (
+                <div
+                  key={field.id}
+                  onClick={() => setActiveSolutionTab(index)}
+                  className={cn(
+                    "px-4 py-2 text-sm cursor-pointer border-r border-border select-none",
+                    index === activeSolutionTab
+                      ? "bg-surface text-white border-t-2 border-t-primary"
+                      : "text-muted hover:bg-surface-hover",
+                  )}
+                >
+                  {watch(getName(`solutionCode.${index}.name`))}
                 </div>
-              }
-            >
-              {solutionFields.length > 0 &&
-                solutionFields[activeSolutionTab] && (
-                  <Controller
-                    control={control}
-                    name={getName(`solutionCode.${activeSolutionTab}.content`)}
-                    render={({ field }) => (
-                      <div className="absolute inset-0">
-                        <Editor
-                          key={`${field.name}-${remountKey}`} // Key redundante para garantir
-                          height="100%"
-                          theme="vs-dark"
-                          language={getLanguageFromExt(
-                            watch(
-                              getName(`solutionCode.${activeSolutionTab}.name`),
-                            ) || "",
-                          )}
-                          value={field.value}
-                          onChange={(value) => field.onChange(value)}
-                          options={{
-                            minimap: { enabled: false },
-                            fontSize: 14,
-                            automaticLayout: true,
-                          }}
-                        />
-                      </div>
-                    )}
-                  />
-                )}
-            </Suspense>
+              ))}
+            </div>
+            <div className="flex-1 relative min-h-0">
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center h-full text-muted">
+                    Carregando...
+                  </div>
+                }
+              >
+                {solutionFields.length > 0 &&
+                  solutionFields[activeSolutionTab] && (
+                    <Controller
+                      control={control}
+                      name={getName(
+                        `solutionCode.${activeSolutionTab}.content`,
+                      )}
+                      render={({ field }) => (
+                        <div className="absolute inset-0">
+                          <Editor
+                            key={`${field.name}-${remountKey}`}
+                            height="100%"
+                            theme="vs-dark"
+                            language={getLanguageFromExt(
+                              watch(
+                                getName(
+                                  `solutionCode.${activeSolutionTab}.name`,
+                                ),
+                              ) || "",
+                            )}
+                            value={field.value}
+                            onChange={(value) => field.onChange(value)}
+                            options={{
+                              minimap: { enabled: false },
+                              fontSize: 14,
+                              automaticLayout: true,
+                            }}
+                          />
+                        </div>
+                      )}
+                    />
+                  )}
+              </Suspense>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* SEÇÃO 2: CASOS DE TESTE */}
-      <div className="flex flex-col gap-6 w-full">
-        {/* ... (O restante do componente de testes permanece idêntico) ... */}
+      {/* --- ABA 2: CASOS DE TESTE --- */}
+      <div
+        className={cn(
+          "flex flex-col gap-6 w-full",
+          activeMainTab !== "tests" && "hidden",
+        )}
+      >
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-border pb-3 gap-4">
           <div>
             <h3 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -439,7 +502,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
               variant="outline"
               size="sm"
               onClick={handleDryRun}
-              disabled={isRunning}
+              disabled={isRunning || testFields.length === 0}
               className="flex-1 sm:flex-none border-primary text-primary hover:bg-primary/10"
             >
               {isRunning ? (
@@ -597,18 +660,35 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
             );
           })}
 
+          {/* VALIDAÇÃO VISUAL DE TESTES VAZIOS */}
           {testFields.length === 0 && (
-            <div className="text-center py-12 border-2 border-dashed border-border rounded-xl bg-surface/30 text-muted">
-              <FlaskConical size={32} className="mx-auto mb-2 opacity-50" />
-              <p>Nenhum caso de teste adicionado.</p>
+            <div
+              className={cn(
+                "text-center py-12 border-2 border-dashed rounded-xl transition-colors",
+                isMissingRequiredTests
+                  ? "border-destructive/50 bg-destructive/10 text-destructive"
+                  : "border-border bg-surface/30 text-muted",
+              )}
+            >
+              {isMissingRequiredTests ? (
+                <AlertTriangle size={32} className="mx-auto mb-2" />
+              ) : (
+                <FlaskConical size={32} className="mx-auto mb-2 opacity-50" />
+              )}
+              <p className="font-medium max-w-md mx-auto">
+                {isMissingRequiredTests
+                  ? "Atenção: Como sua atividade possui parâmetros e retorno definidos, é obrigatório adicionar pelo menos um caso de teste."
+                  : "Nenhum caso de teste adicionado."}
+              </p>
               <Button
-                variant="outline"
+                variant={isMissingRequiredTests ? "danger" : "outline"}
                 size="sm"
                 onClick={() =>
                   appendTest({ input: "", expectedOutput: "", isHidden: false })
                 }
                 className="mt-4"
               >
+                <Plus size={16} className="mr-2" />
                 Adicionar Primeiro Teste
               </Button>
             </div>

@@ -121,12 +121,54 @@ export const examSettingsSchema = z
   );
 
 // --- Schema Unificado (Discriminated Union) ---
-export const problemSchema = z.discriminatedUnion("type", [
-  basicInfoSchema
-    .extend({ type: z.literal("EXERCISE") })
-    .merge(exerciseDetailsSchema),
-  // Agora EXAM inclui 'questions' via examSettingsSchema
-  basicInfoSchema.extend({ type: z.literal("EXAM") }).merge(examSettingsSchema),
-]);
+// --- Schema Unificado (Discriminated Union) ---
+export const problemSchema = z
+  .discriminatedUnion("type", [
+    basicInfoSchema
+      .extend({ type: z.literal("EXERCISE") })
+      .merge(exerciseDetailsSchema),
+    // Agora EXAM inclui 'questions' via examSettingsSchema
+    basicInfoSchema
+      .extend({ type: z.literal("EXAM") })
+      .merge(examSettingsSchema),
+  ])
+  .superRefine((data, ctx) => {
+    // Função auxiliar para validar tanto Exercícios quanto Questões de Prova
+    const checkTestCases = (
+      parameters: any[],
+      returnType: string,
+      testCases: any[],
+      pathPrefix: (string | number)[],
+    ) => {
+      const hasParameters = parameters && parameters.length > 0;
+      const hasReturn =
+        returnType && returnType !== "void" && returnType.trim() !== "";
+      const hasNoTests = !testCases || testCases.length === 0;
+
+      if (hasParameters && hasReturn && hasNoTests) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "Obrigatório: Adicione pelo menos 1 caso de teste pois há parâmetros e retorno definidos.",
+          path: [...pathPrefix, "testCases"], // Trava o campo exato que gerou o erro
+        });
+      }
+    };
+
+    if (data.type === "EXERCISE") {
+      // Valida o exercício principal
+      checkTestCases(data.parameters, data.returnType, data.testCases, []);
+    } else if (data.type === "EXAM") {
+      // Valida cada questão da prova individualmente
+      data.questions.forEach((question, index) => {
+        checkTestCases(
+          question.parameters,
+          question.returnType,
+          question.testCases,
+          ["questions", index],
+        );
+      });
+    }
+  });
 
 export type ProblemFormValues = z.infer<typeof problemSchema>;
