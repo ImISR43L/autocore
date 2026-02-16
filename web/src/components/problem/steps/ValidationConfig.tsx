@@ -20,6 +20,7 @@ import { dryRunProblem } from "../../../lib/api";
 import { toast } from "sonner";
 import { Button } from "../../ui/Button";
 import { cn } from "../../../lib/utils";
+import { useMonacoTheme } from "../../../hooks/useMonacoTheme";
 
 const Editor = lazy(() => import("@monaco-editor/react"));
 
@@ -56,6 +57,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     watch,
     formState: { errors, dirtyFields },
   } = useFormContext();
+  useMonacoTheme();
 
   const [isRunning, setIsRunning] = useState(false);
   const [runResults, setRunResults] = useState<any>(null);
@@ -518,7 +520,6 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                           <Editor
                             key={`${field.name}-${remountKey}`}
                             height="100%"
-                            theme={isLightMode ? "vs" : "vs-dark"}
                             language={getLanguageFromExt(
                               watch(
                                 getName(

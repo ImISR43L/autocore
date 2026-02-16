@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import * as Diff from "diff";
+import { usePreferences } from "../contexts/PreferencesContext";
 
 interface DiffViewerProps {
   expected: string;
@@ -7,6 +8,60 @@ interface DiffViewerProps {
 }
 
 export const DiffViewer: React.FC<DiffViewerProps> = ({ expected, actual }) => {
+  const { colorblindMode, theme } = usePreferences(); // <--- Hook
+
+  // Lógica de Cores baseada no Modo
+  const colors = useMemo(() => {
+    const isDark = theme === "dark";
+
+    switch (colorblindMode) {
+      case "deuteranopia": // Azul (Correto) vs Laranja (Erro)
+        return {
+          bgRemoved: isDark
+            ? "rgba(37, 99, 235, 0.3)"
+            : "rgba(59, 130, 246, 0.2)",
+          textRemoved: isDark ? "#bfdbfe" : "#1e40af", // blue-200 / blue-800
+          bgAdded: isDark
+            ? "rgba(234, 88, 12, 0.3)"
+            : "rgba(249, 115, 22, 0.2)",
+          textAdded: isDark ? "#fed7aa" : "#9a3412", // orange-200 / orange-800
+          headerExpected: "#60a5fa", // blue-400
+          headerActual: "#fb923c", // orange-400
+        };
+      case "tritanopia": // Ciano (Correto) vs Rosa (Erro)
+        return {
+          bgRemoved: isDark
+            ? "rgba(8, 145, 178, 0.3)"
+            : "rgba(6, 182, 212, 0.2)",
+          textRemoved: isDark ? "#a5f3fc" : "#155e75",
+          bgAdded: isDark ? "rgba(225, 29, 72, 0.3)" : "rgba(244, 63, 94, 0.2)",
+          textAdded: isDark ? "#fecdd3" : "#9f1239",
+          headerExpected: "#22d3ee",
+          headerActual: "#fb7185",
+        };
+      case "achromatopsia": // Escala de Cinza + Estilos (Negrito/Sublinhado)
+        return {
+          bgRemoved: isDark ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.1)",
+          textRemoved: isDark ? "#ffffff" : "#000000",
+          bgAdded: isDark
+            ? "rgba(128, 128, 128, 0.3)"
+            : "rgba(128, 128, 128, 0.2)",
+          textAdded: isDark ? "#d4d4d8" : "#52525b",
+          headerExpected: isDark ? "#ffffff" : "#000000",
+          headerActual: isDark ? "#a1a1aa" : "#52525b",
+        };
+      default: // Padrão (Verde vs Vermelho)
+        return {
+          bgRemoved: "rgba(22, 101, 52, 0.5)",
+          textRemoved: "#dcfce7",
+          bgAdded: "rgba(127, 29, 29, 0.5)",
+          textAdded: "#fee2e2",
+          headerExpected: "#4ade80",
+          headerActual: "#f87171",
+        };
+    }
+  }, [colorblindMode, theme]);
+
   // 1. Lógica de Pré-processamento (JSON e Formatação)
   const { formattedExpected, formattedActual, isJson } = useMemo(() => {
     try {
@@ -108,7 +163,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ expected, actual }) => {
             style={{
               backgroundColor: "rgba(31, 41, 55, 0.8)",
               padding: "4px 8px",
-              color: "#4ade80",
+              color: colors.headerExpected,
               borderBottom: "1px solid #374151",
               textAlign: "center",
               fontSize: "10px",
@@ -132,10 +187,17 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ expected, actual }) => {
 
               const style: React.CSSProperties = part.removed
                 ? {
-                    backgroundColor: "rgba(22, 101, 52, 0.5)",
-                    color: "#dcfce7",
-                    textDecoration: isJson ? "none" : "underline",
+                    backgroundColor: colors.bgRemoved, // <--- USO DA COR
+                    color: colors.textRemoved, // <--- USO DA COR
+                    textDecoration:
+                      colorblindMode === "achromatopsia" || !isJson
+                        ? "underline"
+                        : "none", // Reforço visual
                     fontWeight: "bold",
+                    border:
+                      colorblindMode === "achromatopsia"
+                        ? "1px solid white"
+                        : "none",
                   } // Verde destaque
                 : { color: "#6b7280", opacity: 0.7 }; // Texto comum apagado
 
@@ -161,7 +223,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ expected, actual }) => {
             style={{
               backgroundColor: "rgba(31, 41, 55, 0.8)",
               padding: "4px 8px",
-              color: "#f87171",
+              color: colors.headerActual, // <--- USO DA COR
               borderBottom: "1px solid #374151",
               textAlign: "center",
               fontSize: "10px",
@@ -185,9 +247,13 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ expected, actual }) => {
 
               const style: React.CSSProperties = part.added
                 ? {
-                    backgroundColor: "rgba(127, 29, 29, 0.5)",
-                    color: "#fee2e2",
+                    backgroundColor: colors.bgAdded, // <--- USO DA COR
+                    color: colors.textAdded, // <--- USO DA COR
                     fontWeight: "bold",
+                    textDecoration:
+                      colorblindMode === "achromatopsia"
+                        ? "line-through"
+                        : "none", // Reforço visual
                   } // Vermelho destaque
                 : { color: "#d1d5db" }; // Texto comum normal
 
@@ -216,22 +282,22 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ expected, actual }) => {
             style={{
               width: "8px",
               height: "8px",
-              backgroundColor: "rgba(22, 101, 52, 0.5)",
+              backgroundColor: colors.bgRemoved,
               borderRadius: "2px",
             }}
           ></span>
-          <span>Faltou</span>
+          <span>Esperado</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
           <span
             style={{
               width: "8px",
               height: "8px",
-              backgroundColor: "rgba(127, 29, 29, 0.5)",
+              backgroundColor: colors.bgAdded,
               borderRadius: "2px",
             }}
           ></span>
-          <span>Incorreto/Extra</span>
+          <span>Seu Output</span>
         </div>
       </div>
     </div>

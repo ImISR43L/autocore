@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/Button";
+import { useMonacoTheme } from "../../../hooks/useMonacoTheme";
 
 const Editor = lazy(() => import("@monaco-editor/react"));
 
@@ -62,6 +63,8 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
   const [isLightMode, setIsLightMode] = useState(
     !document.documentElement.classList.contains("dark"),
   );
+
+  useMonacoTheme();
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -506,7 +509,6 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                       key={`${fields[activeIndex].id}-${activeIndex}`}
                       height="100%"
                       width="100%"
-                      theme={isLightMode ? "vs" : "vs-dark"}
                       language={getLanguageFromExt(
                         (fields[activeIndex] as any).name,
                       )}

@@ -74,10 +74,21 @@
   /* Deuteranopia e Protanopia (Eixo Verde-Vermelho) 
     Mapeamento: Verde -> Azul | Vermelho -> Laranja
   */
+  :root {
+    --status-success: 34 197 94; /* green-500 */
+    --status-error: 239 68 68; /* red-500 */
+    --status-warning: 234 179 8; /* yellow-500 */
+  }
+
+  /* Deuteranopia (Verde -> Azul | Vermelho -> Laranja) */
   :root[data-colorblind="deuteranopia"] {
-    --primary: 59 130 246; /* blue-500 */
-    --primary-dark: 37 99 235; /* blue-600 */
-    --destructive: 249 115 22; /* orange-500 */
+    --primary: 59 130 246;
+    --primary-dark: 37 99 235;
+    --destructive: 249 115 22;
+
+    /* Redefinição Semântica */
+    --status-success: 59 130 246; /* blue-500 */
+    --status-error: 249 115 22; /* orange-500 */
   }
   .dark[data-colorblind="deuteranopia"] {
     --primary: 59 130 246;
@@ -85,13 +96,15 @@
     --destructive: 249 115 22;
   }
 
-  /* Tritanopia (Eixo Azul-Amarelo) 
-    Mapeamento: Verde -> Ciano | Vermelho -> Rosa/Carmim
-  */
+  /* Tritanopia (Verde -> Ciano | Vermelho -> Rosa) */
   :root[data-colorblind="tritanopia"] {
-    --primary: 6 182 212; /* cyan-500 */
-    --primary-dark: 8 145 178; /* cyan-600 */
-    --destructive: 225 29 72; /* rose-600 */
+    --primary: 6 182 212;
+    --primary-dark: 8 145 178;
+    --destructive: 225 29 72;
+
+    /* Redefinição Semântica */
+    --status-success: 6 182 212; /* cyan-500 */
+    --status-error: 225 29 72; /* rose-600 */
   }
   .dark[data-colorblind="tritanopia"] {
     --primary: 6 182 212;
@@ -99,18 +112,27 @@
     --destructive: 225 29 72;
   }
 
-  /* Acromatopsia (Monocromatismo) 
-    Mapeamento: Contraste Estrito de Luminância Ramo Preto/Branco vs Cinza Médio
-  */
+  /* Acromatopsia (Monocromático) */
   :root[data-colorblind="achromatopsia"] {
-    --primary: 9 9 11; /* zinc-950 (Preto puro relativo) */
+    --primary: 9 9 11;
     --primary-dark: 0 0 0;
-    --destructive: 113 113 122; /* zinc-500 (Cinza médio p/ erro) */
+    --primary-foreground: 255 255 255; /* Texto branco no fundo preto */
+    --destructive: 82 82 91;
+
+    /* Semântica: Diferenciação por brilho/padrão (tratado via JS também) */
+    --status-success: 9 9 11;
+    --status-error: 113 113 122;
   }
+
+  /* CORREÇÃO CRÍTICA AQUI: Acromatopsia Dark Mode */
   .dark[data-colorblind="achromatopsia"] {
-    --primary: 250 250 250; /* zinc-50 (Branco puro relativo) */
+    --primary: 250 250 250; /* Branco Puro */
     --primary-dark: 255 255 255;
-    --destructive: 161 161 170; /* zinc-400 */
+    --primary-foreground: 9 9 11; /* IMPORTANTE: Texto Preto no botão Branco */
+    --destructive: 161 161 170;
+
+    --status-success: 250 250 250;
+    --status-error: 161 161 170;
   }
 
   :root[data-fontsize="sm"] {

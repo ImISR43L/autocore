@@ -4,6 +4,7 @@ import {
   Terminal,
   AlertTriangle,
 } from "lucide-react";
+import { cn } from "../lib/utils";
 
 interface LogViewerProps {
   logs: string;
@@ -31,26 +32,39 @@ export default function LogViewer({ logs, status }: LogViewerProps) {
   const getStatusColor = () => {
     switch (status) {
       case "Accepted":
-        return "border-green-500/50 bg-green-500/5";
+        return "border-[rgb(var(--status-success))]/50 bg-[rgb(var(--status-success))]/5";
       case "Compilation Error":
       case "Runtime Error":
-        return "border-red-500/50 bg-red-500/5";
+        return "border-[rgb(var(--status-error))]/50 bg-[rgb(var(--status-error))]/5";
       case "Wrong Answer":
-        return "border-yellow-500/50 bg-yellow-500/5";
+        return "border-[rgb(var(--status-warning))]/50 bg-[rgb(var(--status-warning))]/5";
       default:
         return "border-[#333] bg-[#161616]";
     }
   };
 
   const getHeaderIcon = () => {
+    // Classes de texto também usando var()
     switch (status) {
       case "Accepted":
-        return <CheckCircle className="text-green-500" size={18} />;
+        return (
+          <CheckCircle
+            className="text-[rgb(var(--status-success))]"
+            size={18}
+          />
+        );
       case "Compilation Error":
       case "Runtime Error":
-        return <AlertCircle className="text-red-500" size={18} />;
+        return (
+          <AlertCircle className="text-[rgb(var(--status-error))]" size={18} />
+        );
       case "Wrong Answer":
-        return <AlertTriangle className="text-yellow-500" size={18} />;
+        return (
+          <AlertTriangle
+            className="text-[rgb(var(--status-warning))]"
+            size={18}
+          />
+        );
       default:
         return <Terminal className="text-gray-400" size={18} />;
     }
@@ -64,23 +78,22 @@ export default function LogViewer({ logs, status }: LogViewerProps) {
       );
 
     return logs.split("\n").map((line, i) => {
-      // Estilização simples de sintaxe para logs
-      let className = "text-gray-300"; // Padrão
+      let className = "text-gray-300";
 
       if (
         line.includes("Error:") ||
         line.includes("Exception") ||
         line.includes("❌")
       ) {
-        className = "text-red-400 font-bold";
+        className = "text-[rgb(var(--status-error))] font-bold";
       } else if (line.includes("Warning:") || line.includes("AVISO")) {
-        className = "text-yellow-400";
+        className = "text-[rgb(var(--status-warning))]";
       } else if (line.trim().startsWith("Linha") || line.includes('File "')) {
         className = "text-blue-400 underline decoration-blue-400/30";
       } else if (line.includes("Output Esperado:")) {
-        className = "text-green-400";
+        className = "text-[rgb(var(--status-success))]";
       } else if (line.includes("Seu Output:")) {
-        className = "text-red-400";
+        className = "text-[rgb(var(--status-error))]";
       }
 
       return (

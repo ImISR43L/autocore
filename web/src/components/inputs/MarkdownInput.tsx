@@ -6,6 +6,7 @@ import { Eye, Edit3, Info, X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import remarkBreaks from "remark-breaks";
 import "highlight.js/styles/github-dark.css";
+import { useMonacoTheme } from "../../hooks/useMonacoTheme";
 
 interface MarkdownInputProps {
   label: string;
@@ -24,6 +25,7 @@ export function MarkdownInput({
 }: MarkdownInputProps) {
   const [isPreview, setIsPreview] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  useMonacoTheme();
 
   return (
     <div className="flex flex-col gap-2 flex-1 w-full h-full">

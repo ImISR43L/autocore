@@ -59,6 +59,8 @@ const PanelGroup = PanelGroupOriginal as any;
 
 import { io } from "socket.io-client";
 import LogViewer from "../components/LogViewer";
+import { usePreferences } from "../contexts/PreferencesContext";
+import { useMonacoTheme } from "../hooks/useMonacoTheme";
 
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
@@ -231,9 +233,12 @@ const getLanguageFromExt = (filename: string) => {
 
 export default function ClassroomView() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+  const { colorblindMode } = usePreferences();
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+
+  useMonacoTheme();
 
   const [activeTab, setActiveTab] = useState<
     "stream" | "classwork" | "people" | "analytics"
@@ -347,6 +352,66 @@ export default function ClassroomView() {
   useEffect(() => {
     localStorage.setItem("a11y_zenMode", String(zenMode));
   }, [zenMode]);
+
+  useEffect(() => {
+    if (!monacoRef.current) return;
+
+    // Define temas customizados baseados no modo de daltonismo
+    const monaco = monacoRef.current;
+
+    // Deuteranopia (Ênfase em Azul/Amarelo)
+    monaco.editor.defineTheme("deuteranopia-dark", {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "keyword", foreground: "60a5fa" }, // Azul claro
+        { token: "string", foreground: "fb923c" }, // Laranja
+        { token: "number", foreground: "e879f9" }, // Roxo/Rosa
+        { token: "comment", foreground: "9ca3af" },
+      ],
+      colors: {
+        "editor.background": "#111827",
+      },
+    });
+
+    // Tritanopia (Ênfase em Ciano/Rosa)
+    monaco.editor.defineTheme("tritanopia-dark", {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "keyword", foreground: "22d3ee" }, // Ciano
+        { token: "string", foreground: "fb7185" }, // Rosa
+        { token: "number", foreground: "ffffff" },
+      ],
+      colors: {
+        "editor.background": "#111827",
+      },
+    });
+
+    // Achromatopsia (Alto Contraste P/B)
+    monaco.editor.defineTheme("achromatopsia-dark", {
+      base: "hc-black", // Usa base High Contrast do próprio Monaco
+      inherit: true,
+      rules: [
+        // Reforça contraste se necessário
+      ],
+      colors: {
+        "editor.selectionBackground": "#ffffff40",
+      },
+    });
+
+    // Seleciona o tema correto
+    let themeToSet = highContrast ? "hc-black" : isLightMode ? "vs" : "vs-dark";
+
+    if (!isLightMode) {
+      // Apenas personaliza no modo escuro por enquanto
+      if (colorblindMode === "deuteranopia") themeToSet = "deuteranopia-dark";
+      if (colorblindMode === "tritanopia") themeToSet = "tritanopia-dark";
+      if (colorblindMode === "achromatopsia") themeToSet = "achromatopsia-dark";
+    }
+
+    monaco.editor.setTheme(themeToSet);
+  }, [colorblindMode, isLightMode, highContrast]);
 
   const getMyUserId = () => {
     const token = localStorage.getItem("token");
@@ -1368,7 +1433,6 @@ export default function ClassroomView() {
         <Editor
           key={`${languageId}-${displayProblem?.id}-${activeFileIndex}`}
           height="100%"
-          theme={highContrast ? "hc-black" : isLightMode ? "vs" : "vs-dark"}
           language={LANGUAGE_MAP[languageId] || "plaintext"}
           value={files[activeFileIndex]?.content || ""}
           onChange={handleCodeChange}
@@ -1379,7 +1443,7 @@ export default function ClassroomView() {
             fontSize: 16,
             scrollBeyondLastLine: false,
             padding: { top: 16 },
-            accessibilitySupport: screenReaderMode ? "on" : "auto", // <-- Trava de Leitor
+            accessibilitySupport: screenReaderMode ? "on" : "auto",
           }}
         />
       </div>
@@ -1921,7 +1985,7 @@ export default function ClassroomView() {
                                   rel="noopener noreferrer"
                                   className="flex items-center gap-3 bg-background border border-border rounded-lg p-3 hover:border-primary/50 transition-all min-w-[200px] max-w-[320px] group"
                                 >
-                                  <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-foreground transition-colors shrink-0">
+                                  <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors shrink-0">
                                     <FileText size={20} />
                                   </div>
                                   <div className="flex flex-col min-w-0">
@@ -2863,9 +2927,6 @@ export default function ClassroomView() {
                   <Editor
                     height="100%"
                     width="100%"
-                    theme={
-                      highContrast ? "hc-black" : isLightMode ? "vs" : "vs-dark"
-                    }
                     language="python"
                     value={
                       (isOwner &&
@@ -2879,7 +2940,7 @@ export default function ClassroomView() {
                       fontSize: 16,
                       scrollBeyondLastLine: false,
                       automaticLayout: true,
-                      accessibilitySupport: screenReaderMode ? "on" : "auto", // <-- Trava de Leitor
+                      accessibilitySupport: screenReaderMode ? "on" : "auto",
                     }}
                   />
                 </div>
