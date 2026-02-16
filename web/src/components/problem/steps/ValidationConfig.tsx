@@ -1,4 +1,4 @@
-import { useState, useEffect, Suspense, lazy, useMemo } from "react";
+import { useState, useEffect, Suspense, lazy, useMemo, useRef } from "react";
 import { useFormContext, useFieldArray, Controller } from "react-hook-form";
 import {
   FlaskConical,
@@ -14,7 +14,6 @@ import {
   Code2,
   Maximize2,
   Minimize2,
-  RefreshCw,
   AlertTriangle,
 } from "lucide-react";
 import { dryRunProblem } from "../../../lib/api";
@@ -48,6 +47,7 @@ const getLanguageFromExt = (filename: string) => {
 };
 
 export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
+  const editorRef = useRef<any>(null);
   const {
     register,
     control,
@@ -157,7 +157,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     setTimeout(() => setRemountKey((prev) => prev + 1), 0);
   };
 
-  // Sincronia Automática (StarterCode -> SolutionCode)
+  // Sincronia Automática Inicial (StarterCode -> SolutionCode)
   useEffect(() => {
     const currentSolution = getValues(getName("solutionCode")) || [];
     if (starterCode.length === 0) return;
@@ -179,7 +179,48 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(starterCode)]);
 
-  // Lógica de Sincronia de Parâmetros
+  // Construção Reativa da Assinatura
+  const validParams = parameters.filter(
+    (p: any) => p && p.name && p.name.trim() !== "",
+  );
+  let expectedParamsString = "";
+
+  if (validParams.length > 0) {
+    if (viewLang === "python") {
+      const pyTypeMap: Record<string, string> = {
+        int: "int",
+        float: "float",
+        string: "str",
+        boolean: "bool",
+        "int[]": "list[int]",
+        "float[]": "list[float]",
+        "string[]": "list[str]",
+        "boolean[]": "list[bool]",
+      };
+      expectedParamsString = validParams
+        .map((p: any) => `${p.name.trim()}: ${pyTypeMap[p.type] || "Any"}`)
+        .join(", ");
+    } else if (viewLang === "javascript") {
+      expectedParamsString = validParams
+        .map((p: any) => p.name.trim())
+        .join(", ");
+    } else if (viewLang === "cpp") {
+      const cppTypeMap: Record<string, string> = {
+        int: "int",
+        float: "double",
+        string: "string",
+        boolean: "bool",
+        "int[]": "vector<int>",
+        "float[]": "vector<double>",
+        "string[]": "vector<string>",
+        "boolean[]": "vector<bool>",
+      };
+      expectedParamsString = validParams
+        .map((p: any) => `${cppTypeMap[p.type] || "auto"} ${p.name.trim()}`)
+        .join(", ");
+    }
+  }
+
   const currentMainFileMeta = useMemo(() => {
     return visibleFiles.find((f) => STANDARD_NAMES.includes(f.field.name));
   }, [visibleFiles]);
@@ -188,59 +229,71 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     ? watch(getName(`solutionCode.${currentMainFileMeta.index}.content`))
     : null;
 
-  const expectedParamsString = useMemo(() => {
-    if (!parameters || parameters.length === 0) return "";
-    if (viewLang === "python" || viewLang === "javascript") {
-      return parameters.map((p: any) => p.name).join(", ");
-    } else if (viewLang === "cpp") {
-      const typeMap: Record<string, string> = {
-        int: "int",
-        float: "double",
-        string: "string",
-        boolean: "bool",
-      };
-      return parameters
-        .map((p: any) => `${typeMap[p.type] || "auto"} ${p.name}`)
-        .join(", ");
-    }
-    return "";
-  }, [parameters, viewLang]);
+  // Sincronia Automática da Assinatura via Monaco AST
+  useEffect(() => {
+    if (!currentMainFileMeta || typeof currentMainFileContent !== "string")
+      return;
 
-  const isParamsOutOfSync = useMemo(() => {
-    if (!currentMainFileContent) return false;
-    let regex: RegExp;
-    if (viewLang === "python") regex = /def\s+solve\s*\(([^)]*)\)/;
-    else if (viewLang === "javascript")
-      regex = /function\s+solve\s*\(([^)]*)\)/;
-    else regex = /(?:int|void)\s+(?:solve|main)\s*\(([^)]*)\)/;
-
-    const match = currentMainFileContent.match(regex);
-    if (!match) return false;
-    return match[1].trim() !== expectedParamsString;
-  }, [currentMainFileContent, expectedParamsString, viewLang]);
-
-  const handleSyncParams = () => {
-    if (!currentMainFileContent || !currentMainFileMeta) return;
     let regex: RegExp;
     if (viewLang === "python") regex = /(def\s+solve\s*\()([^)]*)(\))/;
     else if (viewLang === "javascript")
       regex = /(function\s+solve\s*\()([^)]*)(\))/;
-    else regex = /((?:int|void)\s+(?:solve|main)\s*\()([^)]*)(\))/;
+    else regex = /((?:[a-zA-Z0-9_<>:\[\]]+\s+)+solve\s*\()([^)]*)(\))/;
 
-    const newContent = currentMainFileContent.replace(
-      regex,
-      `$1${expectedParamsString}$3`,
-    );
+    const match = currentMainFileContent.match(regex);
 
-    const currentCode = getValues(getName("solutionCode"));
-    if (currentCode && currentCode[currentMainFileMeta.index]) {
-      currentCode[currentMainFileMeta.index].content = newContent;
-      forceUpdateSolution(currentCode);
-      toast.success(
-        `Parâmetros sincronizados no gabarito de ${viewLang.toUpperCase()}!`,
+    if (match && match[2].trim() !== expectedParamsString) {
+      const newText = match[0].replace(regex, `$1${expectedParamsString}$3`);
+
+      const editorModel = editorRef.current?.getModel();
+
+      if (editorModel && editorModel.getValue() === currentMainFileContent) {
+        const matches = editorModel.findMatches(
+          regex.source,
+          false,
+          true,
+          false,
+          null,
+          false,
+        );
+
+        if (matches && matches.length > 0) {
+          editorRef.current.executeEdits("sync-signature", [
+            {
+              range: matches[0].range,
+              text: newText,
+              forceMoveMarkers: true,
+            },
+          ]);
+
+          setValue(
+            getName(`solutionCode.${currentMainFileMeta.index}.content`),
+            editorModel.getValue(),
+            { shouldDirty: true },
+          );
+          return;
+        }
+      }
+
+      const fallbackContent = currentMainFileContent.replace(
+        regex,
+        `$1${expectedParamsString}$3`,
+      );
+
+      setValue(
+        getName(`solutionCode.${currentMainFileMeta.index}.content`),
+        fallbackContent,
+        { shouldDirty: true },
       );
     }
-  };
+  }, [
+    expectedParamsString,
+    currentMainFileContent,
+    currentMainFileMeta,
+    getName,
+    setValue,
+    viewLang,
+  ]);
 
   const handleResetSolution = () => {
     const latestStarter = getValues(getName("starterCode"));
@@ -375,33 +428,6 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                   </p>
                 )}
               </div>
-
-              {parameters.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleSyncParams}
-                  disabled={!isParamsOutOfSync}
-                  className={cn(
-                    "h-7 text-xs px-2 transition-all border",
-                    isParamsOutOfSync
-                      ? "border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 animate-pulse motion-reduce:animate-none"
-                      : "border-transparent text-muted opacity-50 hover:bg-transparent cursor-default",
-                  )}
-                >
-                  <RefreshCw
-                    size={12}
-                    className={cn(
-                      "mr-1",
-                      isParamsOutOfSync &&
-                        "animate-spin-slow motion-reduce:animate-none",
-                    )}
-                  />
-                  {isParamsOutOfSync
-                    ? "Sincronizar Assinatura"
-                    : "Sincronizado"}
-                </Button>
-              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -502,6 +528,9 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                             )}
                             value={field.value}
                             onChange={(value) => field.onChange(value)}
+                            onMount={(editor) => {
+                              editorRef.current = editor;
+                            }}
                             options={{
                               minimap: { enabled: false },
                               fontSize: 14,

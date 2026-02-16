@@ -93,6 +93,8 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
                         <option value="boolean">Boolean</option>
                         <option value="int[]">Array (int[])</option>
                         <option value="string[]">Array (string[])</option>
+                        <option value="float[]">Array (float[])</option>
+                        <option value="boolean[]">Array (boolean[])</option>
                       </Select>
                     </div>
 
@@ -143,6 +145,8 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
                 <option value="boolean">Boolean</option>
                 <option value="int[]">Array (int[])</option>
                 <option value="string[]">Array (string[])</option>
+                <option value="float[]">Array (float[])</option>
+                <option value="boolean[]">Array (boolean[])</option>
               </Select>
 
               <p className="text-[11px] text-muted leading-relaxed mt-1">

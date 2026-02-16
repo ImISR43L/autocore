@@ -14,7 +14,16 @@ const parameterSchema = z.object({
   // Removemos o { errorMap: ... } que estava causando o crash "(intermediate value) is null".
   // Usamos errorMap ou params padrões suportados.
   type: z
-    .enum(["int", "float", "string", "boolean", "int[]", "string[]"])
+    .enum([
+      "int",
+      "float",
+      "string",
+      "boolean",
+      "int[]",
+      "string[]",
+      "float[]",
+      "boolean[]",
+    ])
     .refine((val) => val, { message: "Inválido" }),
 });
 
