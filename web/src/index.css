@@ -81,6 +81,19 @@
     --primary-dark: 255 255 255;
     --destructive: 161 161 170; /* zinc-400 */
   }
+
+  :root[data-fontsize="sm"] {
+    font-size: 87.5%; /* Base: 14px */
+  }
+  :root[data-fontsize="base"] {
+    font-size: 100%; /* Base: 16px (Padrão) */
+  }
+  :root[data-fontsize="lg"] {
+    font-size: 112.5%; /* Base: 18px */
+  }
+  :root[data-fontsize="xl"] {
+    font-size: 125%; /* Base: 20px */
+  }
 }
 
 @layer components {

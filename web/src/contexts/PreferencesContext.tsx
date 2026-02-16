@@ -2,15 +2,18 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 
 type Theme = "light" | "dark";
 type ColorblindMode = "none" | "deuteranopia" | "tritanopia" | "achromatopsia";
+type FontSize = "sm" | "base" | "lg" | "xl"; // <--- ADIÇÃO
 
 interface PreferencesState {
   theme: Theme;
   colorblindMode: ColorblindMode;
+  fontSize: FontSize; // <--- ADIÇÃO
 }
 
 interface PreferencesContextType extends PreferencesState {
   setTheme: (theme: Theme) => void;
   setColorblindMode: (mode: ColorblindMode) => void;
+  setFontSize: (size: FontSize) => void; // <--- ADIÇÃO
 }
 
 const PreferencesContext = createContext<PreferencesContextType | undefined>(
@@ -20,6 +23,7 @@ const PreferencesContext = createContext<PreferencesContextType | undefined>(
 const defaultPreferences: PreferencesState = {
   theme: "dark",
   colorblindMode: "none",
+  fontSize: "base", // <--- ADIÇÃO
 };
 
 export function PreferencesProvider({
@@ -29,7 +33,9 @@ export function PreferencesProvider({
 }) {
   const [preferences, setPreferences] = useState<PreferencesState>(() => {
     const stored = localStorage.getItem("autocore_prefs");
-    return stored ? JSON.parse(stored) : defaultPreferences;
+    return stored
+      ? { ...defaultPreferences, ...JSON.parse(stored) }
+      : defaultPreferences;
   });
 
   useEffect(() => {
@@ -37,7 +43,7 @@ export function PreferencesProvider({
 
     const root = document.documentElement;
 
-    // Aplicação da Polaridade (Claro/Escuro)
+    // Aplicação da Polaridade
     if (preferences.theme === "dark") {
       root.classList.add("dark");
     } else {
@@ -50,16 +56,21 @@ export function PreferencesProvider({
     } else {
       root.setAttribute("data-colorblind", preferences.colorblindMode);
     }
+
+    // Aplicação do Tamanho da Fonte
+    root.setAttribute("data-fontsize", preferences.fontSize);
   }, [preferences]);
 
   const setTheme = (theme: Theme) =>
     setPreferences((prev) => ({ ...prev, theme }));
   const setColorblindMode = (colorblindMode: ColorblindMode) =>
     setPreferences((prev) => ({ ...prev, colorblindMode }));
+  const setFontSize = (fontSize: FontSize) =>
+    setPreferences((prev) => ({ ...prev, fontSize }));
 
   return (
     <PreferencesContext.Provider
-      value={{ ...preferences, setTheme, setColorblindMode }}
+      value={{ ...preferences, setTheme, setColorblindMode, setFontSize }}
     >
       {children}
     </PreferencesContext.Provider>

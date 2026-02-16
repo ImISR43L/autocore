@@ -9,14 +9,18 @@
       (function () {
         try {
           var stored = localStorage.getItem("autocore_prefs");
-          var prefs = stored
-            ? JSON.parse(stored)
-            : { theme: "dark", colorblindMode: "none" };
+          var prefs = stored ? JSON.parse(stored) : null;
+
+          var theme = prefs && prefs.theme ? prefs.theme : "dark";
+          var colorblindMode =
+            prefs && prefs.colorblindMode ? prefs.colorblindMode : "none";
+          var fontSize = prefs && prefs.fontSize ? prefs.fontSize : "base";
 
           var root = document.documentElement;
-          if (prefs.theme === "dark") root.classList.add("dark");
-          if (prefs.colorblindMode !== "none")
-            root.setAttribute("data-colorblind", prefs.colorblindMode);
+          if (theme === "dark") root.classList.add("dark");
+          if (colorblindMode !== "none")
+            root.setAttribute("data-colorblind", colorblindMode);
+          root.setAttribute("data-fontsize", fontSize);
         } catch (e) {}
       })();
     </script>
