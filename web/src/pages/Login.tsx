@@ -147,9 +147,14 @@ export default function Login() {
     }
   };
 
+  useEffect(() => {
+    if (isCheckingSession) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isCheckingSession, navigate]);
+
   if (isCheckingSession) {
-    navigate("/dashboard");
-    return null;
+    return null; // Mantém o retorno nulo para evitar o flash visual da tela de login
   }
 
   return (

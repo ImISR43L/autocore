@@ -62,6 +62,20 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
   const [activeSolutionTab, setActiveSolutionTab] = useState(0);
   const [isSolutionFullscreen, setIsSolutionFullscreen] = useState(false);
   const [remountKey, setRemountKey] = useState(0);
+  const [isLightMode, setIsLightMode] = useState(
+    !document.documentElement.classList.contains("dark"),
+  );
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsLightMode(!document.documentElement.classList.contains("dark"));
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
 
   const getName = (name: string) => (basePath ? `${basePath}.${name}` : name);
   const getError = (path: string) =>
@@ -478,7 +492,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                           <Editor
                             key={`${field.name}-${remountKey}`}
                             height="100%"
-                            theme="vs-dark"
+                            theme={isLightMode ? "vs" : "vs-dark"}
                             language={getLanguageFromExt(
                               watch(
                                 getName(

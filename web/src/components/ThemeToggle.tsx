@@ -19,9 +19,10 @@ export function ThemeToggle() {
   return (
     <button
       onClick={() => setLightMode(!lightMode)}
-      className="fixed bottom-6 right-6 z-[9999] flex h-12 w-12 items-center justify-center rounded-full bg-surface border border-border shadow-xl transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      aria-label={lightMode ? "Ativar Modo Escuro" : "Ativar Modo Claro"}
-      title={lightMode ? "Ativar Modo Escuro" : "Ativar Modo Claro"}
+      className="fixed bottom-24 right-8 z-[9999] flex h-12 w-12 items-center justify-center rounded-full bg-surface border border-border shadow-xl transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      title={
+        lightMode ? "Alternar para Modo Escuro" : "Alternar para Modo Claro"
+      }
     >
       {lightMode ? (
         <Sun size={20} className="text-amber-500" />

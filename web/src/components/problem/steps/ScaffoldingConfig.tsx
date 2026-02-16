@@ -59,6 +59,20 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
   const { control, watch, setValue, getValues } = useFormContext();
   const [activeIndex, setActiveIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isLightMode, setIsLightMode] = useState(
+    !document.documentElement.classList.contains("dark"),
+  );
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsLightMode(!document.documentElement.classList.contains("dark"));
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
 
   const getName = (name: string) => (basePath ? `${basePath}.${name}` : name);
 
@@ -417,7 +431,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                       key={`${fields[activeIndex].id}-${activeIndex}`}
                       height="100%"
                       width="100%"
-                      theme="vs-dark"
+                      theme={isLightMode ? "vs" : "vs-dark"}
                       language={getLanguageFromExt(
                         (fields[activeIndex] as any).name,
                       )}
