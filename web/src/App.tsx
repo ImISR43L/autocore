@@ -4,12 +4,13 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 
 import Login from "./pages/Login";
+import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import ClassroomView from "./pages/ClassroomView";
 import CreateProblem from "./pages/CreateProblem";
 import EditProblem from "./pages/EditProblem";
-import { ThemeToggle } from "./components/ThemeToggle";
-import { ColorblindToggle } from "./components/ColorblindToggle"; // <--- NOVO IMPORT
+
+import { SettingsModal } from "./components/SettingsModal"; // <--- NOVO COMPONENTE
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem("token");
@@ -20,10 +21,10 @@ function App() {
   return (
     <BrowserRouter>
       <Toaster position="top-right" richColors expand={true} />
-      <ThemeToggle />
-      <ColorblindToggle /> {/* <--- INJEÇÃO */}
+      <SettingsModal /> {/* <--- INJEÇÃO DA INTERFACE CENTRALIZADA */}
       <Routes>
         <Route path="/" element={<Login />} />
+        <Route path="/home" element={<Home />} />
         <Route
           path="/dashboard"
           element={
