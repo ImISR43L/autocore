@@ -29,7 +29,7 @@ export function Button({
             variant === "secondary",
           "bg-transparent text-foregroundborder border-border hover:bg-surface-hover hover:text-foreground":
             variant === "outline",
-          "bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20":
+          "bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20":
             variant === "danger",
           "bg-transparent text-muted hover:text-foreground hover:bg-white/5":
             variant === "ghost",

@@ -5,41 +5,81 @@
 
 @layer base {
   :root {
-    /* Modo Claro (Prevenção de Haló e Dislexia) */
-    --background: #fafafa;
-    --surface: #f4f4f5;
-    --surface-hover: #e4e4e7;
-    --border: #d4d4d8;
-    --foreground: #27272a;
+    --background: 250 250 250;
+    --surface: 244 244 245;
+    --surface-hover: 228 228 231;
+    --border: 212 212 216;
+    --foreground: 39 39 42;
 
-    --primary: #10b981;
-    --primary-dark: #059669;
-    --primary-foreground: #ffffff;
+    --primary: 16 185 129; /* emerald-500 */
+    --primary-dark: 5 150 105; /* emerald-600 */
+    --primary-foreground: 255 255 255;
 
-    --destructive: #ef4444;
-    --destructive-foreground: #ffffff;
+    --destructive: 239 68 68; /* red-500 */
+    --destructive-foreground: 255 255 255;
 
-    --muted: #71717a;
-    --muted-foreground: #52525b;
+    --muted: 113 113 122;
+    --muted-foreground: 82 82 91;
   }
 
   .dark {
-    /* Modo Escuro Original */
-    --background: #09090b;
-    --surface: #18181b;
-    --surface-hover: #27272a;
-    --border: #27272a;
-    --foreground: #f4f4f5;
+    --background: 9 9 11;
+    --surface: 24 24 27;
+    --surface-hover: 39 39 42;
+    --border: 39 39 42;
+    --foreground: 244 244 245;
 
-    --primary: #10b981;
-    --primary-dark: #059669;
-    --primary-foreground: #ffffff;
+    --primary: 16 185 129;
+    --primary-dark: 5 150 105;
+    --primary-foreground: 255 255 255;
 
-    --destructive: #ef4444;
-    --destructive-foreground: #ffffff;
+    --destructive: 239 68 68;
+    --destructive-foreground: 255 255 255;
 
-    --muted: #a1a1aa;
-    --muted-foreground: #d4d4d8;
+    --muted: 161 161 170;
+    --muted-foreground: 212 212 216;
+  }
+
+  /* Deuteranopia e Protanopia (Eixo Verde-Vermelho) 
+    Mapeamento: Verde -> Azul | Vermelho -> Laranja
+  */
+  :root[data-colorblind="deuteranopia"] {
+    --primary: 59 130 246; /* blue-500 */
+    --primary-dark: 37 99 235; /* blue-600 */
+    --destructive: 249 115 22; /* orange-500 */
+  }
+  .dark[data-colorblind="deuteranopia"] {
+    --primary: 59 130 246;
+    --primary-dark: 37 99 235;
+    --destructive: 249 115 22;
+  }
+
+  /* Tritanopia (Eixo Azul-Amarelo) 
+    Mapeamento: Verde -> Ciano | Vermelho -> Rosa/Carmim
+  */
+  :root[data-colorblind="tritanopia"] {
+    --primary: 6 182 212; /* cyan-500 */
+    --primary-dark: 8 145 178; /* cyan-600 */
+    --destructive: 225 29 72; /* rose-600 */
+  }
+  .dark[data-colorblind="tritanopia"] {
+    --primary: 6 182 212;
+    --primary-dark: 8 145 178;
+    --destructive: 225 29 72;
+  }
+
+  /* Acromatopsia (Monocromatismo) 
+    Mapeamento: Contraste Estrito de Luminância Ramo Preto/Branco vs Cinza Médio
+  */
+  :root[data-colorblind="achromatopsia"] {
+    --primary: 9 9 11; /* zinc-950 (Preto puro relativo) */
+    --primary-dark: 0 0 0;
+    --destructive: 113 113 122; /* zinc-500 (Cinza médio p/ erro) */
+  }
+  .dark[data-colorblind="achromatopsia"] {
+    --primary: 250 250 250; /* zinc-50 (Branco puro relativo) */
+    --primary-dark: 255 255 255;
+    --destructive: 161 161 170; /* zinc-400 */
   }
 }
 
@@ -49,7 +89,7 @@
   }
 
   .modern-input:focus {
-    @apply border-primary ring-2 ring-[#10b981]/10 bg-surface;
+    @apply border-primary ring-2 ring-primary/10 bg-surface;
   }
 
   .modern-input:disabled {
@@ -71,8 +111,8 @@ body {
   padding: 0;
   width: 100%;
   height: 100%;
-  background-color: var(--background);
-  color: var(--foreground);
+  background-color: rgb(var(--background));
+  color: rgb(var(--foreground));
   font-family:
     "Inter",
     system-ui,
@@ -88,7 +128,6 @@ body {
   flex-direction: column;
 }
 
-/* Reset básico de elementos */
 *,
 *::before,
 *::after {
@@ -96,7 +135,7 @@ body {
 }
 
 a {
-  color: var(--primary);
+  color: rgb(var(--primary));
   text-decoration: none;
   transition: color 0.2s;
 }

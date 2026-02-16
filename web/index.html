@@ -5,6 +5,21 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>web</title>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("autocore_prefs");
+          var prefs = stored
+            ? JSON.parse(stored)
+            : { theme: "dark", colorblindMode: "none" };
+
+          var root = document.documentElement;
+          if (prefs.theme === "dark") root.classList.add("dark");
+          if (prefs.colorblindMode !== "none")
+            root.setAttribute("data-colorblind", prefs.colorblindMode);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

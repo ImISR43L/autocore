@@ -205,7 +205,7 @@ export default function Dashboard() {
         <Button
           variant="ghost"
           onClick={handleLogout}
-          className="text-red-400 hover:text-red-300 hover:bg-red-500/10 text-sm h-9 px-3"
+          className="text-destructive hover:opacity-80 hover:bg-destructive/10 text-sm h-9 px-3"
         >
           <LogOut size={18} className="mr-2" />
           <span className="hidden sm:inline">Sair</span>
@@ -338,7 +338,7 @@ export default function Dashboard() {
                                 >
                                   {work.title}
                                 </span>
-                                <span className="text-red-400 whitespace-nowrap ml-2 text-[10px] sm:text-xs font-medium">
+                                <span className="text-destructive whitespace-nowrap ml-2 text-[10px] sm:text-xs font-medium">
                                   {formatDeadline(work.deadline)}
                                 </span>
                               </div>

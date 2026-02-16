@@ -8,7 +8,8 @@ import Dashboard from "./pages/Dashboard";
 import ClassroomView from "./pages/ClassroomView";
 import CreateProblem from "./pages/CreateProblem";
 import EditProblem from "./pages/EditProblem";
-import { ThemeToggle } from "./components/ThemeToggle"; // <--- NOVO IMPORT
+import { ThemeToggle } from "./components/ThemeToggle";
+import { ColorblindToggle } from "./components/ColorblindToggle"; // <--- NOVO IMPORT
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem("token");
@@ -18,15 +19,11 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 function App() {
   return (
     <BrowserRouter>
-      {/* Container de notificações do Sonner */}
       <Toaster position="top-right" richColors expand={true} />
-
-      {/* Botão Global de Tema */}
       <ThemeToggle />
-
+      <ColorblindToggle /> {/* <--- INJEÇÃO */}
       <Routes>
         <Route path="/" element={<Login />} />
-
         <Route
           path="/dashboard"
           element={
@@ -35,7 +32,6 @@ function App() {
             </PrivateRoute>
           }
         />
-
         <Route
           path="/class/:id"
           element={
@@ -44,7 +40,6 @@ function App() {
             </PrivateRoute>
           }
         />
-
         <Route
           path="/class/:classroomId/create-problem"
           element={
@@ -53,7 +48,6 @@ function App() {
             </PrivateRoute>
           }
         />
-
         <Route
           path="/class/:classroomId/problem/:problemId/edit"
           element={
