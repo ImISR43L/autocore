@@ -174,6 +174,170 @@
   .input-label {
     @apply block mb-1.5 text-[0.85rem] text-muted font-medium;
   }
+
+  .diff-container {
+    @apply flex flex-col gap-2 mt-2 w-full font-mono text-xs;
+  }
+
+  .diff-box {
+    @apply flex flex-row border rounded-md overflow-hidden transition-colors;
+    @apply border-gray-200 bg-gray-50; /* Light Mode Default */
+    @apply dark:border-gray-700 dark:bg-[#1e1e1e]; /* Dark Mode Default */
+  }
+
+  .diff-panel {
+    @apply w-1/2 flex flex-col min-w-0;
+    @apply border-r border-gray-200 dark:border-gray-700 last:border-0;
+  }
+
+  .diff-header {
+    @apply px-2 py-1 text-center text-[10px] font-bold border-b transition-colors;
+    @apply border-gray-200 bg-gray-200/50; /* Light Mode */
+    @apply dark:border-gray-700 dark:bg-gray-800/80; /* Dark Mode */
+  }
+
+  .diff-content {
+    @apply p-2 whitespace-pre-wrap break-all overflow-y-auto max-h-[400px] leading-relaxed;
+    @apply text-gray-700 dark:text-gray-300;
+  }
+
+  /* Tokens (Os trechos de texto destacados) */
+  /* Usa as variáveis semânticas --status-success/error definidas para daltônicos */
+
+  .diff-token-expected {
+    background-color: rgba(var(--status-success), 0.2);
+    color: rgb(var(--status-success));
+    @apply font-bold rounded-[2px] px-[1px];
+  }
+
+  .diff-token-actual {
+    background-color: rgba(var(--status-error), 0.2);
+    color: rgb(var(--status-error));
+    @apply font-bold rounded-[2px] px-[1px];
+  }
+
+  /* Cores dos Títulos (Esperado / Seu Resultado) */
+  .diff-text-expected {
+    color: rgb(var(--status-success));
+  }
+  .diff-text-actual {
+    color: rgb(var(--status-error));
+  }
+
+  /* --- OVERRIDES ESPECÍFICOS PARA ACROMATOPSIA --- */
+  /* Reforço visual (sublinhado/riscado) para quem não enxerga cor */
+  :root[data-colorblind="achromatopsia"] .diff-token-expected {
+    @apply underline decoration-2 underline-offset-2;
+    background-color: rgba(128, 128, 128, 0.2) !important;
+    color: inherit !important;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  :root[data-colorblind="achromatopsia"] .diff-token-actual {
+    @apply line-through decoration-2 decoration-gray-500;
+    background-color: rgba(128, 128, 128, 0.2) !important;
+    color: inherit !important;
+    opacity: 0.7;
+  }
+
+  :root[data-colorblind="achromatopsia"] .diff-text-expected,
+  :root[data-colorblind="achromatopsia"] .diff-text-actual {
+    @apply text-foreground font-extrabold;
+  }
+
+  .log-container {
+    @apply rounded-lg border overflow-hidden transition-colors duration-300 font-mono text-sm;
+  }
+
+  /* Variantes de Status do Container (Borda e Fundo) */
+  .log-status-accepted {
+    border-color: rgba(var(--status-success), 0.5);
+    background-color: rgba(var(--status-success), 0.05);
+  }
+
+  .log-status-error {
+    border-color: rgba(var(--status-error), 0.5);
+    background-color: rgba(var(--status-error), 0.05);
+  }
+
+  .log-status-warning {
+    border-color: rgba(var(--status-warning), 0.5);
+    background-color: rgba(var(--status-warning), 0.05);
+  }
+
+  .log-status-pending {
+    @apply border-gray-700 border-dashed bg-gray-900/50 text-gray-500;
+  }
+
+  .log-status-default {
+    @apply border-gray-800 bg-gray-950;
+  }
+
+  /* Cabeçalho */
+  .log-header {
+    @apply flex items-center gap-2 px-4 py-2 border-b transition-colors;
+    @apply border-gray-700/50 bg-black/20 text-gray-200;
+  }
+
+  /* Ícones do Cabeçalho (Usando variáveis) */
+  .log-icon-success {
+    color: rgb(var(--status-success));
+  }
+  .log-icon-error {
+    color: rgb(var(--status-error));
+  }
+  .log-icon-warning {
+    color: rgb(var(--status-warning));
+  }
+  .log-icon-default {
+    @apply text-gray-400;
+  }
+
+  /* Conteúdo das Linhas */
+  .log-content {
+    @apply p-4 overflow-x-auto;
+  }
+
+  .log-line {
+    @apply py-0.5 whitespace-pre-wrap break-words;
+  }
+
+  /* Tipografia Semântica das Linhas */
+  .log-text-success {
+    color: rgb(var(--status-success));
+  }
+
+  .log-text-error {
+    color: rgb(var(--status-error));
+    @apply font-bold;
+  }
+
+  .log-text-warning {
+    color: rgb(var(--status-warning));
+  }
+
+  .log-text-info {
+    @apply text-blue-400 underline decoration-blue-400/30;
+  }
+
+  .log-text-default {
+    @apply text-gray-300;
+  }
+
+  /* --- OVERRIDES PARA ACROMATOPSIA (Logs) --- */
+  :root[data-colorblind="achromatopsia"] .log-text-success {
+    @apply text-foreground font-bold underline decoration-dotted decoration-2;
+  }
+
+  :root[data-colorblind="achromatopsia"] .log-text-error {
+    @apply text-foreground font-extrabold underline decoration-wavy decoration-2;
+  }
+
+  :root[data-colorblind="achromatopsia"] .log-status-accepted,
+  :root[data-colorblind="achromatopsia"] .log-status-error,
+  :root[data-colorblind="achromatopsia"] .log-status-warning {
+    @apply bg-transparent border-foreground/20;
+  }
 }
 
 html,

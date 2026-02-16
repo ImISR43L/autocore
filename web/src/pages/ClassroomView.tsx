@@ -238,7 +238,7 @@ export default function ClassroomView() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  useMonacoTheme();
+  const monacoTheme = useMonacoTheme();
 
   const [activeTab, setActiveTab] = useState<
     "stream" | "classwork" | "people" | "analytics"
@@ -1433,6 +1433,7 @@ export default function ClassroomView() {
         <Editor
           key={`${languageId}-${displayProblem?.id}-${activeFileIndex}`}
           height="100%"
+          theme={monacoTheme}
           language={LANGUAGE_MAP[languageId] || "plaintext"}
           value={files[activeFileIndex]?.content || ""}
           onChange={handleCodeChange}
@@ -2928,6 +2929,7 @@ export default function ClassroomView() {
                     height="100%"
                     width="100%"
                     language="python"
+                    theme={monacoTheme}
                     value={
                       (isOwner &&
                         activeSubmission?.files[inspectFileIndex]?.content) ||

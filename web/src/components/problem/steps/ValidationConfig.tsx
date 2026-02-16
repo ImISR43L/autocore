@@ -57,7 +57,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     watch,
     formState: { errors, dirtyFields },
   } = useFormContext();
-  useMonacoTheme();
+  const monacoTheme = useMonacoTheme();
 
   const [isRunning, setIsRunning] = useState(false);
   const [runResults, setRunResults] = useState<any>(null);
@@ -520,6 +520,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                           <Editor
                             key={`${field.name}-${remountKey}`}
                             height="100%"
+                            theme={monacoTheme}
                             language={getLanguageFromExt(
                               watch(
                                 getName(

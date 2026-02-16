@@ -64,7 +64,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
     !document.documentElement.classList.contains("dark"),
   );
 
-  useMonacoTheme();
+  const monacoTheme = useMonacoTheme();
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -509,6 +509,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                       key={`${fields[activeIndex].id}-${activeIndex}`}
                       height="100%"
                       width="100%"
+                      theme={monacoTheme}
                       language={getLanguageFromExt(
                         (fields[activeIndex] as any).name,
                       )}
