@@ -35,15 +35,15 @@ type LangKey = "python" | "javascript" | "cpp";
 const TEMPLATES: Record<LangKey, { name: string; content: string }> = {
   python: {
     name: "main.py",
-    content: "def solve():\n    pass",
+    content: "def solve():\n    # TODO: Implementar solução\n    pass",
   },
   javascript: {
     name: "index.js",
-    content: `/*\n * Recebe o input como string e deve retornar o resultado.\n * O sistema trata a leitura/escrita.\n */\nfunction solve(input) {\n    // TODO: Implementar lógica\n    return 0;\n}`,
+    content: `/*\n * O sistema trata a leitura/escrita dos I/Os.\n * Implemente sua lógica na função solve.\n */\nfunction solve() {\n    // TODO: Implementar solução\n    return 0;\n}`,
   },
   cpp: {
     name: "main.cpp",
-    content: `#include <iostream>\n\nusing namespace std;\n\nint main() {\n    // Otimização de I/O\n    ios_base::sync_with_stdio(false);\n    cin.tie(NULL);\n\n    // TODO: Implementar solução\n    return 0;\n}`,
+    content: `#include <iostream>\n#include <vector>\n#include <string>\n\nusing namespace std;\n\nvoid solve() {\n    // TODO: Implementar solução\n}`,
   },
 };
 
@@ -89,7 +89,6 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
     allowedLanguages[0] || "python",
   );
 
-  // Filtra os arquivos que pertencem à linguagem visualizada atualmente (ou plaintext)
   const visibleFiles = useMemo(() => {
     return fields
       .map((field: any, index) => ({ field, index }))
@@ -99,7 +98,6 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
       });
   }, [fields, viewLang]);
 
-  // Garante que o índice ativo seja um arquivo visível na aba atual
   useEffect(() => {
     if (
       visibleFiles.length > 0 &&
@@ -126,7 +124,6 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
         return toast.error("É necessário permitir pelo menos uma linguagem.");
       current.delete(lang);
 
-      // Remove os arquivos associados à linguagem desativada
       const newStarter = getValues(getName("starterCode")).filter(
         (f: any) => getLanguageFromExt(f.name) !== lang,
       );
@@ -136,7 +133,6 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
     } else {
       current.add(lang);
       const template = TEMPLATES[lang];
-      // Adiciona o template da nova linguagem se ele ainda não existir
       const existing = getValues(getName("starterCode")) || [];
       if (!existing.some((f: any) => f.name === template.name)) {
         setValue(
@@ -152,7 +148,6 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
     });
   };
 
-  // --- LÓGICA DE SINCRONIA DE PARÂMETROS (Baseado na viewLang) ---
   const currentMainFileMeta = useMemo(() => {
     return visibleFiles.find((f) => STANDARD_NAMES.includes(f.field.name));
   }, [visibleFiles]);
@@ -163,17 +158,36 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
 
   const expectedParamsString = useMemo(() => {
     if (!parameters || parameters.length === 0) return "";
-    if (viewLang === "python" || viewLang === "javascript") {
-      return parameters.map((p: any) => p.name).join(", ");
-    } else if (viewLang === "cpp") {
-      const typeMap: Record<string, string> = {
+
+    if (viewLang === "python") {
+      const pyTypeMap: Record<string, string> = {
         int: "int",
-        float: "double",
-        string: "string",
+        float: "float",
+        string: "str",
         boolean: "bool",
+        "int[]": "list[int]",
+        "float[]": "list[float]",
+        "string[]": "list[str]",
+        "boolean[]": "list[bool]",
       };
       return parameters
-        .map((p: any) => `${typeMap[p.type] || "auto"} ${p.name}`)
+        .map((p: any) => `${p.name}: ${pyTypeMap[p.type] || "Any"}`)
+        .join(", ");
+    } else if (viewLang === "javascript") {
+      return parameters.map((p: any) => p.name).join(", ");
+    } else if (viewLang === "cpp") {
+      const cppTypeMap: Record<string, string> = {
+        int: "int",
+        float: "float",
+        string: "string",
+        boolean: "bool",
+        "int[]": "vector<int>",
+        "float[]": "vector<float>",
+        "string[]": "vector<string>",
+        "boolean[]": "vector<bool>",
+      };
+      return parameters
+        .map((p: any) => `${cppTypeMap[p.type] || "auto"} ${p.name}`)
         .join(", ");
     }
     return "";
@@ -185,7 +199,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
     if (viewLang === "python") regex = /def\s+solve\s*\(([^)]*)\)/;
     else if (viewLang === "javascript")
       regex = /function\s+solve\s*\(([^)]*)\)/;
-    else regex = /(?:int|void)\s+(?:solve|main)\s*\(([^)]*)\)/;
+    else regex = /(?:[a-zA-Z0-9_<>:\[\]]+\s+)+solve\s*\(([^)]*)\)/;
 
     const match = currentMainFileContent.match(regex);
     if (!match) return false;
@@ -198,7 +212,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
     if (viewLang === "python") regex = /(def\s+solve\s*\()([^)]*)(\))/;
     else if (viewLang === "javascript")
       regex = /(function\s+solve\s*\()([^)]*)(\))/;
-    else regex = /((?:int|void)\s+(?:solve|main)\s*\()([^)]*)(\))/;
+    else regex = /((?:[a-zA-Z0-9_<>:\[\]]+\s+)+solve\s*\()([^)]*)(\))/;
 
     const newContent = currentMainFileContent.replace(
       regex,
@@ -220,7 +234,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
     const extMap = { python: ".py", javascript: ".js", cpp: ".cpp" };
     const ext = extMap[viewLang];
     append({ name: `module${ext}`, content: "" });
-    setActiveIndex(fields.length); // O append joga pro final do array global
+    setActiveIndex(fields.length);
   };
 
   return (
@@ -239,7 +253,6 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
             {isFullscreen ? "Modo Focado" : "Código Base"}
           </h3>
 
-          {/* SELETORES DE LINGUAGEM PERMITIDA */}
           <div className="flex gap-2 ml-2 bg-surface p-1 rounded-md border border-border">
             {(["python", "javascript", "cpp"] as LangKey[]).map((lang) => {
               const isActive = allowedLanguages.includes(lang);
@@ -309,7 +322,6 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
         </div>
       </div>
 
-      {/* ABAS DE VISUALIZAÇÃO DE CÓDIGO (APENAS LINGUAGENS ATIVAS) */}
       <div className="flex gap-1 border-b border-border/50">
         {allowedLanguages.map((lang) => (
           <button
