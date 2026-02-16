@@ -39,6 +39,7 @@ interface StepperContextType<T extends FieldValues> {
     errors: FieldErrors<T>;
   };
   orderedSteps: StepDefinition[];
+  visitedSteps: Set<number>; // NOVO: Mapeia os passos já renderizados
 }
 
 interface StepperProps<T extends FieldValues> {
@@ -68,6 +69,21 @@ export function Stepper<T extends FieldValues>({
   const [stepsMap, setStepsMap] = useState<Map<string, StepDefinition>>(
     new Map(),
   );
+
+  // NOVO: Inicializa o conjunto de passos visitados
+  const [visitedSteps, setVisitedSteps] = useState<Set<number>>(
+    new Set([initialStep]),
+  );
+
+  // NOVO: Adiciona o passo atual aos visitados assim que o usuário entra nele
+  useEffect(() => {
+    setVisitedSteps((prev) => {
+      if (prev.has(activeStepIndex)) return prev;
+      const next = new Set(prev);
+      next.add(activeStepIndex);
+      return next;
+    });
+  }, [activeStepIndex]);
 
   const registerStep = useCallback((step: StepDefinition) => {
     setStepsMap((prev) => {
@@ -132,6 +148,7 @@ export function Stepper<T extends FieldValues>({
       unregisterStep,
       formState: { errors: methods.formState.errors },
       orderedSteps,
+      visitedSteps, // NOVO: Expõe para os subcomponentes
     }),
     [
       activeStepIndex,
@@ -140,6 +157,7 @@ export function Stepper<T extends FieldValues>({
       methods.formState.errors,
       registerStep,
       unregisterStep,
+      visitedSteps,
     ],
   );
 
@@ -173,7 +191,6 @@ function Navigation() {
 
   return (
     <div className="w-full flex items-center justify-center px-2 sm:px-4">
-      {/* RESPONSIVIDADE: overflow-x-auto permite scroll se houver muitos passos em tela pequena */}
       <div className="flex items-center w-full max-w-3xl overflow-x-auto no-scrollbar py-2">
         {orderedSteps.map((step, index) => {
           const isActive = index === activeStepIndex;
@@ -266,7 +283,8 @@ function Step<T extends FieldValues>({
   const context = useContext(StepperContext);
   if (!context) throw new Error("Stepper.Step must be used within Stepper");
 
-  const { activeStepIndex, registerStep, unregisterStep } = context;
+  const { activeStepIndex, registerStep, unregisterStep, visitedSteps } =
+    context;
   const id = useMemo(() => `step-${label}-${__index}`, [label, __index]);
 
   useEffect(() => {
@@ -287,11 +305,20 @@ function Step<T extends FieldValues>({
     unregisterStep,
   ]);
 
-  if (activeStepIndex !== __index) return null;
+  const isActive = activeStepIndex === __index;
+  const hasBeenVisited = __index !== undefined && visitedSteps.has(__index);
 
+  // NOVO: Em vez de destruir, não renderiza apenas se nunca foi visitado
+  if (!hasBeenVisited) return null;
+
+  // NOVO: Usa a classe `hidden` caso o componente já tenha sido montado, mas não seja o ativo no momento
   return (
     <div
-      className={`flex-1 h-full overflow-hidden animate-in fade-in slide-in-from-right-8 duration-300 ${className}`}
+      className={cn(
+        "flex-1 h-full overflow-hidden duration-300",
+        isActive ? "block animate-in fade-in slide-in-from-right-8" : "hidden",
+        className,
+      )}
     >
       {children}
     </div>
@@ -309,7 +336,6 @@ function Controls() {
 
   return (
     <div className="flex-none border-t border-border bg-surface p-4 flex gap-4 justify-between items-center z-20 shadow-[-1px_-5px_20px_rgba(0,0,0,0.2)]">
-      {/* RESPONSIVIDADE: Botões flex-1 no mobile para alvo de toque maior */}
       <Button
         type="button"
         variant="secondary"

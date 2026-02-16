@@ -1,4 +1,4 @@
-import { useState, useEffect, Suspense, lazy, useMemo } from "react";
+import { useState, useEffect, Suspense, lazy, useMemo, useRef } from "react";
 import { useFormContext, useFieldArray, Controller } from "react-hook-form";
 import {
   FileCode,
@@ -8,7 +8,6 @@ import {
   File,
   Maximize2,
   Minimize2,
-  RefreshCw,
   Check,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -56,6 +55,7 @@ const STANDARD_NAMES = [
 ];
 
 export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
+  const editorRef = useRef<any>(null);
   const { control, watch, setValue, getValues } = useFormContext();
   const [activeIndex, setActiveIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -88,6 +88,50 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
   const [viewLang, setViewLang] = useState<LangKey>(
     allowedLanguages[0] || "python",
   );
+
+  // 1. Geração Reativa Linear (Sem useMemo)
+  // RHF pode mutar propriedades internas do array "parameters" durante a digitação mantendo a mesma referência.
+  // Evitar o useMemo assegura que cada tecla digitada injete o novo Regex no código imediatamente.
+  const validParams = parameters.filter(
+    (p: any) => p && p.name && p.name.trim() !== "",
+  );
+  let expectedParamsString = "";
+
+  if (validParams.length > 0) {
+    if (viewLang === "python") {
+      const pyTypeMap: Record<string, string> = {
+        int: "int",
+        float: "float",
+        string: "str",
+        boolean: "bool",
+        "int[]": "list[int]",
+        "float[]": "list[float]",
+        "string[]": "list[str]",
+        "boolean[]": "list[bool]",
+      };
+      expectedParamsString = validParams
+        .map((p: any) => `${p.name.trim()}: ${pyTypeMap[p.type] || "Any"}`)
+        .join(", ");
+    } else if (viewLang === "javascript") {
+      expectedParamsString = validParams
+        .map((p: any) => p.name.trim())
+        .join(", ");
+    } else if (viewLang === "cpp") {
+      const cppTypeMap: Record<string, string> = {
+        int: "int",
+        float: "float",
+        string: "string",
+        boolean: "bool",
+        "int[]": "vector<int>",
+        "float[]": "vector<float>",
+        "string[]": "vector<string>",
+        "boolean[]": "vector<bool>",
+      };
+      expectedParamsString = validParams
+        .map((p: any) => `${cppTypeMap[p.type] || "auto"} ${p.name.trim()}`)
+        .join(", ");
+    }
+  }
 
   const visibleFiles = useMemo(() => {
     return fields
@@ -134,10 +178,62 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
       current.add(lang);
       const template = TEMPLATES[lang];
       const existing = getValues(getName("starterCode")) || [];
+
       if (!existing.some((f: any) => f.name === template.name)) {
+        // 2. Pré-injeção de template
+        // Ao invés de inserir o código puro e cruzar os dedos pro Regex pegar em tempo real,
+        // mapeamos e formatamos os parâmetros estritamente ANTES de acoplar o arquivo no estado do Monaco
+        let injectedParams = "";
+        if (validParams.length > 0) {
+          if (lang === "python") {
+            const pyMap: Record<string, string> = {
+              int: "int",
+              float: "float",
+              string: "str",
+              boolean: "bool",
+              "int[]": "list[int]",
+              "float[]": "list[float]",
+              "string[]": "list[str]",
+              "boolean[]": "list[bool]",
+            };
+            injectedParams = validParams
+              .map((p: any) => `${p.name.trim()}: ${pyMap[p.type] || "Any"}`)
+              .join(", ");
+          } else if (lang === "javascript") {
+            injectedParams = validParams
+              .map((p: any) => p.name.trim())
+              .join(", ");
+          } else if (lang === "cpp") {
+            const cppMap: Record<string, string> = {
+              int: "int",
+              float: "float",
+              string: "string",
+              boolean: "bool",
+              "int[]": "vector<int>",
+              "float[]": "vector<float>",
+              "string[]": "vector<string>",
+              "boolean[]": "vector<bool>",
+            };
+            injectedParams = validParams
+              .map((p: any) => `${cppMap[p.type] || "auto"} ${p.name.trim()}`)
+              .join(", ");
+          }
+        }
+
+        let regex: RegExp;
+        if (lang === "python") regex = /(def\s+solve\s*\()([^)]*)(\))/;
+        else if (lang === "javascript")
+          regex = /(function\s+solve\s*\()([^)]*)(\))/;
+        else regex = /((?:[a-zA-Z0-9_<>:\[\]]+\s+)+solve\s*\()([^)]*)(\))/;
+
+        const preFormattedContent = template.content.replace(
+          regex,
+          `$1${injectedParams}$3`,
+        );
+
         setValue(
           getName("starterCode"),
-          [...existing, { name: template.name, content: template.content }],
+          [...existing, { name: template.name, content: preFormattedContent }],
           { shouldDirty: true },
         );
       }
@@ -156,79 +252,70 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
     ? watch(getName(`starterCode.${currentMainFileMeta.index}.content`))
     : null;
 
-  const expectedParamsString = useMemo(() => {
-    if (!parameters || parameters.length === 0) return "";
+  useEffect(() => {
+    if (!currentMainFileMeta || typeof currentMainFileContent !== "string")
+      return;
 
-    if (viewLang === "python") {
-      const pyTypeMap: Record<string, string> = {
-        int: "int",
-        float: "float",
-        string: "str",
-        boolean: "bool",
-        "int[]": "list[int]",
-        "float[]": "list[float]",
-        "string[]": "list[str]",
-        "boolean[]": "list[bool]",
-      };
-      return parameters
-        .map((p: any) => `${p.name}: ${pyTypeMap[p.type] || "Any"}`)
-        .join(", ");
-    } else if (viewLang === "javascript") {
-      return parameters.map((p: any) => p.name).join(", ");
-    } else if (viewLang === "cpp") {
-      const cppTypeMap: Record<string, string> = {
-        int: "int",
-        float: "float",
-        string: "string",
-        boolean: "bool",
-        "int[]": "vector<int>",
-        "float[]": "vector<float>",
-        "string[]": "vector<string>",
-        "boolean[]": "vector<bool>",
-      };
-      return parameters
-        .map((p: any) => `${cppTypeMap[p.type] || "auto"} ${p.name}`)
-        .join(", ");
-    }
-    return "";
-  }, [parameters, viewLang]);
-
-  const isParamsOutOfSync = useMemo(() => {
-    if (!currentMainFileContent) return false;
-    let regex: RegExp;
-    if (viewLang === "python") regex = /def\s+solve\s*\(([^)]*)\)/;
-    else if (viewLang === "javascript")
-      regex = /function\s+solve\s*\(([^)]*)\)/;
-    else regex = /(?:[a-zA-Z0-9_<>:\[\]]+\s+)+solve\s*\(([^)]*)\)/;
-
-    const match = currentMainFileContent.match(regex);
-    if (!match) return false;
-    return match[1].trim() !== expectedParamsString;
-  }, [currentMainFileContent, expectedParamsString, viewLang]);
-
-  const handleSyncParams = () => {
-    if (!currentMainFileContent || !currentMainFileMeta) return;
     let regex: RegExp;
     if (viewLang === "python") regex = /(def\s+solve\s*\()([^)]*)(\))/;
     else if (viewLang === "javascript")
       regex = /(function\s+solve\s*\()([^)]*)(\))/;
     else regex = /((?:[a-zA-Z0-9_<>:\[\]]+\s+)+solve\s*\()([^)]*)(\))/;
 
-    const newContent = currentMainFileContent.replace(
-      regex,
-      `$1${expectedParamsString}$3`,
-    );
-    if (newContent !== currentMainFileContent) {
+    const match = currentMainFileContent.match(regex);
+
+    if (match && match[2].trim() !== expectedParamsString) {
+      const newText = match[0].replace(regex, `$1${expectedParamsString}$3`);
+
+      const editorModel = editorRef.current?.getModel();
+
+      if (editorModel && editorModel.getValue() === currentMainFileContent) {
+        const matches = editorModel.findMatches(
+          regex.source,
+          false,
+          true,
+          false,
+          null,
+          false,
+        );
+
+        if (matches && matches.length > 0) {
+          editorRef.current.executeEdits("sync-signature", [
+            {
+              range: matches[0].range,
+              text: newText,
+              forceMoveMarkers: true,
+            },
+          ]);
+
+          setValue(
+            getName(`starterCode.${currentMainFileMeta.index}.content`),
+            editorModel.getValue(),
+            { shouldDirty: true },
+          );
+          return;
+        }
+      }
+
+      const fallbackContent = currentMainFileContent.replace(
+        regex,
+        `$1${expectedParamsString}$3`,
+      );
+
       setValue(
         getName(`starterCode.${currentMainFileMeta.index}.content`),
-        newContent,
+        fallbackContent,
         { shouldDirty: true },
       );
-      toast.success(`Parâmetros sincronizados para ${viewLang.toUpperCase()}!`);
-    } else {
-      toast.info("Função principal não encontrada.");
     }
-  };
+  }, [
+    expectedParamsString,
+    currentMainFileContent,
+    currentMainFileMeta,
+    getName,
+    setValue,
+    viewLang,
+  ]);
 
   const handleAddFile = () => {
     const extMap = { python: ".py", javascript: ".js", cpp: ".cpp" };
@@ -281,30 +368,6 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
         </div>
 
         <div className="flex items-center gap-3 w-full sm:w-auto">
-          {parameters.length > 0 && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleSyncParams}
-              disabled={!isParamsOutOfSync}
-              className={cn(
-                "h-9 text-xs px-3 transition-all border",
-                isParamsOutOfSync
-                  ? "border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 animate-pulse motion-reduce:animate-none"
-                  : "border-transparent text-muted opacity-50 hover:bg-transparent cursor-default",
-              )}
-            >
-              <RefreshCw
-                size={14}
-                className={cn(
-                  "mr-2",
-                  isParamsOutOfSync &&
-                    "animate-spin-slow motion-reduce:animate-none",
-                )}
-              />
-              {isParamsOutOfSync ? "Sincronizar Assinatura" : "Sincronizado"}
-            </Button>
-          )}
           <Button
             size="sm"
             variant="secondary"
@@ -449,6 +512,9 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                       )}
                       value={field.value}
                       onChange={(value) => field.onChange(value)}
+                      onMount={(editor) => {
+                        editorRef.current = editor;
+                      }}
                       options={{
                         minimap: { enabled: false },
                         fontSize: isFullscreen ? 16 : 14,
