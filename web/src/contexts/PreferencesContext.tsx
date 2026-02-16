@@ -2,18 +2,21 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 
 type Theme = "light" | "dark";
 type ColorblindMode = "none" | "deuteranopia" | "tritanopia" | "achromatopsia";
-type FontSize = "sm" | "base" | "lg" | "xl"; // <--- ADIÇÃO
+type FontSize = "sm" | "base" | "lg" | "xl";
+type FontFamily = "standard" | "dyslexic"; // <--- ADIÇÃO
 
 interface PreferencesState {
   theme: Theme;
   colorblindMode: ColorblindMode;
-  fontSize: FontSize; // <--- ADIÇÃO
+  fontSize: FontSize;
+  fontFamily: FontFamily; // <--- ADIÇÃO
 }
 
 interface PreferencesContextType extends PreferencesState {
   setTheme: (theme: Theme) => void;
   setColorblindMode: (mode: ColorblindMode) => void;
-  setFontSize: (size: FontSize) => void; // <--- ADIÇÃO
+  setFontSize: (size: FontSize) => void;
+  setFontFamily: (font: FontFamily) => void; // <--- ADIÇÃO
 }
 
 const PreferencesContext = createContext<PreferencesContextType | undefined>(
@@ -23,7 +26,8 @@ const PreferencesContext = createContext<PreferencesContextType | undefined>(
 const defaultPreferences: PreferencesState = {
   theme: "dark",
   colorblindMode: "none",
-  fontSize: "base", // <--- ADIÇÃO
+  fontSize: "base",
+  fontFamily: "standard", // <--- ADIÇÃO
 };
 
 export function PreferencesProvider({
@@ -43,22 +47,15 @@ export function PreferencesProvider({
 
     const root = document.documentElement;
 
-    // Aplicação da Polaridade
-    if (preferences.theme === "dark") {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
-    }
+    if (preferences.theme === "dark") root.classList.add("dark");
+    else root.classList.remove("dark");
 
-    // Aplicação do Espectro de Daltonismo
-    if (preferences.colorblindMode === "none") {
+    if (preferences.colorblindMode === "none")
       root.removeAttribute("data-colorblind");
-    } else {
-      root.setAttribute("data-colorblind", preferences.colorblindMode);
-    }
+    else root.setAttribute("data-colorblind", preferences.colorblindMode);
 
-    // Aplicação do Tamanho da Fonte
     root.setAttribute("data-fontsize", preferences.fontSize);
+    root.setAttribute("data-font", preferences.fontFamily); // <--- ADIÇÃO
   }, [preferences]);
 
   const setTheme = (theme: Theme) =>
@@ -67,10 +64,18 @@ export function PreferencesProvider({
     setPreferences((prev) => ({ ...prev, colorblindMode }));
   const setFontSize = (fontSize: FontSize) =>
     setPreferences((prev) => ({ ...prev, fontSize }));
+  const setFontFamily = (fontFamily: FontFamily) =>
+    setPreferences((prev) => ({ ...prev, fontFamily })); // <--- ADIÇÃO
 
   return (
     <PreferencesContext.Provider
-      value={{ ...preferences, setTheme, setColorblindMode, setFontSize }}
+      value={{
+        ...preferences,
+        setTheme,
+        setColorblindMode,
+        setFontSize,
+        setFontFamily,
+      }}
     >
       {children}
     </PreferencesContext.Provider>

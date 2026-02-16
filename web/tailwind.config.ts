@@ -6,6 +6,9 @@ export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"], // <--- ADIÇÃO
+      },
       colors: {
         background: "rgb(var(--background) / <alpha-value>)",
         surface: "rgb(var(--surface) / <alpha-value>)",

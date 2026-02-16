@@ -1,4 +1,33 @@
-/* web/src/index.css */
+@font-face {
+  font-family: "OpenDyslexic";
+  src:
+    url("/fonts/OpenDyslexic-Regular.woff2") format("woff2"),
+    url("/fonts/OpenDyslexic-Regular.woff") format("woff");
+  font-weight: 400; /* normal */
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "OpenDyslexic";
+  src:
+    url("/fonts/OpenDyslexic-Bold.woff2") format("woff2"),
+    url("/fonts/OpenDyslexic-Bold.woff") format("woff");
+  font-weight: 700; /* bold */
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "OpenDyslexic";
+  src:
+    url("/fonts/OpenDyslexic-Italic.woff2") format("woff2"),
+    url("/fonts/OpenDyslexic-Italic.woff") format("woff");
+  font-weight: 400; /* normal */
+  font-style: italic;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -20,6 +49,8 @@
 
     --muted: 113 113 122;
     --muted-foreground: 82 82 91;
+
+    --font-sans: "Inter", system-ui, -apple-system, sans-serif;
   }
 
   .dark {
@@ -94,6 +125,11 @@
   :root[data-fontsize="xl"] {
     font-size: 125%; /* Base: 20px */
   }
+
+  :root[data-font="dyslexic"] {
+    /* Pilha de fontes com espaçamento de base largo e peso inferior assimétrico */
+    --font-sans: "OpenDyslexic", "Comic Sans MS", "Lexend", sans-serif;
+  }
 }
 
 @layer components {
@@ -126,11 +162,7 @@ body {
   height: 100%;
   background-color: rgb(var(--background));
   color: rgb(var(--foreground));
-  font-family:
-    "Inter",
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
