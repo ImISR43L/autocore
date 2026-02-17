@@ -98,8 +98,9 @@ export class WrapperGenerator {
 import sys
 import re
 import json
+import ast
 
-# --- Wrapper Injetado pelo Autocore (NORMALIZAÇÃO ESTrita) ---
+# --- Wrapper Injetado pelo Autocore (NORMALIZAÇÃO ESTRITA) ---
 def parse_arg(raw, arg_type):
     if raw is None: return raw
     raw = str(raw).strip()
@@ -113,18 +114,10 @@ def parse_arg(raw, arg_type):
     if arg_type == 'string': return raw
     
     if arg_type.endswith('[]'):
-        if raw.startswith('['): raw = raw[1:]
-        if raw.endswith(']'): raw = raw[:-1]
-        inner = raw.strip()
-        
-        if not inner: return []
-        items = [x.strip() for x in inner.split(',')]
-        base_type = arg_type[:-2]
-        
-        if base_type == 'int': return [int(x) for x in items if x]
-        if base_type == 'float': return [float(x) for x in items if x]
-        if base_type == 'boolean': return [x.lower() == 'true' for x in items if x]
-        return items
+        try:
+            return ast.literal_eval(raw)
+        except (ValueError, SyntaxError):
+            return []
         
     return raw
 
@@ -177,10 +170,12 @@ import { readFileSync } from 'fs';
 
 function parseArg(raw, type) {
     if (raw === undefined || raw === null) return raw;
+    if (typeof raw !== 'string') return raw;
+    
     raw = raw.trim();
     
-    if (raw.startsWith('"') && raw.endswith('"')) raw = raw.slice(1, -1);
-    else if (raw.startsWith("'") && raw.endswith("'")) raw = raw.slice(1, -1);
+    if (raw.startsWith('"') && raw.endsWith('"')) raw = raw.slice(1, -1);
+    else if (raw.startsWith("'") && raw.endsWith("'")) raw = raw.slice(1, -1);
 
     if (type === 'int') return parseInt(raw, 10);
     if (type === 'float') return parseFloat(raw);
@@ -188,18 +183,15 @@ function parseArg(raw, type) {
     if (type === 'string') return raw;
     
     if (type.endsWith('[]')) {
-        if (raw.startsWith('[')) raw = raw.slice(1);
-        if (raw.endsWith(']')) raw = raw.slice(0, -1);
-        let inner = raw.trim();
-        
-        if (!inner) return [];
-        let items = inner.split(',').map(x => x.trim()).filter(x => x !== '');
-        let baseType = type.slice(0, -2);
-        
-        if (baseType === 'int') return items.map(x => parseInt(x, 10));
-        if (baseType === 'float') return items.map(x => parseFloat(x));
-        if (baseType === 'boolean') return items.map(x => x.toLowerCase() === 'true');
-        return items;
+        try {
+            // Reconstrói aspas duplas caso o regex as tenha removido de forma incorreta para JSON
+            if (!raw.includes('"') && type === 'string[]') {
+                 raw = raw.replace(/'/g, '"');
+            }
+            return JSON.parse(raw);
+        } catch(e) {
+            return [];
+        }
     }
     return raw;
 }
@@ -285,14 +277,14 @@ vector<int> parse_int_array(string raw) {
     }
     if (hasFloatArray) {
       helpers += `
-vector<float> parse_float_array(string raw) {
-    vector<float> res;
+vector<double> parse_double_array(string raw) {
+    vector<double> res;
     raw = trim_brackets(raw);
     stringstream ss(raw);
     string item;
     while(getline(ss, item, ',')) {
         while(!item.empty() && item.front() == ' ') item.erase(0, 1);
-        if(!item.empty()) res.push_back(stof(item));
+        if(!item.empty()) res.push_back(stod(item));
     }
     return res;
 }\n`;
@@ -329,7 +321,7 @@ vector<bool> parse_boolean_array(string raw) {
     const decls = params
       .map((p, i) => {
         if (p.type === 'int') return `int p${i} = stoi(parts[${i}]);`;
-        if (p.type === 'float') return `float p${i} = stof(parts[${i}]);`;
+        if (p.type === 'float') return `double p${i} = stod(parts[${i}]);`;
         if (p.type === 'boolean')
           return `bool p${i} = (parts[${i}] == "true" || parts[${i}] == "1");`;
         if (p.type === 'string')
@@ -337,7 +329,7 @@ vector<bool> parse_boolean_array(string raw) {
         if (p.type === 'int[]')
           return `vector<int> p${i} = parse_int_array(parts[${i}]);`;
         if (p.type === 'float[]')
-          return `vector<float> p${i} = parse_float_array(parts[${i}]);`;
+          return `vector<double> p${i} = parse_double_array(parts[${i}]);`;
         if (p.type === 'string[]')
           return `vector<string> p${i} = parse_string_array(parts[${i}]);`;
         if (p.type === 'boolean[]')
