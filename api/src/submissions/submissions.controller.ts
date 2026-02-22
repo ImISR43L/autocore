@@ -71,9 +71,15 @@ export class SubmissionsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Patch(':id/deliver')
+  markAsDelivery(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.submissionsService.markAsDelivery(id, req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('problem/:id')
-  findAllByProblem(@Param('id') id: string) {
-    return this.submissionsService.findAllByProblem(id);
+  findAllByProblem(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.submissionsService.findAllByProblem(id, req.user.userId);
   }
 
   @UseGuards(JwtAuthGuard)

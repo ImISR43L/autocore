@@ -9,7 +9,6 @@ import {
 import { Problem } from '../../problems/entities/problem.entity';
 import { User } from '../../users/entities/user.entity';
 
-// Interface auxiliar para tipagem
 export interface FileEntry {
   name: string;
   content: string;
@@ -23,8 +22,6 @@ export class Submission {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  // ALTERAÇÃO: De 'code: string' para 'files: jsonb'
-  // Armazena: [{ name: "main.py", content: "..." }, { name: "utils.py", content: "..." }]
   @Column({ type: 'jsonb' })
   files: FileEntry[];
 
@@ -35,14 +32,19 @@ export class Submission {
   @Index()
   status: string;
 
+  // NOVA COLUNA: Define se esta é a entrega oficial selecionada pelo aluno
+  @Column({ type: 'boolean', default: false })
+  @Index()
+  isDelivery: boolean;
+
   @Column({ type: 'text', nullable: true })
-  output: string | null; // Log limpo/sanitizado para o aluno
+  output: string | null;
 
   @Column({ type: 'int', nullable: true })
-  executionTime: number | null; // Tempo em ms
+  executionTime: number | null;
 
   @Column({ type: 'int', nullable: true })
-  memoryUsage: number | null; // Memória em KB
+  memoryUsage: number | null;
 
   @Column({ type: 'text', nullable: true })
   stdout: string | null;

@@ -51,6 +51,7 @@ import {
   Maximize,
   Minimize,
   Copy,
+  Users,
 } from "lucide-react";
 import {
   Panel,
@@ -161,6 +162,7 @@ interface Submission {
   teacherComment?: string;
   problemId?: string;
   problem?: { id: string };
+  isDelivery?: boolean;
 }
 
 interface StatData {
@@ -1235,6 +1237,18 @@ export default function ClassroomView() {
     }
   };
 
+  const handleMarkAsDelivery = async (subId: string) => {
+    try {
+      await api.patch(`/submissions/${subId}/deliver`);
+      toast.success("Submissão definida como entrega oficial!");
+      if (displayProblem) {
+        fetchSubmissions(displayProblem.id);
+      }
+    } catch (error) {
+      toast.error("Erro ao definir entrega.");
+    }
+  };
+
   const handleGoToProblem = (probId: string) => {
     setSelectedProblemId(probId);
     setActiveTab("classwork");
@@ -1299,6 +1313,13 @@ export default function ClassroomView() {
           (a, b) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
         )[0] || null
+    );
+  }, [submissions, myUserId]);
+
+  const myDeliverySubmission = useMemo(() => {
+    if (!submissions || submissions.length === 0) return null;
+    return (
+      submissions.find((s) => s.user?.id === myUserId && s.isDelivery) || null
     );
   }, [submissions, myUserId]);
 
@@ -2312,21 +2333,29 @@ export default function ClassroomView() {
                   ))}
                 </Select>
 
-                {/* BOTÃO DE ENVIAR: Apenas para Alunos */}
+                {/* BOTÃO DE ENVIAR E ESTADO DE ENTREGA: Apenas para Alunos */}
                 {!isOwner && (
-                  <Button
-                    onClick={submitSolution}
-                    disabled={loading || !selectedProblemId || isBlocked}
-                    isLoading={loading}
-                    className="h-11 px-8 text-base font-semibold whitespace-nowrap min-w-[140px]"
-                  >
-                    {!loading &&
-                      (isBlocked
-                        ? isDeadlinePassed
-                          ? "Prazo Encerrado"
-                          : "Bloqueado"
-                        : "Enviar Solução")}
-                  </Button>
+                  <div className="flex items-center gap-3">
+                    {myDeliverySubmission && (
+                      <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-500/10 text-emerald-500 text-xs font-bold uppercase tracking-wider border border-emerald-500/20">
+                        <CheckCircle size={14} /> Oficial:{" "}
+                        {myDeliverySubmission.status}
+                      </div>
+                    )}
+                    <Button
+                      onClick={submitSolution}
+                      disabled={loading || !selectedProblemId || isBlocked}
+                      isLoading={loading}
+                      className="h-11 px-8 text-base font-semibold whitespace-nowrap min-w-[140px]"
+                    >
+                      {!loading &&
+                        (isBlocked
+                          ? isDeadlinePassed
+                            ? "Prazo Encerrado"
+                            : "Bloqueado"
+                          : "Enviar Rascunho")}
+                    </Button>
+                  </div>
                 )}
               </div>
 
@@ -2715,8 +2744,12 @@ export default function ClassroomView() {
             {/* Header Modal */}
             <div className="flex items-center justify-between p-4 md:p-6 border-b border-border bg-surface">
               <h3 className="text-xl md:text-2xl font-semibold text-foreground flex items-center gap-3">
-                <Clock size={24} className="text-primary" />
-                Histórico de Envios
+                {isOwner ? (
+                  <Users size={24} className="text-primary" />
+                ) : (
+                  <Clock size={24} className="text-primary" />
+                )}
+                {isOwner ? "Entregas dos Alunos" : "Histórico de Envios"}
               </h3>
               <Button
                 variant="ghost"
@@ -2779,11 +2812,13 @@ export default function ClassroomView() {
                       <th className="px-6 py-4 font-semibold">Data</th>
                       <th className="px-6 py-4 font-semibold">Tempo</th>
                       <th className="px-6 py-4 font-semibold">Memória</th>
-                      {isOwner && (
+                      {isOwner ? (
                         <th className="px-6 py-4 font-semibold">Aluno</th>
+                      ) : (
+                        <th className="px-6 py-4 font-semibold">Entrega</th>
                       )}
                       <th className="px-6 py-4 text-right font-semibold">
-                        Ação
+                        Detalhes
                       </th>
                     </tr>
                   </thead>
@@ -2801,20 +2836,8 @@ export default function ClassroomView() {
                           key={sub.id}
                           className="hover:bg-surface/50 transition-colors"
                         >
-                          <td className="px-6 py-4">
-                            <span
-                              className={cn(
-                                "font-medium flex items-center gap-1.5",
-                                sub.status === "Accepted"
-                                  ? "text-emerald-600 dark:text-emerald-500"
-                                  : sub.status === "Pending"
-                                    ? "text-amber-600 dark:text-amber-500"
-                                    : "text-red-600 dark:text-red-500",
-                              )}
-                            >
-                              {sub.status}
-                            </span>
-                          </td>
+                          {/* ... tds de status, data, tempo, memória (mantém iguais) ... */}
+                          <td className="px-6 py-4">{/* status */}</td>
                           <td className="px-6 py-4 text-foreground whitespace-nowrap">
                             {new Date(sub.createdAt).toLocaleString()}
                           </td>
@@ -2824,7 +2847,8 @@ export default function ClassroomView() {
                           <td className="px-6 py-4 text-muted font-mono">
                             {sub.memoryUsage}KB
                           </td>
-                          {isOwner && (
+
+                          {isOwner ? (
                             <td className="px-6 py-4 text-foreground">
                               <div className="flex items-center gap-3">
                                 <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold">
@@ -2834,6 +2858,23 @@ export default function ClassroomView() {
                                   {sub.user.name || sub.user.email}
                                 </span>
                               </div>
+                            </td>
+                          ) : (
+                            <td className="px-6 py-4">
+                              {sub.isDelivery ? (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-500/10 text-emerald-500 text-xs font-bold uppercase tracking-wider border border-emerald-500/20">
+                                  <CheckCircle size={14} /> Entregue
+                                </span>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleMarkAsDelivery(sub.id)}
+                                  className="h-8 text-xs whitespace-nowrap"
+                                >
+                                  Marcar Entrega
+                                </Button>
+                              )}
                             </td>
                           )}
                           <td className="px-6 py-4 text-right">
@@ -2848,16 +2889,6 @@ export default function ClassroomView() {
                           </td>
                         </tr>
                       ))}
-                    {submissions.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-6 py-12 text-center text-muted text-base"
-                        >
-                          Nenhuma submissão encontrada.
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>

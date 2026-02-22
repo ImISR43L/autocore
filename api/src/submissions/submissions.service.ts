@@ -34,7 +34,7 @@ export class SubmissionsService {
   // ... (getProblemStats, getTeacherStats, grade mantidos iguais) ...
   async getProblemStats(problemId: string) {
     const submissions = await this.submissionsRepository.find({
-      where: { problem: { id: problemId } },
+      where: { problem: { id: problemId }, isDelivery: true },
       select: ['status'],
     });
     let accepted = 0;
@@ -57,7 +57,7 @@ export class SubmissionsService {
     const stats: { name: string; Accepted: number; Error: number }[] = [];
     for (const p of problems) {
       const subs = await this.submissionsRepository.find({
-        where: { problem: { id: p.id } },
+        where: { problem: { id: p.id }, isDelivery: true },
         select: ['status'],
       });
       let acc = 0;
@@ -134,6 +134,10 @@ export class SubmissionsService {
       );
     }
 
+    const existingCount = await this.submissionsRepository.count({
+      where: { problem: { id: problem.id }, user: { id: userId } },
+    });
+
     // Criação da Entidade
     const submission = this.submissionsRepository.create({
       files: createSubmissionDto.files,
@@ -141,6 +145,7 @@ export class SubmissionsService {
       problem,
       user: { id: userId },
       status: 'Pending',
+      isDelivery: existingCount === 0, // A primeira tentativa é automaticamente a entrega
     });
 
     const savedSubmission = await this.submissionsRepository.save(submission);
@@ -189,12 +194,64 @@ export class SubmissionsService {
     return submission;
   }
 
-  async findAllByProblem(problemId: string) {
-    return this.submissionsRepository.find({
-      where: { problem: { id: problemId } },
-      relations: ['user', 'problem'],
-      order: { createdAt: 'DESC' },
+  async markAsDelivery(id: string, userId: string) {
+    const submission = await this.submissionsRepository.findOne({
+      where: { id },
+      relations: ['problem', 'user'],
     });
+
+    if (!submission) throw new NotFoundException('Submissão não encontrada');
+    if (submission.user.id !== userId)
+      throw new ForbiddenException('Ação não permitida.');
+
+    // NOVA VALIDAÇÃO: Bloquear troca após o prazo
+    if (
+      submission.problem.deadline &&
+      new Date() > submission.problem.deadline
+    ) {
+      throw new ForbiddenException(
+        'O prazo encerrou. Não é possível alterar a entrega oficial.',
+      );
+    }
+
+    await this.submissionsRepository.update(
+      {
+        problem: { id: submission.problem.id },
+        user: { id: userId },
+        isDelivery: true,
+      },
+      { isDelivery: false },
+    );
+
+    submission.isDelivery = true;
+    return this.submissionsRepository.save(submission);
+  }
+
+  async findAllByProblem(problemId: string, userId: string) {
+    const problem = await this.problemsRepository.findOne({
+      where: { id: problemId },
+      relations: ['classroom', 'classroom.owner'],
+    });
+
+    if (!problem) throw new NotFoundException('Problema não encontrado');
+
+    const isOwner = problem.classroom.owner.id === userId;
+
+    if (isOwner) {
+      // O professor apenas vê as entregas oficiais (uma por aluno)
+      return this.submissionsRepository.find({
+        where: { problem: { id: problemId }, isDelivery: true },
+        relations: ['user', 'problem'],
+        order: { createdAt: 'DESC' },
+      });
+    } else {
+      // O aluno vê todo o seu próprio histórico (rascunhos e entregas)
+      return this.submissionsRepository.find({
+        where: { problem: { id: problemId }, user: { id: userId } },
+        relations: ['user', 'problem'],
+        order: { createdAt: 'DESC' },
+      });
+    }
   }
 
   async findAll() {
@@ -209,7 +266,7 @@ export class SubmissionsService {
     const stats: { name: string; Accepted: number; Error: number }[] = [];
     for (const p of problems) {
       const subs = await this.submissionsRepository.find({
-        where: { problem: { id: p.id } },
+        where: { problem: { id: p.id }, isDelivery: true },
         select: ['status'],
       });
       let acc = 0;
