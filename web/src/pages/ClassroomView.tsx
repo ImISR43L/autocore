@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { api } from "../lib/api";
+import { supabase } from "../lib/supabase";
 import Editor from "@monaco-editor/react";
 import type { OnMount } from "@monaco-editor/react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
@@ -154,7 +155,7 @@ interface Submission {
   executionTime: number;
   memoryUsage: number;
   createdAt: string;
-  user: { id: number; email: string; name?: string };
+  user: { id: string; email: string; name?: string };
   grade?: number;
   teacherComment?: string;
   problemId?: string;
@@ -272,7 +273,7 @@ export default function ClassroomView() {
 
   // Filtros de Submissão
   const [selectedStudentFilter, setSelectedStudentFilter] = useState<
-    number | null
+    string | null
   >(null);
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<
     string | null
@@ -281,7 +282,7 @@ export default function ClassroomView() {
   const [studentSearch, setStudentSearch] = useState("");
 
   const [inspectingUser, setInspectingUser] = useState<{
-    id: number;
+    id: string;
     email: string;
     name?: string;
   } | null>(null);
@@ -413,18 +414,20 @@ export default function ClassroomView() {
     monaco.editor.setTheme(themeToSet);
   }, [colorblindMode, isLightMode, highContrast]);
 
-  const getMyUserId = () => {
-    const token = localStorage.getItem("token");
-    if (!token) return null;
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      return payload.sub || payload.userId;
-    } catch {
-      return null;
-    }
-  };
+  const [myUserId, setMyUserId] = useState<string | null>(null);
 
-  const myUserId = getMyUserId();
+  useEffect(() => {
+    const fetchUser = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        setMyUserId(session.user.id);
+      }
+    };
+    fetchUser();
+  }, []);
+
   const isOwner = classroom?.owner?.id === myUserId;
 
   const displayProblem =
@@ -2674,7 +2677,7 @@ export default function ClassroomView() {
                   className="w-full sm:w-64 h-10 text-base"
                   value={selectedStudentFilter || ""}
                   onChange={(e) =>
-                    setSelectedStudentFilter(Number(e.target.value) || null)
+                    setSelectedStudentFilter(e.target.value || null)
                   }
                 >
                   <option value="">Todos os Alunos</option>
