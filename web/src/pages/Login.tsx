@@ -95,7 +95,6 @@ export default function Login() {
       if (error) throw error;
 
       if (data?.session) {
-        localStorage.setItem("token", data.session.access_token);
         toast.success("Login efetuado com sucesso!");
         navigate("/dashboard");
       }
@@ -133,7 +132,6 @@ export default function Login() {
       if (error) throw error;
 
       if (data?.session) {
-        localStorage.setItem("token", data.session.access_token);
         toast.success("Conta criada com sucesso!");
         navigate("/dashboard");
       } else {

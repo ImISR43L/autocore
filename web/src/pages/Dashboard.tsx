@@ -111,8 +111,7 @@ export default function Dashboard() {
     } catch (error) {
       console.error(error);
       toast.error("Sessão expirada. Faça login novamente.");
-      localStorage.clear();
-      navigate("/");
+      await supabase.auth.signOut();
     } finally {
       setLoading(false);
     }
@@ -177,8 +176,6 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    localStorage.clear();
-    navigate("/");
   };
 
   const filteredClassrooms = classrooms.filter(

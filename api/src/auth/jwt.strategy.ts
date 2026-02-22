@@ -20,7 +20,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      ignoreExpiration: false,
+      ignoreExpiration: true,
       // O secretOrKeyProvider busca as chaves públicas ativas do Supabase automaticamente
       secretOrKeyProvider: passportJwtSecret({
         cache: true,

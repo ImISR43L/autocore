@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import axios from "axios";
+import { api } from "../lib/api";
 import Editor from "@monaco-editor/react";
 import type { OnMount } from "@monaco-editor/react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
@@ -627,64 +627,41 @@ export default function ClassroomView() {
 
   const fetchClassroomData = useCallback(async () => {
     try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get(`${API_URL}/classrooms/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get(`/classrooms/${id}`);
       setClassroom(res.data);
     } catch {
       toast.error("Erro ao carregar turma.");
       navigate("/dashboard");
     }
-  }, [id, API_URL, navigate]);
+  }, [id, navigate]);
 
-  const fetchSubmissions = useCallback(
-    async (probId: string) => {
-      if (!probId) return;
-      try {
-        const token = localStorage.getItem("token");
-        const res = await axios.get(
-          `${API_URL}/submissions/problem/${probId}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        );
-        setSubmissions(res.data);
-      } catch (error) {
-        console.error(error);
-      }
-    },
-    [API_URL],
-  );
+  const fetchSubmissions = useCallback(async (probId: string) => {
+    if (!probId) return;
+    try {
+      const res = await api.get(`/submissions/problem/${probId}`);
+      setSubmissions(res.data);
+    } catch (error) {
+      console.error(error);
+    }
+  }, []);
 
-  const fetchProblemStats = useCallback(
-    async (probId: string) => {
-      try {
-        const token = localStorage.getItem("token");
-        const res = await axios.get(
-          `${API_URL}/submissions/stats/problem/${probId}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        setProblemStats(res.data);
-      } catch {
-        console.error("Erro problem stats");
-      }
-    },
-    [API_URL],
-  );
+  const fetchProblemStats = useCallback(async (probId: string) => {
+    try {
+      const res = await api.get(`/submissions/stats/problem/${probId}`);
+      setProblemStats(res.data);
+    } catch {
+      console.error("Erro problem stats");
+    }
+  }, []);
 
   const fetchStats = useCallback(async () => {
     try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get(
-        `${API_URL}/submissions/stats/classroom/${id}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      const res = await api.get(`/submissions/stats/classroom/${id}`);
       setStats(res.data);
     } catch {
       console.error("Erro stats");
     }
-  }, [id, API_URL]);
+  }, [id]);
 
   const aggregatedStats = useMemo(() => {
     const totalAccepted = stats.reduce(
@@ -778,11 +755,7 @@ export default function ClassroomView() {
     if (!selectedProblemId) return;
     const fetchProblemDetails = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const res = await axios.get(
-          `${API_URL}/problems/${selectedProblemId}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
+        const res = await api.get(`/problems/${selectedProblemId}`);
         setCurrentProblem(res.data);
         setActiveChildIndex(0);
       } catch (e) {
@@ -790,7 +763,7 @@ export default function ClassroomView() {
       }
     };
     fetchProblemDetails();
-  }, [selectedProblemId, API_URL]);
+  }, [selectedProblemId]);
 
   useEffect(() => {
     const lang = LANGUAGES.find((l) => l.id === languageId);
@@ -983,7 +956,6 @@ export default function ClassroomView() {
             ? currentProblem.children
             : [currentProblem];
 
-        const token = localStorage.getItem("token");
         const loadedSubs: Record<string, Submission> = {};
         let foundIndex = 0;
 
@@ -995,10 +967,7 @@ export default function ClassroomView() {
             continue;
           }
           try {
-            const res = await axios.get(
-              `${API_URL}/submissions/problem/${p.id}`,
-              { headers: { Authorization: `Bearer ${token}` } },
-            );
+            const res = await api.get(`/submissions/problem/${p.id}`);
             const userSub = res.data.find(
               (s: Submission) => s.user.id === targetSubmission.user.id,
             );
@@ -1035,15 +1004,10 @@ export default function ClassroomView() {
     const sub = studentSubmissions[targetProb.id];
     if (!sub) return toast.error("Nenhuma submissão para dar nota.");
     try {
-      const token = localStorage.getItem("token");
-      await axios.patch(
-        `${API_URL}/submissions/${sub.id}/grade`,
-        {
-          grade: gradingGrade === "" ? null : Number(gradingGrade),
-          teacherComment: gradingComment,
-        },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      await api.patch(`/submissions/${sub.id}/grade`, {
+        grade: gradingGrade === "" ? null : Number(gradingGrade),
+        teacherComment: gradingComment,
+      });
       toast.success("Nota salva!");
       setStudentSubmissions((prev) => ({
         ...prev,
@@ -1069,7 +1033,6 @@ export default function ClassroomView() {
     setPosting(true);
 
     try {
-      const token = localStorage.getItem("token");
       const formData = new FormData();
 
       formData.append("content", newAnnouncement);
@@ -1083,9 +1046,8 @@ export default function ClassroomView() {
         formData.append("files", file);
       });
 
-      await axios.post(`${API_URL}/announcements`, formData, {
+      await api.post(`/announcements`, formData, {
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
         },
       });
@@ -1118,10 +1080,7 @@ export default function ClassroomView() {
   const handleDeleteAnnouncement = async (id: string) => {
     if (!confirm("Apagar?")) return;
     try {
-      const token = localStorage.getItem("token");
-      await axios.delete(`${API_URL}/announcements/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.delete(`/announcements/${id}`);
       toast.success("Removido.");
       fetchClassroomData();
     } catch {
@@ -1149,10 +1108,7 @@ export default function ClassroomView() {
   const handleDeleteProblem = async () => {
     if (!selectedProblemId || !confirm("Certeza?")) return;
     try {
-      const token = localStorage.getItem("token");
-      await axios.delete(`${API_URL}/problems/${selectedProblemId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.delete(`/problems/${selectedProblemId}`);
       toast.success("Eliminado!");
       setSelectedProblemId(null);
       fetchClassroomData();
@@ -1190,18 +1146,11 @@ export default function ClassroomView() {
     }
 
     try {
-      const token = localStorage.getItem("token");
-      const headers = { Authorization: `Bearer ${token}` };
-
-      await axios.post(
-        `${API_URL}/submissions`,
-        {
-          files,
-          language_id: languageId,
-          problem_id: displayProblem.id,
-        },
-        { headers },
-      );
+      await api.post(`/submissions`, {
+        files,
+        language_id: languageId,
+        problem_id: displayProblem.id,
+      });
 
       setTimeout(() => {
         if (loadingRef.current && displayProblemRef.current) {
@@ -1213,7 +1162,7 @@ export default function ClassroomView() {
       setLoading(false);
       loadingRef.current = false;
       console.error(error);
-      if (axios.isAxiosError(error) && error.response?.status === 429) {
+      if (error?.response?.status === 429) {
         setVerdict("Muitas Tentativas");
         toast.warning("Aguarde um momento antes de enviar novamente.");
       } else {
@@ -1271,16 +1220,9 @@ export default function ClassroomView() {
   const handleStartExam = async () => {
     if (!confirm("Iniciar?")) return;
     try {
-      const token = localStorage.getItem("token");
-      await axios.patch(
-        `${API_URL}/problems/${selectedProblemId}/start`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      await api.patch(`/problems/${selectedProblemId}/start`, {});
       toast.success("Iniciada!");
-      const res = await axios.get(`${API_URL}/problems/${selectedProblemId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get(`/problems/${selectedProblemId}`);
       setCurrentProblem(res.data);
     } catch {
       toast.error("Erro.");
@@ -1297,11 +1239,9 @@ export default function ClassroomView() {
     setShowReportMenu(false);
     const toastId = toast.loading("Gerando relatório...");
     try {
-      const token = localStorage.getItem("token");
-      const response = await axios.get(
-        `${API_URL}/reports/classroom/${classroom.id}/${format}`,
+      const response = await api.get(
+        `/reports/classroom/${classroom.id}/${format}`,
         {
-          headers: { Authorization: `Bearer ${token}` },
           responseType: "blob",
         },
       );

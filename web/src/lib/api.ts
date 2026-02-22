@@ -14,8 +14,7 @@ api.interceptors.request.use(async (config) => {
   } = await supabase.auth.getSession();
 
   if (session?.access_token) {
-    // IMPORTANTE: Utilize atribuição direta no Axios mais recente se o set() falhar
-    config.headers.Authorization = `Bearer ${session.access_token}`;
+    config.headers.set("Authorization", `Bearer ${session.access_token}`);
   } else {
     console.warn(
       "Nenhum token JWT disponível na sessão atual do Supabase.",

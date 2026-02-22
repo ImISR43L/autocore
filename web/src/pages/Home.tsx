@@ -4,6 +4,7 @@ import Editor from "@monaco-editor/react";
 import { useNavigate } from "react-router-dom";
 import "../App.css";
 import "../index.css";
+import { supabase } from "../lib/supabase";
 
 // Interfaces para tipagem
 interface Problem {
@@ -143,10 +144,8 @@ function Home() {
     return "#ff9800";
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("role");
-    navigate("/login");
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
   };
 
   // Encontra o problema atual para exibir descrição
