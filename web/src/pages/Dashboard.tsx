@@ -14,6 +14,7 @@ import {
   ArrowRight,
   Clock,
   X,
+  Copy,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -302,8 +303,20 @@ export default function Dashboard() {
                         <span className="hidden xs:inline">Aluno</span>
                       </span>
                     )}
-                    <span className="font-mono text-xs sm:text-sm text-muted/80 tracking-wider">
+                    <span
+                      className="font-mono text-xs sm:text-sm text-muted/80 tracking-wider flex items-center gap-1.5 cursor-pointer hover:text-foreground transition-colors group z-10"
+                      onClick={(e) => {
+                        e.stopPropagation(); // Impede que o clique acesse o redirecionamento do card
+                        navigator.clipboard.writeText(c.code);
+                        toast.success("Código copiado!");
+                      }}
+                      title="Clique para copiar"
+                    >
                       {c.code}
+                      <Copy
+                        size={14}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity"
+                      />
                     </span>
                   </div>
 

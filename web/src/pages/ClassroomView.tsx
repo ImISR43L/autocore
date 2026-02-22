@@ -50,6 +50,7 @@ import {
   Accessibility,
   Maximize,
   Minimize,
+  Copy,
 } from "lucide-react";
 import {
   Panel,
@@ -1740,8 +1741,19 @@ export default function ClassroomView() {
                   <h1 className="text-2xl md:text-4xl font-bold mb-3 text-foreground">
                     {classroom.name}
                   </h1>
-                  <div className="text-sm md:text-base text-primary-dark dark:text-primary/80 font-mono">
+                  <div
+                    className="text-sm md:text-base text-primary-dark dark:text-primary/80 font-mono flex items-center gap-2 cursor-pointer hover:underline w-fit group"
+                    onClick={() => {
+                      navigator.clipboard.writeText(classroom.code);
+                      toast.success("Código da turma copiado!");
+                    }}
+                    title="Clique para copiar"
+                  >
                     Código: {classroom.code}
+                    <Copy
+                      size={16}
+                      className="opacity-70 group-hover:opacity-100 transition-opacity"
+                    />
                   </div>
                 </div>
 
