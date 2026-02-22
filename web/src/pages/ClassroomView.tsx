@@ -849,15 +849,17 @@ export default function ClassroomView() {
         clearInterval(interval);
       } else {
         setExamStatus("RUNNING");
-        setTimeLeft(
-          `${Math.floor((diff % 864e5) / 36e5)
-            .toString()
-            .padStart(2, "0")}:${Math.floor((diff % 36e5) / 6e4)
-            .toString()
-            .padStart(2, "0")}:${Math.floor((diff % 6e4) / 1e3)
-            .toString()
-            .padStart(2, "0")}`,
-        );
+        // Divisão direta por 36e5 garante que horas > 24 sejam mostradas adequadamente
+        const h = Math.floor(diff / 36e5)
+          .toString()
+          .padStart(2, "0");
+        const m = Math.floor((diff % 36e5) / 6e4)
+          .toString()
+          .padStart(2, "0");
+        const s = Math.floor((diff % 6e4) / 1e3)
+          .toString()
+          .padStart(2, "0");
+        setTimeLeft(`${h}:${m}:${s}`);
       }
     }, 1000);
     return () => clearInterval(interval);
@@ -1401,6 +1403,35 @@ export default function ClassroomView() {
           <h1 className="text-2xl md:text-3xl font-bold mb-6">
             {displayProblem.title}
           </h1>
+
+          {displayProblem.deadline && (
+            <div className="flex items-center gap-2 text-sm mb-8 bg-surface p-3 rounded-lg border border-border w-fit">
+              <Clock
+                size={16}
+                className={isDeadlinePassed ? "text-red-500" : "text-amber-500"}
+              />
+              <span className="font-semibold text-muted">Prazo:</span>
+              <span
+                className={
+                  isDeadlinePassed
+                    ? "text-red-500 font-medium"
+                    : "text-foreground font-medium"
+                }
+              >
+                {new Date(displayProblem.deadline).toLocaleString("pt-BR", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+              {isDeadlinePassed && (
+                <span className="text-red-500 ml-1 font-bold">(Encerrado)</span>
+              )}
+            </div>
+          )}
+
           <div className="prose prose-invert prose-base max-w-none mb-10">
             <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
               {displayProblem.description}
@@ -1674,9 +1705,24 @@ export default function ClassroomView() {
                         <div
                           key={work.id}
                           onClick={() => handleGoToProblem(work.id)}
-                          className="text-base cursor-pointer hover:underline truncate text-foreground hover:text-primary transition-colors"
+                          className="group cursor-pointer p-3 rounded-lg border border-border bg-background hover:border-primary/50 transition-colors"
                         >
-                          {work.title}
+                          <div className="text-base font-medium truncate text-foreground group-hover:text-primary transition-colors">
+                            {work.title}
+                          </div>
+                          {/* NOVO BLOCO: Renderização explícita do prazo */}
+                          {work.deadline && (
+                            <div className="text-xs text-muted flex items-center gap-1.5 mt-2">
+                              <Clock size={14} className="text-amber-500" />
+                              Entrega:{" "}
+                              {new Date(work.deadline).toLocaleString("pt-BR", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -2262,7 +2308,12 @@ export default function ClassroomView() {
                     isLoading={loading}
                     className="h-11 px-8 text-base font-semibold whitespace-nowrap min-w-[140px]"
                   >
-                    {!loading && (isBlocked ? "Bloqueado" : "Enviar Solução")}
+                    {!loading &&
+                      (isBlocked
+                        ? isDeadlinePassed
+                          ? "Prazo Encerrado"
+                          : "Bloqueado"
+                        : "Enviar Solução")}
                   </Button>
                 )}
               </div>
