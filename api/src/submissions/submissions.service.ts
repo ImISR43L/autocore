@@ -79,6 +79,12 @@ export class SubmissionsService {
       relations: ['problem', 'problem.classroom', 'problem.classroom.owner'],
     });
     if (!submission) throw new NotFoundException('Submissão não encontrada');
+
+    if (submission.problem?.classroom?.isArchived) {
+      throw new ForbiddenException(
+        'Turma em modo leitura (arquivada). Ações bloqueadas.',
+      );
+    }
     if (submission.problem?.classroom?.owner?.id !== userId) {
       throw new ForbiddenException('Apenas o professor pode avaliar.');
     }
@@ -94,12 +100,18 @@ export class SubmissionsService {
 
     const problem = await this.problemsRepository.findOne({
       where: { id: createSubmissionDto.problem_id },
-      relations: ['testCases'],
+      relations: ['testCases', 'classroom'], // <--- Adicione 'classroom' aqui
     });
 
     if (!problem) {
       this.logger.error('[DEBUG] Problema não encontrado.');
       throw new NotFoundException('Problema não encontrado');
+    }
+
+    if (problem.classroom?.isArchived) {
+      throw new ForbiddenException(
+        'Turma em modo leitura (arquivada). Não é possível enviar resoluções.',
+      );
     }
 
     // Validações de Prazo e Acesso
@@ -197,14 +209,21 @@ export class SubmissionsService {
   async markAsDelivery(id: string, userId: string) {
     const submission = await this.submissionsRepository.findOne({
       where: { id },
-      relations: ['problem', 'user'],
+      // Adição da relação 'problem.classroom' necessária para a validação
+      relations: ['problem', 'problem.classroom', 'user'],
     });
 
     if (!submission) throw new NotFoundException('Submissão não encontrada');
     if (submission.user.id !== userId)
       throw new ForbiddenException('Ação não permitida.');
 
-    // NOVA VALIDAÇÃO: Bloquear troca após o prazo
+    // NOVA VALIDAÇÃO: Bloqueio de turmas arquivadas
+    if (submission.problem?.classroom?.isArchived) {
+      throw new ForbiddenException(
+        'Turma em modo leitura (arquivada). Ações bloqueadas.',
+      );
+    }
+
     if (
       submission.problem.deadline &&
       new Date() > submission.problem.deadline

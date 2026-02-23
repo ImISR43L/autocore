@@ -6,7 +6,8 @@ import {
   ManyToMany,
   JoinTable,
   OneToMany,
-  CreateDateColumn, // <--- Importar
+  CreateDateColumn,
+  Index,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Problem } from '../../problems/entities/problem.entity';
@@ -40,4 +41,8 @@ export class Classroom {
 
   @OneToMany(() => Announcement, (announcement) => announcement.classroom)
   announcements: Announcement[];
+
+  @Column({ type: 'boolean', default: false })
+  @Index()
+  isArchived: boolean;
 }

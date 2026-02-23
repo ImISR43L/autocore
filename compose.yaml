@@ -34,6 +34,7 @@ services:
         - action: rebuild
           path: ./api/package.json
     volumes:
+      - ./api:/app
       - /app/node_modules
     depends_on:
       redis:

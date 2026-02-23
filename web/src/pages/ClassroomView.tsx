@@ -52,6 +52,7 @@ import {
   Minimize,
   Copy,
   Users,
+  Archive,
 } from "lucide-react";
 import {
   Panel,
@@ -136,6 +137,7 @@ interface Classroom {
   students: { id: string; email: string; name?: string }[];
   problems: Problem[];
   announcements: Announcement[];
+  isArchived?: boolean;
 }
 
 interface Submission {
@@ -1710,6 +1712,13 @@ export default function ClassroomView() {
         </header>
       )}
 
+      {classroom.isArchived && (
+        <div className="bg-orange-500/10 border-b border-orange-500/20 px-4 py-2.5 flex items-center justify-center gap-2 text-sm font-medium text-orange-500 shadow-inner shrink-0 z-10">
+          <Archive size={18} />
+          Esta turma está arquivada. O modo somente leitura está ativado e
+          alterações estão bloqueadas.
+        </div>
+      )}
       <main className="flex-1 overflow-hidden relative">
         {/* -- STREAMS -- */}
         {activeTab === "stream" && (
@@ -1785,6 +1794,7 @@ export default function ClassroomView() {
                       className="space-y-3"
                     >
                       <textarea
+                        disabled={classroom.isArchived}
                         className="w-full bg-background border border-border rounded-lg p-4 text-base focus:outline-none focus:border-primary transition-colors resize-none"
                         placeholder="Anuncie algo para a turma ou anexe materiais..."
                         rows={3}
@@ -1890,6 +1900,7 @@ export default function ClassroomView() {
                             size="sm"
                             onClick={() => fileInputRef.current?.click()}
                             className="text-muted hover:text-primary px-3"
+                            disabled={classroom.isArchived}
                           >
                             <Paperclip size={18} className="sm:mr-2" />{" "}
                             <span className="hidden sm:inline">Arquivo</span>
@@ -1899,10 +1910,8 @@ export default function ClassroomView() {
                             variant="ghost"
                             size="sm"
                             onClick={() => setShowLinkInput(!showLinkInput)}
-                            className={cn(
-                              "text-muted hover:text-primary px-3",
-                              showLinkInput && "text-primary bg-primary/10",
-                            )}
+                            disabled={classroom.isArchived}
+                            className="..."
                           >
                             <Link2 size={18} className="sm:mr-2" />{" "}
                             <span className="hidden sm:inline">Link</span>
@@ -1911,6 +1920,7 @@ export default function ClassroomView() {
                         <Button
                           type="submit"
                           disabled={
+                            classroom.isArchived ||
                             posting ||
                             (!newAnnouncement.trim() &&
                               selectedFiles.length === 0 &&
@@ -1945,18 +1955,19 @@ export default function ClassroomView() {
                             </div>
                           </div>
                         </div>
-                        {isOwner && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteAnnouncement(a.id)}
-                          >
-                            <Trash
-                              size={18}
-                              className="text-muted hover:text-destructive"
-                            />
-                          </Button>
-                        )}
+                        {isOwner &&
+                          !classroom.isArchived && ( // <-- Adicionado !classroom.isArchived
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteAnnouncement(a.id)}
+                            >
+                              <Trash
+                                size={18}
+                                className="text-muted hover:text-destructive"
+                              />
+                            </Button>
+                          )}
                       </div>
                       <div className="text-base whitespace-pre-wrap text-foreground leading-relaxed">
                         {a.content}
@@ -2211,6 +2222,7 @@ export default function ClassroomView() {
 
                 {isOwner && (
                   <Button
+                    disabled={classroom.isArchived}
                     variant="primary"
                     size="sm"
                     className="h-11 px-5 text-base"
@@ -2392,28 +2404,47 @@ export default function ClassroomView() {
                       {isOwner && (
                         <>
                           <button
+                            disabled={classroom.isArchived} // <-- Trava
                             onClick={() =>
+                              !classroom.isArchived &&
                               navigate(`/class/${id}/create-problem`)
                             }
-                            className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center gap-2"
+                            className={cn(
+                              "w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center gap-2",
+                              classroom.isArchived &&
+                                "opacity-50 cursor-not-allowed",
+                            )}
                           >
                             <Plus size={16} /> Novo Problema
                           </button>
                           {selectedProblemId && (
                             <>
                               <button
+                                disabled={classroom.isArchived} // <-- Trava
                                 onClick={() =>
+                                  !classroom.isArchived &&
                                   navigate(
                                     `/class/${id}/problem/${selectedProblemId}/edit`,
                                   )
                                 }
-                                className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center gap-2"
+                                className={cn(
+                                  "w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center gap-2",
+                                  classroom.isArchived &&
+                                    "opacity-50 cursor-not-allowed",
+                                )}
                               >
                                 <Settings size={16} /> Editar
                               </button>
                               <button
-                                onClick={handleDeleteProblem}
-                                className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover text-red-400 hover:text-red-300 flex items-center gap-3 transition-colors font-medium"
+                                disabled={classroom.isArchived} // <-- Trava
+                                onClick={() =>
+                                  !classroom.isArchived && handleDeleteProblem()
+                                }
+                                className={cn(
+                                  "w-full text-left px-4 py-3 text-sm hover:bg-surface-hover text-red-400 hover:text-red-300 flex items-center gap-3 transition-colors font-medium",
+                                  classroom.isArchived &&
+                                    "opacity-50 cursor-not-allowed",
+                                )}
                               >
                                 <Trash size={18} /> Excluir Exercício
                               </button>
@@ -3044,7 +3075,8 @@ export default function ClassroomView() {
                           placeholder="0"
                           value={gradingGrade}
                           onChange={(e) => setGradingGrade(e.target.value)}
-                          className="h-11 text-base"
+                          className="h-11 text-base disabled:opacity-50"
+                          disabled={classroom.isArchived} // <-- Trava
                         />
                       </div>
 
@@ -3053,7 +3085,8 @@ export default function ClassroomView() {
                           Comentários
                         </label>
                         <textarea
-                          className="w-full bg-background/20 border border-border rounded-lg p-3 text-base text-foreground resize-none h-32 focus:outline-none focus:border-primary transition-colors"
+                          disabled={classroom.isArchived} // <-- Trava
+                          className="w-full bg-background/20 border border-border rounded-lg p-3 text-base text-foreground resize-none h-32 focus:outline-none focus:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           placeholder="Feedback para o aluno..."
                           value={gradingComment}
                           onChange={(e) => setGradingComment(e.target.value)}
@@ -3062,6 +3095,7 @@ export default function ClassroomView() {
 
                       <Button
                         className="w-full h-11 text-base"
+                        disabled={classroom.isArchived} // <-- Trava
                         onClick={handleSaveGrade}
                       >
                         Salvar Avaliação

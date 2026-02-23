@@ -165,7 +165,14 @@ export function Stepper<T extends FieldValues>({
   let stepIndexCounter = 0;
 
   const processedChildren = childrenArray.map((child) => {
-    if (React.isValidElement(child) && child.type === Step) {
+    // Verificação resiliente ao proxy do Fast Refresh
+    const isStepComponent =
+      React.isValidElement(child) &&
+      (child.type === Step ||
+        (child.type as any)?.name === "Step" ||
+        (child.props as any)?.label !== undefined);
+
+    if (isStepComponent) {
       return React.cloneElement(child as any, {
         __index: stepIndexCounter++,
       });

@@ -29,6 +29,15 @@ export default function EditProblem() {
     async function loadProblem() {
       try {
         const res = await api.get(`/problems/${problemId}`);
+
+        if (res.data.classroom?.isArchived) {
+          toast.warning(
+            "Turma arquivada. O modo de leitura não permite edições.",
+          );
+          navigate(`/class/${res.data.classroom.id}`);
+          return;
+        }
+
         const formatted = {
           ...res.data,
           parameters: res.data.parameters || [],

@@ -129,11 +129,17 @@ export class ProblemsService {
     } = createProblemDto;
 
     let classroom: Classroom | undefined = undefined;
+
     if (classroomId) {
       const foundClassroom = await this.classroomsRepository.findOne({
         where: { id: String(classroomId) },
       });
       if (!foundClassroom) throw new NotFoundException('Turma não encontrada');
+      if (foundClassroom.isArchived) {
+        throw new ForbiddenException(
+          'Turma em modo leitura (arquivada). Ações bloqueadas.',
+        );
+      }
       classroom = foundClassroom;
     }
 
@@ -251,6 +257,12 @@ export class ProblemsService {
     });
     if (!problem) throw new NotFoundException('Problema não encontrado');
 
+    if (problem.classroom?.isArchived) {
+      throw new ForbiddenException(
+        'Turma em modo leitura (arquivada). Ações bloqueadas.',
+      );
+    }
+
     if (problem.classroom && problem.classroom.owner.id !== userId) {
       throw new ForbiddenException('Apenas o dono da turma pode editar.');
     }
@@ -326,6 +338,12 @@ export class ProblemsService {
     });
 
     if (!problem) throw new NotFoundException('Problema não encontrado');
+
+    if (problem.classroom?.isArchived) {
+      throw new ForbiddenException(
+        'Turma em modo leitura (arquivada). Ações bloqueadas.',
+      );
+    }
 
     if (problem.classroom && problem.classroom.owner.id !== userId) {
       throw new ForbiddenException('Apenas o dono da turma pode excluir.');

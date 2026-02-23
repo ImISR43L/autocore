@@ -7,6 +7,7 @@ import {
   Request,
   Param,
   Delete,
+  Patch,
 } from '@nestjs/common';
 import { ClassroomsService } from './classrooms.service';
 import { CreateClassroomDto } from './dto/create-classroom.dto';
@@ -47,10 +48,26 @@ export class ClassroomsController {
     return this.classroomsService.findAll(req.user.userId);
   }
 
+  // NOVA ROTA: Listar Arquivados (Deve ficar ANTES do @Get(':id'))
+  @Get('archived')
+  findArchived(@Request() req: RequestWithUser) {
+    return this.classroomsService.findArchived(req.user.userId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req) {
-    // Recebe string
     return this.classroomsService.findOne(id, req.user.userId);
+  }
+
+  // NOVAS ROTAS DE AÇÃO
+  @Patch(':id/archive')
+  archive(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.classroomsService.archive(id, req.user.userId);
+  }
+
+  @Patch(':id/restore')
+  restore(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.classroomsService.restore(id, req.user.userId);
   }
 
   @Delete(':id')

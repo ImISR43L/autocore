@@ -15,6 +15,9 @@ import {
   Clock,
   X,
   Copy,
+  Archive,
+  RefreshCcw,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -49,10 +52,12 @@ interface Classroom {
     students: number;
     problems: number;
   };
+  isArchived?: boolean;
 }
 
 export default function Dashboard() {
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
+  const [viewMode, setViewMode] = useState<"active" | "archived">("active");
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
@@ -94,7 +99,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchClassrooms();
-  }, []);
+  }, [viewMode]);
 
   const fetchClassrooms = async () => {
     try {
@@ -106,8 +111,9 @@ export default function Dashboard() {
         navigate("/");
         return;
       }
-
-      const res = await api.get("/classrooms");
+      const endpoint =
+        viewMode === "active" ? "/classrooms" : "/classrooms/archived";
+      const res = await api.get(endpoint);
       setClassrooms(res.data);
     } catch (error) {
       console.error(error);
@@ -184,6 +190,45 @@ export default function Dashboard() {
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.code.toLowerCase().includes(search.toLowerCase()),
   );
+
+  const handleArchive = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    try {
+      await api.patch(`/classrooms/${id}/archive`);
+      toast.success("Turma arquivada com sucesso!");
+      fetchClassrooms();
+    } catch (error) {
+      toast.error("Erro ao arquivar turma");
+    }
+  };
+
+  const handleRestore = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    try {
+      await api.patch(`/classrooms/${id}/restore`);
+      toast.success("Turma restaurada!");
+      fetchClassrooms();
+    } catch (error) {
+      toast.error("Erro ao restaurar turma");
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (
+      !window.confirm(
+        "Atenção: A exclusão física apagará permanentemente a turma, problemas e submissões dos alunos. Deseja continuar?",
+      )
+    )
+      return;
+    try {
+      await api.delete(`/classrooms/${id}`);
+      toast.success("Turma excluída permanentemente.");
+      fetchClassrooms();
+    } catch (error) {
+      toast.error("Erro ao excluir turma.");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans selection:bg-primary/20">
@@ -262,6 +307,50 @@ export default function Dashboard() {
               {filteredClassrooms.length}
             </strong>{" "}
             turmas
+          </div>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-8 border-b border-border pb-4">
+            <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0">
+              <Button
+                variant={viewMode === "active" ? "secondary" : "ghost"}
+                onClick={() => {
+                  if (viewMode !== "active") {
+                    setLoading(true);
+                    setClassrooms([]); // Destrói o estado anterior instantaneamente
+                    setViewMode("active");
+                  }
+                }}
+                className="h-10 text-sm whitespace-nowrap"
+              >
+                <BookOpen size={16} className="mr-2" /> Turmas Ativas
+              </Button>
+              <Button
+                variant={viewMode === "archived" ? "secondary" : "ghost"}
+                onClick={() => {
+                  if (viewMode !== "archived") {
+                    setLoading(true);
+                    setClassrooms([]); // Destrói o estado anterior instantaneamente
+                    setViewMode("archived");
+                  }
+                }}
+                className="h-10 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground"
+              >
+                <Archive size={16} className="mr-2" /> Turmas Arquivadas
+              </Button>
+            </div>
+
+            <div className="relative w-full sm:w-64 flex-shrink-0">
+              <Search
+                size={18}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
+              />
+              <Input
+                type="text"
+                placeholder="Buscar turmas..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-10 text-sm w-full bg-surface border-border"
+              />
+            </div>
           </div>
         </div>
 
@@ -362,14 +451,58 @@ export default function Dashboard() {
                       )}
                     </div>
 
-                    <div className="mt-auto flex items-center justify-between border-t border-border pt-4 sm:pt-5 text-xs sm:text-sm text-muted group-hover:text-foreground transition-colors">
-                      <span>
-                        {isOwner ? "Gerenciar Turma" : "Ver Todas Atividades"}
-                      </span>
-                      <ArrowRight
-                        size={16}
-                        className="text-primary sm:opacity-0 sm:-translate-x-2 sm:group-hover:opacity-100 sm:group-hover:translate-x-0 transition-all"
-                      />
+                    <div className="mt-auto pt-4 sm:pt-5">
+                      {viewMode === "active" ? (
+                        <div className="flex items-center justify-between border-t border-border pt-3 text-xs sm:text-sm text-muted">
+                          <span className="group-hover:text-foreground transition-colors">
+                            {isOwner
+                              ? "Gerenciar Turma"
+                              : "Ver Todas Atividades"}
+                          </span>
+                          <div className="flex gap-2">
+                            {isOwner && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 text-muted hover:text-orange-500 hover:bg-orange-500/10"
+                                onClick={(e) => handleArchive(e, c.id)}
+                                title="Arquivar Turma"
+                              >
+                                <Archive size={16} />
+                              </Button>
+                            )}
+                            <ArrowRight
+                              size={16}
+                              className="text-primary opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all self-center ml-2"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-2 border-t border-border pt-3">
+                          <span className="text-xs text-orange-500 font-medium text-center mb-1">
+                            Turma em modo Somente Leitura
+                          </span>
+                          <div className="flex gap-2 justify-between">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="flex-1 h-9 bg-surface-hover hover:bg-surface-active text-xs"
+                              onClick={(e) => handleRestore(e, c.id)}
+                            >
+                              <RefreshCcw size={14} className="mr-1.5" />{" "}
+                              Restaurar
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex-1 h-9 text-destructive hover:bg-destructive/10 text-xs"
+                              onClick={(e) => handleDelete(e, c.id)}
+                            >
+                              <Trash2 size={14} className="mr-1.5" /> Excluir
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

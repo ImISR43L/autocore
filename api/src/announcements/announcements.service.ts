@@ -30,6 +30,16 @@ export class AnnouncementsService {
     files: Array<Express.Multer.File>,
     authorId: string,
   ) {
+    const classroomCheck = await this.classroomsRepository.findOne({
+      where: { id: createAnnouncementDto.classroomId },
+    });
+    if (!classroomCheck) throw new NotFoundException('Turma não encontrada');
+    if (classroomCheck.isArchived) {
+      throw new ForbiddenException(
+        'Turma em modo leitura (arquivada). Ações bloqueadas.',
+      );
+    }
+
     let manualUrls: string[] = [];
     if (createAnnouncementDto.manualLinks) {
       try {
@@ -91,6 +101,12 @@ export class AnnouncementsService {
     });
 
     if (!announcement) throw new NotFoundException('Aviso não encontrado');
+
+    if (announcement.classroom?.isArchived) {
+      throw new ForbiddenException(
+        'Turma em modo leitura (arquivada). Ações bloqueadas.',
+      );
+    }
 
     if (announcement.classroom.owner.id !== userId) {
       throw new ForbiddenException('Apenas o professor pode apagar avisos.');

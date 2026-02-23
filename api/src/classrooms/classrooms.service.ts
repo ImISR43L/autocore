@@ -77,12 +77,12 @@ export class ClassroomsService {
 
   async findAll(userId: string) {
     const teaching = await this.classroomsRepository.find({
-      where: { owner: { id: userId } },
+      where: { owner: { id: userId }, isArchived: false }, // <-- Filtro
       relations: ['owner', 'problems'],
     });
 
     const enrolled = await this.classroomsRepository.find({
-      where: { students: { id: userId } },
+      where: { students: { id: userId }, isArchived: false }, // <-- Filtro
       relations: ['owner', 'problems'],
     });
 
@@ -168,6 +168,44 @@ export class ClassroomsService {
     return this.classroomsRepository.save(classroom);
   }
 
+  async findArchived(userId: string) {
+    const archived = await this.classroomsRepository.find({
+      where: { owner: { id: userId }, isArchived: true },
+      relations: ['owner', 'problems'],
+    });
+
+    return archived.map((c) => ({ ...c, isOwner: true }));
+  }
+
+  // 3. Adicione os métodos de transição de estado
+  async archive(id: string, userId: string) {
+    const classroom = await this.classroomsRepository.findOne({
+      where: { id },
+      relations: ['owner'],
+    });
+
+    if (!classroom) throw new NotFoundException('Turma não encontrada');
+    if (classroom.owner.id !== userId)
+      throw new ForbiddenException('Ação não permitida');
+
+    classroom.isArchived = true;
+    return this.classroomsRepository.save(classroom);
+  }
+
+  async restore(id: string, userId: string) {
+    const classroom = await this.classroomsRepository.findOne({
+      where: { id },
+      relations: ['owner'],
+    });
+
+    if (!classroom) throw new NotFoundException('Turma não encontrada');
+    if (classroom.owner.id !== userId)
+      throw new ForbiddenException('Ação não permitida');
+
+    classroom.isArchived = false;
+    return this.classroomsRepository.save(classroom);
+  }
+
   async remove(id: string, userId: string) {
     const classroom = await this.classroomsRepository.findOne({
       where: { id },
@@ -175,10 +213,14 @@ export class ClassroomsService {
     });
 
     if (!classroom) throw new NotFoundException('Turma não encontrada');
-
     if (classroom.owner.id !== userId) {
       throw new ForbiddenException(
         'Apenas o professor (dono) pode excluir esta turma.',
+      );
+    }
+    if (!classroom.isArchived) {
+      throw new ForbiddenException(
+        'A turma deve ser arquivada antes de ser excluída definitivamente.',
       );
     }
 

@@ -1,10 +1,31 @@
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { ProblemWizard } from "../components/problem/ProblemWizard";
 import { toast } from "sonner";
 
 export default function CreateProblem() {
   const navigate = useNavigate();
+  const params = useParams();
+  const hasCheckedRef = useRef(false);
+
+  useEffect(() => {
+    const classId = params.id || params.classroomId;
+
+    if (classId && !hasCheckedRef.current) {
+      hasCheckedRef.current = true; // Marca como executado imediatamente
+
+      api
+        .get(`/classrooms/${classId}`)
+        .then((res) => {
+          if (res.data.isArchived) {
+            toast.warning("Turma arquivada. Não é possível criar atividades.");
+            navigate(`/class/${classId}`);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [params, navigate]);
 
   const handleCreate = async (rawData: any) => {
     // 1. Clona o objeto para evitar mutações indesejadas
