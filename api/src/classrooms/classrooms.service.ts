@@ -10,7 +10,6 @@ import { CreateClassroomDto } from './dto/create-classroom.dto';
 import { Classroom } from './entities/classroom.entity';
 import { User } from '../users/entities/user.entity';
 import { customAlphabet } from 'nanoid';
-import { stream } from 'exceljs';
 
 @Injectable()
 export class ClassroomsService {
@@ -26,8 +25,7 @@ export class ClassroomsService {
     // Alfabeto personalizado: Removemos 0, O, I, L para evitar confusão visual
     const generateCode = customAlphabet('ABCDEFGHJKMNPQRSTUVWXYZ23456789', 6);
 
-    // Gera o código. (Em produção, você poderia fazer um loop 'while'
-    // para verificar colisão, mas com 6 chars e esse alfabeto, é raro no início)
+    // Gera o código.
     const code = generateCode();
 
     const owner = await this.usersRepository.findOne({
@@ -72,17 +70,18 @@ export class ClassroomsService {
     if (!user) throw new NotFoundException('Usuário inválido');
 
     classroom.students.push(user);
-    return this.classroomsRepository.save(classroom);
+    await this.classroomsRepository.save(classroom);
+    return { status: 'joined', classroomId: classroom.id };
   }
 
   async findAll(userId: string) {
     const teaching = await this.classroomsRepository.find({
-      where: { owner: { id: userId }, isArchived: false }, // <-- Filtro
+      where: { owner: { id: userId }, isArchived: false },
       relations: ['owner', 'problems'],
     });
 
     const enrolled = await this.classroomsRepository.find({
-      where: { students: { id: userId }, isArchived: false }, // <-- Filtro
+      where: { students: { id: userId }, isArchived: false },
       relations: ['owner', 'problems'],
     });
 
@@ -113,20 +112,24 @@ export class ClassroomsService {
 
     if (!classroom) throw new NotFoundException('Turma não encontrada');
 
-    // LÓGICA DE FILTRAGEM E PROTEÇÃO
     if (userId && classroom.owner.id !== userId) {
+      if (classroom.students) {
+        classroom.students = classroom.students.map((student) => {
+          const { email, ...safeStudent } = student;
+          return safeStudent as User;
+        });
+      }
+
       const now = new Date();
 
       if (classroom.problems) {
         classroom.problems = classroom.problems.filter((p) => {
           if (p.parent) return false;
 
-          // === CORREÇÃO: PRIORIDADE PARA INÍCIO MANUAL ===
-          // Se a prova JÁ COMEÇOU (tem startedAt), ela deve aparecer,
-          // ignorando completamente a data de agendamento (startDate).
-          if (p.startDate) return true;
+          // PRIORIDADE PARA INÍCIO MANUAL
+          if (p.startDate) return true; // Se tem data de início marcada (manual ou auto), verificamos
 
-          // Se AINDA NÃO começou, aí sim respeitamos o agendamento futuro.
+          // Se tiver agendamento futuro e AINDA não começou
           if (p.startDate && new Date(p.startDate) > now) return false;
 
           return true;
@@ -177,7 +180,6 @@ export class ClassroomsService {
     return archived.map((c) => ({ ...c, isOwner: true }));
   }
 
-  // 3. Adicione os métodos de transição de estado
   async archive(id: string, userId: string) {
     const classroom = await this.classroomsRepository.findOne({
       where: { id },

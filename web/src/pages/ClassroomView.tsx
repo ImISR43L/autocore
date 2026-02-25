@@ -1358,7 +1358,7 @@ export default function ClassroomView() {
   const filteredStudents = (classroom.students || []).filter((student) => {
     const term = studentSearch.toLowerCase();
     const name = student.name?.toLowerCase() || "";
-    const email = student.email.toLowerCase();
+    const email = student.email?.toLowerCase() || "";
     return name.includes(term) || email.includes(term);
   });
 
@@ -2111,13 +2111,13 @@ export default function ClassroomView() {
                         className="flex items-center gap-5 p-4 hover:bg-surface-hover transition-colors"
                       >
                         <div className="w-10 h-10 rounded-full hover:bg-surface-hover text-muted flex items-center justify-center font-bold text-base">
-                          {(s.name || s.email).charAt(0).toUpperCase()}
+                          {(s.name || s.email || "?").charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1 flex flex-col justify-center">
                           <div className="text-base text-foreground font-medium truncate">
-                            {s.name || s.email}
+                            {s.name || s.email || "Estudante"}
                           </div>
-                          {s.name && (
+                          {s.name && s.email && (
                             <div className="text-xs text-muted truncate">
                               {s.email}
                             </div>
