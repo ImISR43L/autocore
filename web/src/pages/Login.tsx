@@ -26,8 +26,8 @@ export default function Login() {
   const [isRegister, setIsRegister] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Estado para evitar o "Flash" da tela de login se já tiver token
-  const [isCheckingSession] = useState(!!localStorage.getItem("token"));
+  // ALTERAÇÃO 1: Adicionamos um estado de carregamento inicial para a verificação da sessão
+  const [checkingSession, setCheckingSession] = useState(true);
 
   const [showPassword, setShowPassword] = useState(false);
 
@@ -80,6 +80,28 @@ export default function Login() {
       emailInputRef.current.focus();
     }
   }, [isRegister]);
+
+  // ALTERAÇÃO 2: Verificação robusta de sessão com Supabase ao invés de apenas ler localStorage
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (session) {
+          // Se existe uma sessão válida no Supabase, redireciona
+          navigate("/dashboard", { replace: true });
+        }
+      } catch (error) {
+        console.error("Erro ao verificar sessão:", error);
+      } finally {
+        // Finaliza o loading independentemente do resultado
+        setCheckingSession(false);
+      }
+    };
+
+    checkSession();
+  }, [navigate]);
 
   // Lógica de Autenticação (Login)
   const handleLogin = async (e: React.FormEvent) => {
@@ -145,18 +167,14 @@ export default function Login() {
     }
   };
 
-  useEffect(() => {
-    if (isCheckingSession) {
-      navigate("/dashboard", { replace: true });
-    }
-  }, [isCheckingSession, navigate]);
-
-  if (isCheckingSession) {
-    return null; // Mantém o retorno nulo para evitar o flash visual da tela de login
+  // ALTERAÇÃO 3: Retorna nulo enquanto verifica a sessão para evitar piscada
+  if (checkingSession) {
+    return null;
   }
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-background font-sans text-foreground p-4 relative overflow-hidden">
+      {/* ... O restante do seu JSX permanece idêntico ... */}
       {/* Decoração de fundo opcional (brilho suave) */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[100px] -z-10 pointer-events-none" />
 
