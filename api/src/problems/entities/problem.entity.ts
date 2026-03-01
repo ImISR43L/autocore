@@ -6,6 +6,7 @@ import {
   OneToMany,
   CreateDateColumn,
   Index,
+  Unique,
 } from 'typeorm';
 import { Classroom } from '../../classrooms/entities/classroom.entity';
 import { TestCase } from './test-case.entity';
@@ -38,6 +39,7 @@ export interface StarterCodeDefinition {
 
 @Entity()
 @Index(['classroom'])
+@Unique(['slug', 'classroom'])
 export class Problem {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -48,7 +50,7 @@ export class Problem {
   @Column({ type: 'text' })
   description: string;
 
-  @Column({ unique: true })
+  @Column()
   slug: string;
 
   @Column({

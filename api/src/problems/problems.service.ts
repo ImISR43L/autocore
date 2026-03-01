@@ -4,6 +4,7 @@ import {
   NotFoundException,
   Logger,
   InternalServerErrorException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -141,6 +142,17 @@ export class ProblemsService {
         );
       }
       classroom = foundClassroom;
+    }
+
+    const existingProblem = await this.problemsRepository.findOne({
+      where: {
+        slug: createProblemDto.slug,
+        classroom: { id: createProblemDto.classroomId },
+      },
+    });
+
+    if (existingProblem) {
+      throw new ConflictException('Este slug já está em uso nesta turma.');
     }
 
     let children: Problem[] = [];

@@ -34,8 +34,6 @@ export class ProblemsController {
     @Body() createProblemDto: CreateProblemDto,
     @Request() req: RequestWithUser, // Mantivemos o req, mas não usamos o userId por enquanto
   ) {
-    // CORREÇÃO: Removido o segundo argumento (req.user.userId)
-    // pois o método 'create' no service atualmente aceita apenas o DTO.
     return this.problemsService.create(createProblemDto);
   }
 
