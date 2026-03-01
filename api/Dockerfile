@@ -13,12 +13,17 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV production
 
-# Copia dependências e instala apenas as de produção
-COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+# Altera a propriedade do diretório de trabalho para o utilizador restrito ANTES da transição
+RUN chown -R node:node /app
 
-# OTIMIZAÇÃO: Segurança (roda como usuário restrito, não root)
+# Transição para utilizador não privilegiado para as restantes operações
 USER node
+
+# Copia dependências assumindo a propriedade explícita para o utilizador node
+COPY --chown=node:node package*.json ./
+
+# Instala as dependências estritamente operando como o utilizador node
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copia o build da etapa anterior com as permissões corretas
 COPY --from=builder --chown=node:node /app/dist ./dist

@@ -2,12 +2,10 @@ import axios from "axios";
 import { supabase } from "./supabase";
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost",
 });
 
 api.interceptors.request.use(async (config) => {
-  // Apanha o token diretamente da sessão armazenada na storage local do Supabase
-  // Isso previne chamadas lentas à API de auth durante requests paralelos
   const {
     data: { session },
     error,
