@@ -78,11 +78,8 @@ export class WrapperGenerator {
     const config = this.LANGUAGE_CONFIG[langId];
     if (!config) return -1;
 
-    // 1. Busca prioritariamente pelo nome exato do arquivo principal (ex: main.py)
-    // O findIndex garante que apenas o PRIMEIRO arquivo compatível seja retornado.
     let index = files.findIndex((f) => f.name === config.standardName);
 
-    // 2. Fallback: Se não achar o nome padrão, pega o primeiro com a extensão correta
     if (index === -1) {
       index = files.findIndex((f) => f.name.endsWith(config.ext));
     }
@@ -127,20 +124,16 @@ if __name__ == '__main__':
         if input_data:
             types = [${typesArray}]
             
-            # Estratégia 1: Parse linha a linha (Preserva espaços internos)
             parts = [line.strip() for line in input_data.split('\\n') if line.strip()]
             
-            # Estratégia 2: Regex Tokenizer caso tudo venha na mesma linha
             if len(parts) < len(types):
                 parts = re.findall(r'\\[.*?\\]|".*?"|\\'.*?\\'|\\S+', input_data)
                 
             if len(parts) >= len(types):
                 args = [parse_arg(parts[i], types[i]) for i in range(len(types))]
                 
-                # Executa o código do aluno
                 result = solve(*args)
                 
-                # Trata a saída adequadamente
                 if isinstance(result, list):
                     print(json.dumps(result))
                 elif isinstance(result, bool):
@@ -184,7 +177,6 @@ function parseArg(raw, type) {
     
     if (type.endsWith('[]')) {
         try {
-            // Reconstrói aspas duplas caso o regex as tenha removido de forma incorreta para JSON
             if (!raw.includes('"') && type === 'string[]') {
                  raw = raw.replace(/'/g, '"');
             }
@@ -201,10 +193,8 @@ try {
     if (input) {
         const types = ${typesArray};
         
-        // Estratégia 1: Parse linha a linha
         let parts = input.split(/\\r?\\n/).filter(line => line.trim() !== '');
         
-        // Estratégia 2: Fallback Regex
         if (parts.length < types.length) {
             parts = input.match(/\\[.*?\\]|".*?"|'.*?'|\\S+/g) || [];
         }
@@ -212,7 +202,6 @@ try {
         if (parts.length >= types.length) {
             const args = types.map((type, i) => parseArg(parts[i], type));
             
-            // Invoca a função do usuário de forma segura
             const result = solve(...args);
             
             if (Array.isArray(result)) {
@@ -266,6 +255,7 @@ template<typename T> void print_result(const vector<T>& v) {
 vector<int> parse_int_array(string raw) {
     vector<int> res;
     raw = trim_brackets(raw);
+    if (raw.empty()) return res; // Impede loops em []
     stringstream ss(raw);
     string item;
     while(getline(ss, item, ',')) {
@@ -280,6 +270,7 @@ vector<int> parse_int_array(string raw) {
 vector<double> parse_double_array(string raw) {
     vector<double> res;
     raw = trim_brackets(raw);
+    if (raw.empty()) return res;
     stringstream ss(raw);
     string item;
     while(getline(ss, item, ',')) {
@@ -294,6 +285,7 @@ vector<double> parse_double_array(string raw) {
 vector<string> parse_string_array(string raw) {
     vector<string> res;
     raw = trim_brackets(raw);
+    if (raw.empty()) return res;
     stringstream ss(raw);
     string item;
     while(getline(ss, item, ',')) {
@@ -304,37 +296,40 @@ vector<string> parse_string_array(string raw) {
 }\n`;
     }
     if (hasBooleanArray) {
+      // Substituição explícita de vector<bool> por vector<int>
       helpers += `
-vector<bool> parse_boolean_array(string raw) {
-    vector<bool> res;
+vector<int> parse_boolean_array(string raw) {
+    vector<int> res;
     raw = trim_brackets(raw);
+    if (raw.empty()) return res;
     stringstream ss(raw);
     string item;
     while(getline(ss, item, ',')) {
         while(!item.empty() && item.front() == ' ') item.erase(0, 1);
-        if(!item.empty()) res.push_back(item == "true" || item == "1");
+        if(!item.empty()) res.push_back((item == "true" || item == "1") ? 1 : 0);
     }
     return res;
 }\n`;
     }
 
+    // Declarações que leem os parâmetros a partir de argumentos da linha de comando (argv)
     const decls = params
       .map((p, i) => {
-        if (p.type === 'int') return `int p${i} = stoi(parts[${i}]);`;
-        if (p.type === 'float') return `double p${i} = stod(parts[${i}]);`;
+        const arg = `string(argv[${i + 1}])`;
+        if (p.type === 'int') return `int p${i} = stoi(${arg});`;
+        if (p.type === 'float') return `double p${i} = stod(${arg});`;
         if (p.type === 'boolean')
-          return `bool p${i} = (parts[${i}] == "true" || parts[${i}] == "1");`;
-        if (p.type === 'string')
-          return `string p${i} = trim_quotes(parts[${i}]);`;
+          return `bool p${i} = (${arg} == "true" || ${arg} == "1");`;
+        if (p.type === 'string') return `string p${i} = trim_quotes(${arg});`;
         if (p.type === 'int[]')
-          return `vector<int> p${i} = parse_int_array(parts[${i}]);`;
+          return `vector<int> p${i} = parse_int_array(${arg});`;
         if (p.type === 'float[]')
-          return `vector<double> p${i} = parse_double_array(parts[${i}]);`;
+          return `vector<double> p${i} = parse_double_array(${arg});`;
         if (p.type === 'string[]')
-          return `vector<string> p${i} = parse_string_array(parts[${i}]);`;
+          return `vector<string> p${i} = parse_string_array(${arg});`;
         if (p.type === 'boolean[]')
-          return `vector<bool> p${i} = parse_boolean_array(parts[${i}]);`;
-        return `string p${i} = parts[${i}];`;
+          return `vector<int> p${i} = parse_boolean_array(${arg});`; // Usa vector<int>
+        return `string p${i} = ${arg};`;
       })
       .join('\n            ');
 
@@ -345,58 +340,37 @@ vector<bool> parse_boolean_array(string raw) {
 #include <string>
 #include <vector>
 #include <sstream>
-#include <regex>
 
 using namespace std;
 
 ${helpers}
 
 // --- Wrapper Injetado pelo Autocore (NORMALIZAÇÃO ESTRITA) ---
-int main() {
-    string input_data, line;
-    while (getline(cin, line)) {
-        if (!line.empty()) {
-            if (!input_data.empty()) input_data += "\\n";
-            input_data += line;
-        }
-    }
+int main(int argc, char* argv[]) {
+    // Remoção da dependência de std::cin para evitar problemas de TLE por EOF ausente.
+    // O judge/executor deve passar os inputs separados como argumentos na execução (ex: ./main 0 0.0 '""' false '[]').
     
-    if (input_data.empty()) return 0;
-
-    vector<string> parts;
-    stringstream ss(input_data);
-    while(getline(ss, line, '\\n')) {
-        parts.push_back(line);
+    if (argc - 1 < ${params.length}) {
+        // Se os parâmetros forem injetados nativamente por texto pelo judge e os argv não existirem,
+        // o código deve ser substituído antes da compilação.
+        // Caso contrário, esta verificação protege contra Falha de Segmentação.
+        cerr << "Erro: Esperado ${params.length} argumentos, mas foram passados " << (argc - 1) << endl;
+        return 1;
     }
 
-    if (parts.size() < ${params.length}) {
-        parts.clear();
-        regex re(R"(\\[.*?\\]|\\".*?\\"|'.*?'|\\S+)");
-        sregex_iterator next(input_data.begin(), input_data.end(), re);
-        sregex_iterator end;
-        while (next != end) {
-            parts.push_back(next->str());
-            next++;
-        }
-    }
-
-    if (parts.size() >= ${params.length}) {
-        try {
-            // Conversão Rigorosa (Strong Typing)
-            ${decls}
-            
-            // Impressão genérica segura para arrays e primitivos
-            print_result(solve(${callArgs}));
-            
-        } catch (const exception& e) {
-            cerr << "Erro de Execução no Wrapper (C++): " << e.what() << endl;
-            return 1;
-        }
-    } else {
-        cerr << "Erro: Esperado ${params.length} argumentos" << endl;
+    try {
+        // Declarar as variáveis e parsear valores
+        ${decls}
+        
+        // Chamar solve(...) e passar o resultado para print_result(...)
+        print_result(solve(${callArgs}));
+        
+    } catch (const exception& e) {
+        cerr << "Erro de Execução no Wrapper (C++): " << e.what() << endl;
         return 1;
     }
     
+    // Encerrar corretamente
     return 0;
 }
 `;
