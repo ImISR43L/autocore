@@ -1,0 +1,83 @@
+services:
+  api:
+    build:
+      context: ./api
+    init: true
+    env_file:
+      - ./api/.env
+    environment:
+      - EXECUTOR_URL=http://go-judge:5050/run
+      - NODE_ENV=production
+    secrets:
+      - redis_password
+      - jwt_secret
+    depends_on:
+      go-judge:
+        condition: service_started
+    networks:
+      - backend_net
+      - secure_sandbox
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1.5G
+
+  proxy:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - api
+    networks:
+      - backend_net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  go-judge:
+    image: go-judge-custom
+    build: ./judge
+    networks:
+      - secure_sandbox
+    read_only: true
+    tmpfs:
+      - /tmp:exec,mode=1777
+      - /run:exec,mode=1777
+    cap_add:
+      - SYS_ADMIN
+      - SETUID
+      - SETGID
+      - SYS_PTRACE
+      - DAC_OVERRIDE
+    security_opt:
+      - apparmor:unconfined
+      - seccomp:unconfined
+    shm_size: "512mb"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+    restart: on-failure
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  redis_password:
+    file: ./secrets/redis_password.txt
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+
+networks:
+  backend_net:
+    driver: bridge
+  secure_sandbox:
+    driver: bridge
+    internal: true

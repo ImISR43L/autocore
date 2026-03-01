@@ -19,9 +19,13 @@ import { UsersModule } from '../users/users.module';
     BullModule.forRootAsync({
       useFactory: () => ({
         redis: {
-          host: process.env.REDIS_HOST || 'redis',
+          host: process.env.REDIS_HOST,
           port: parseInt(process.env.REDIS_PORT || '6379'),
           password: getSecret('REDIS_PASSWORD', 'redis_password'),
+          tls:
+            process.env.NODE_ENV === 'production'
+              ? { rejectUnauthorized: false }
+              : undefined,
         },
       }),
     }),

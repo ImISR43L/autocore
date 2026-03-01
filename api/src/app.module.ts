@@ -17,6 +17,7 @@ import { AnnouncementsModule } from './announcements/announcements.module';
 import { HealthModule } from './health/health.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import * as redisStore from 'cache-manager-redis-store';
+import { getSecret } from './common/utils/secrets.util';
 
 @Module({
   imports: [
@@ -28,8 +29,13 @@ import * as redisStore from 'cache-manager-redis-store';
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         store: redisStore,
-        host: configService.get('REDIS_HOST') || 'redis',
+        host: configService.get('REDIS_HOST'),
         port: parseInt(configService.get('REDIS_PORT') || '6379'),
+        auth_pass: getSecret('REDIS_PASSWORD', 'redis_password'), // auth_pass é o padrão suportado por cache-manager-redis-store
+        tls:
+          process.env.NODE_ENV === 'production'
+            ? { rejectUnauthorized: false }
+            : undefined,
         ttl: 3600,
       }),
       inject: [ConfigService],
