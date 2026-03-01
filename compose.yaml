@@ -7,8 +7,7 @@ services:
     tty: true
     init: true
     ports:
-      - "3000:3000"
-      - "9229:9229" # Porta de Debug
+      - "9229:9229"
     env_file:
       - ./api/.env
     environment:
@@ -49,6 +48,24 @@ services:
         limits:
           cpus: "1.0"
           memory: 1.5G
+
+  proxy:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro # Diretório local contendo os certificados SSL
+    depends_on:
+      - api
+    networks:
+      - backend_net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
   redis:
     image: redis:alpine
