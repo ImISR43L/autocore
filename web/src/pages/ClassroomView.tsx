@@ -692,62 +692,84 @@ export default function ClassroomView() {
 
   useEffect(() => {
     if (!myUserId || !id) return;
-    const newSocket = io(API_URL, {
-      transports: ["websocket"],
-    });
 
-    newSocket.on("connect", () => {
-      console.log("Conectado ao WebSocket!");
-      newSocket.emit("join-user-room", { userId: myUserId });
-      newSocket.emit("join-classroom-room", { classroomId: Number(id) });
-    });
+    let newSocket: any;
 
-    newSocket.on("submission-finished", (submission: Submission) => {
-      const currentProb = displayProblemRef.current;
-      if (
-        currentProb &&
-        ((submission.problem?.id && submission.problem.id === currentProb.id) ||
-          submission.problemId === currentProb.id)
-      ) {
-        setVerdict(submission.status);
-        setLoading(false);
-        loadingRef.current = false;
+    const connectSocket = async () => {
+      // 1. Recupera a sessão atual para capturar o JWT Token
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-        if (window.innerWidth < 1024 && !isOwnerRef.current) {
-          setMobileIdeTab("console");
-        }
+      // 2. Injeta o token na propriedade 'auth' no handshake do WebSocket
+      newSocket = io(API_URL, {
+        transports: ["websocket"],
+        auth: {
+          token: session?.access_token,
+        },
+      });
 
-        if (submission.status === "Accepted")
-          toast.success("Solução Aceita! 🚀");
-        else if (submission.status === "Wrong Answer")
-          toast.error("Resposta Incorreta.");
-        else toast.error(`Erro: ${submission.status}`);
+      newSocket.on("connect", () => {
+        console.log("Conectado ao WebSocket!");
+        // O servidor agora valida a identidade via token e ignora as requisições puras do cliente
+        // para mitigação do IDOR, mas os eventos permanecem como inicializadores da conexão.
+        newSocket.emit("join-user-room", { userId: myUserId });
+        newSocket.emit("join-classroom-room", { classroomId: Number(id) });
+      });
 
-        fetchSubmissions(currentProb.id);
-        if (isOwnerRef.current) fetchProblemStats(currentProb.id);
-      }
-      if (isOwnerRef.current) fetchStats();
-    });
-
-    newSocket.on(
-      "classroom-update",
-      (data: { type: string; problemId: string }) => {
-        fetchClassroomData();
-        const currentTab = activeTabRef.current;
+      newSocket.on("submission-finished", (submission: Submission) => {
         const currentProb = displayProblemRef.current;
-        const owner = isOwnerRef.current;
-        if (currentTab === "analytics" && owner) {
-          fetchStats();
+        if (
+          currentProb &&
+          ((submission.problem?.id &&
+            submission.problem.id === currentProb.id) ||
+            submission.problemId === currentProb.id)
+        ) {
+          setVerdict(submission.status);
+          setLoading(false);
+          loadingRef.current = false;
+
+          if (window.innerWidth < 1024 && !isOwnerRef.current) {
+            setMobileIdeTab("console");
+          }
+
+          if (submission.status === "Accepted")
+            toast.success("Solução Aceita! 🚀");
+          else if (submission.status === "Wrong Answer")
+            toast.error("Resposta Incorreta.");
+          else toast.error(`Erro: ${submission.status}`);
+
+          fetchSubmissions(currentProb.id);
+          if (isOwnerRef.current) fetchProblemStats(currentProb.id);
         }
-        if (currentTab === "classwork" && currentProb?.id === data.problemId) {
-          fetchSubmissions(data.problemId);
-          if (owner) fetchProblemStats(data.problemId);
-        }
-      },
-    );
+        if (isOwnerRef.current) fetchStats();
+      });
+
+      newSocket.on(
+        "classroom-update",
+        (data: { type: string; problemId: string }) => {
+          fetchClassroomData();
+          const currentTab = activeTabRef.current;
+          const currentProb = displayProblemRef.current;
+          const owner = isOwnerRef.current;
+          if (currentTab === "analytics" && owner) {
+            fetchStats();
+          }
+          if (
+            currentTab === "classwork" &&
+            currentProb?.id === data.problemId
+          ) {
+            fetchSubmissions(data.problemId);
+            if (owner) fetchProblemStats(data.problemId);
+          }
+        },
+      );
+    };
+
+    connectSocket();
 
     return () => {
-      newSocket.disconnect();
+      if (newSocket) newSocket.disconnect();
     };
   }, [
     myUserId,
