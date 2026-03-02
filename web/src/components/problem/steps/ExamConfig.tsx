@@ -1,5 +1,5 @@
 import { useFormContext } from "react-hook-form";
-import { CalendarClock, Zap, ShieldAlert, Cpu } from "lucide-react";
+import { CalendarClock, Zap, ShieldAlert } from "lucide-react";
 import type { ProblemFormValues } from "../../../schemas/problem.schema";
 import { Input } from "../../ui/Input";
 import { Card } from "../../ui/Card";

@@ -60,7 +60,7 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
   const { control, watch, setValue, getValues } = useFormContext();
   const [activeIndex, setActiveIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isLightMode, setIsLightMode] = useState(
+  const [, setIsLightMode] = useState(
     !document.documentElement.classList.contains("dark"),
   );
 

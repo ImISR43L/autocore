@@ -64,7 +64,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
   const [activeSolutionTab, setActiveSolutionTab] = useState(0);
   const [isSolutionFullscreen, setIsSolutionFullscreen] = useState(false);
   const [remountKey, setRemountKey] = useState(0);
-  const [isLightMode, setIsLightMode] = useState(
+  const [, setIsLightMode] = useState(
     !document.documentElement.classList.contains("dark"),
   );
 
