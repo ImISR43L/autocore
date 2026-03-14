@@ -23,7 +23,7 @@ import { UsersModule } from '../users/users.module';
           port: parseInt(process.env.REDIS_PORT || '6379'),
           password: getSecret('REDIS_PASSWORD', 'redis_password'),
           tls:
-            process.env.NODE_ENV === 'production'
+            process.env.REDIS_TLS === 'true'
               ? { rejectUnauthorized: false }
               : undefined,
         },

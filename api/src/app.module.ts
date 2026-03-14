@@ -33,7 +33,7 @@ import { getSecret } from './common/utils/secrets.util';
         port: parseInt(configService.get('REDIS_PORT') || '6379'),
         auth_pass: getSecret('REDIS_PASSWORD', 'redis_password'), // auth_pass é o padrão suportado por cache-manager-redis-store
         tls:
-          process.env.NODE_ENV === 'production'
+          process.env.REDIS_TLS === 'true'
             ? { rejectUnauthorized: false }
             : undefined,
         ttl: 3600,
