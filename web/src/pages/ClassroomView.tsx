@@ -1169,6 +1169,7 @@ export default function ClassroomView() {
       return;
     }
 
+    // 1. Inicia o bloqueio contra múltiplos cliques acidentais simultâneos
     setLoading(true);
     loadingRef.current = true;
     setVerdict("Processando...");
@@ -1178,15 +1179,23 @@ export default function ClassroomView() {
     }
 
     try {
+      // 2. Envia para a API (que deposita na fila e retorna imediatamente)
       await api.post(`/submissions`, {
         files,
         language_id: languageId,
         problem_id: displayProblem.id,
       });
 
+      // 3. ALTERAÇÃO CRÍTICA: Libera a interface IMEDIATAMENTE após a API responder.
+      // Isso permite que o usuário continue digitando e faça novas submissões.
+      setLoading(false);
+      loadingRef.current = false;
+      setVerdict("Na Fila...");
+      toast.info("Código na fila! Você já pode continuar editando.");
+
+      // 4. Fallback de atualização
       setTimeout(() => {
-        if (loadingRef.current && displayProblemRef.current) {
-          console.log("WebSocket demorou. Forçando atualização...");
+        if (displayProblemRef.current) {
           fetchSubmissions(displayProblemRef.current.id);
         }
       }, 10000);
