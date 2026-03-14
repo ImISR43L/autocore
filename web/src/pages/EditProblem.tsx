@@ -69,21 +69,55 @@ export default function EditProblem() {
   const handleUpdate = async (rawData: any) => {
     if (!problemId) return;
 
-    // 1. Sanitização e Limpeza
-    const payload = { ...rawData };
+    // 1. Sanitização Rigorosa: Monta o payload apenas com os dados editáveis
+    const payload: any = {
+      title: rawData.title,
+      description: rawData.description,
+      slug: rawData.slug,
+      type: rawData.type,
+      returnType: rawData.returnType,
+      timeLimit: Number(rawData.timeLimit) || undefined,
+      memoryLimit: Number(rawData.memoryLimit) || undefined,
+      maxAttempts: Number(rawData.maxAttempts) || undefined,
+      parameters: rawData.parameters,
+      starterCode: rawData.starterCode,
+      solutionCode: rawData.solutionCode,
+      classroomId:
+        rawData.classroomId ||
+        rawData.classroom?.id ||
+        problem?.classroomId ||
+        problem?.classroom?.id,
+    };
 
-    // Remove questions se for EXERCISE para evitar erro de validação no backend
-    if (payload.type === "EXERCISE") {
-      delete payload.questions;
+    // 2. Limpeza de IDs dos TestCases (Força a criação como novos registros)
+    if (rawData.testCases) {
+      payload.testCases = rawData.testCases.map((tc: any) => {
+        const { id, problem, ...cleanTc } = tc;
+        return cleanTc;
+      });
     }
 
-    // 2. Conversão de Datas para ISO 8601
+    // 3. Inclusão condicional das questões (Somente provas) e limpeza
+    if (payload.type === "EXAM" && rawData.questions) {
+      payload.questions = rawData.questions.map((q: any) => {
+        const { id, classroom, children, createdAt, updatedAt, ...cleanQ } = q;
+        if (cleanQ.testCases) {
+          cleanQ.testCases = cleanQ.testCases.map((tc: any) => {
+            const { id, problem, ...cleanTc } = tc;
+            return cleanTc;
+          });
+        }
+        return cleanQ;
+      });
+    }
+
+    // 4. Conversão Segura de Datas
     try {
-      payload.startDate = payload.startDate
-        ? new Date(payload.startDate).toISOString()
+      payload.startDate = rawData.startDate
+        ? new Date(rawData.startDate).toISOString()
         : null;
-      payload.deadline = payload.deadline
-        ? new Date(payload.deadline).toISOString()
+      payload.deadline = rawData.deadline
+        ? new Date(rawData.deadline).toISOString()
         : null;
     } catch (e) {
       toast.error("Data inválida.");
@@ -96,8 +130,10 @@ export default function EditProblem() {
 
       setIsFormDirty(false);
 
-      if (payload.classroomId) {
-        navigate(`/class/${payload.classroomId}`, {
+      const cid = payload.classroomId;
+
+      if (cid) {
+        navigate(`/class/${cid}`, {
           state: { activeTab: "classwork" },
         });
       } else {

@@ -289,7 +289,13 @@ export class ProblemsService {
       ...dataToUpdate
     } = updateProblemDto;
 
+    // Limpeza rigorosa para evitar que TypeORM sobrescreva campos estruturais no Object.assign
     delete (dataToUpdate as any).startedAt;
+    delete (dataToUpdate as any).createdAt;
+    delete (dataToUpdate as any).updatedAt;
+    delete (dataToUpdate as any).id;
+    delete (dataToUpdate as any).classroom;
+    delete (dataToUpdate as any).children;
 
     if (questions) {
       if (problem.children && problem.children.length > 0) {
@@ -299,8 +305,15 @@ export class ProblemsService {
       problem.children = questions.map((q) => {
         const childParams = q.parameters as unknown as ParameterDefinition[];
         const childTestCases = q.testCases
-          ? q.testCases.map((tc) => this.testCasesRepository.create({ ...tc }))
+          ? q.testCases.map((tc) => {
+              delete (tc as any).id; // Remove ID para forçar INSERT real
+              return this.testCasesRepository.create({ ...tc });
+            })
           : [];
+
+        delete (q as any).id; // Remove ID para forçar INSERT real
+        delete (q as any).classroom;
+        delete (q as any).children;
 
         return this.problemsRepository.create({
           ...q,
@@ -318,9 +331,10 @@ export class ProblemsService {
       if (problem.testCases && problem.testCases.length > 0) {
         await this.testCasesRepository.remove(problem.testCases);
       }
-      problem.testCases = testCases.map((tc) =>
-        this.testCasesRepository.create({ ...tc }),
-      );
+      problem.testCases = testCases.map((tc) => {
+        delete (tc as any).id; // Remove ID para forçar INSERT real
+        return this.testCasesRepository.create({ ...tc });
+      });
     }
 
     if (parameters) {

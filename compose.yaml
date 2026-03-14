@@ -96,6 +96,9 @@ services:
     networks:
       - secure_sandbox
     read_only: true
+    privileged: true
+    ports:
+      - "5050:5050"
     tmpfs:
       - /tmp:exec,mode=1777
       - /run:exec,mode=1777
