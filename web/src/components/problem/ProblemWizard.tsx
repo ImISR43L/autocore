@@ -132,7 +132,7 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
       navigate("/");
       return;
     }
-    navigate(`/class/${classroomId}`);
+    navigate(`/class/${classroomId}`, { state: { activeTab: "classwork" } });
   };
 
   const problemType = useWatch({ control, name: "type" });

@@ -421,6 +421,20 @@ export default function ClassroomView() {
 
   const [myUserId, setMyUserId] = useState<string | null>(null);
 
+  // Salva a aba ativa no cache sempre que ela mudar
+  useEffect(() => {
+    if (id) {
+      localStorage.setItem(`activeTab_${id}`, activeTab);
+    }
+  }, [activeTab, id]);
+
+  // Salva o último exercício selecionado no cache sempre que mudar
+  useEffect(() => {
+    if (id && selectedProblemId) {
+      localStorage.setItem(`lastProblemId_${id}`, selectedProblemId);
+    }
+  }, [selectedProblemId, id]);
+
   useEffect(() => {
     const fetchUser = async () => {
       const {
@@ -494,7 +508,8 @@ export default function ClassroomView() {
   useEffect(() => {
     if (location.state?.activeTab) {
       setActiveTab(location.state.activeTab);
-      window.history.replaceState({}, document.title);
+      // Forma correta de limpar o state no React Router sem quebrar o histórico:
+      navigate(location.pathname, { replace: true, state: {} });
     } else if (
       location.state &&
       location.state.problemId &&
@@ -506,7 +521,7 @@ export default function ClassroomView() {
       const savedTab = localStorage.getItem(`activeTab_${id}`);
       if (savedTab) setActiveTab(savedTab as any);
     }
-  }, [location.state, id]);
+  }, [location.state, id, location.pathname, navigate]);
 
   useEffect(() => {
     localStorage.setItem(`languageId`, String(languageId));

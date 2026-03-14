@@ -20,7 +20,9 @@ export default function CreateProblem() {
         .then((res) => {
           if (res.data.isArchived) {
             toast.warning("Turma arquivada. Não é possível criar atividades.");
-            navigate(`/class/${classId}`);
+            navigate(`/class/${classId}`, {
+              state: { activeTab: "classwork" },
+            });
           }
         })
         .catch(() => {});

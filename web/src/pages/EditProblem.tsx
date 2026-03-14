@@ -34,7 +34,9 @@ export default function EditProblem() {
           toast.warning(
             "Turma arquivada. O modo de leitura não permite edições.",
           );
-          navigate(`/class/${res.data.classroom.id}`);
+          navigate(`/class/${res.data.classroom.id}`, {
+            state: { activeTab: "classwork" },
+          });
           return;
         }
 
@@ -108,11 +110,20 @@ export default function EditProblem() {
     }
   };
 
+  const handleExit = () => {
+    const cid = problem?.classroomId || problem?.classroom?.id;
+    if (cid) {
+      navigate(`/class/${cid}`, { state: { activeTab: "classwork" } });
+    } else {
+      navigate("/dashboard");
+    }
+  };
+
   const handleBack = () => {
     if (isFormDirty) {
       setShowExitModal(true);
     } else {
-      navigate(-1);
+      handleExit(); // Substituído navigate(-1)
     }
   };
 
@@ -143,7 +154,7 @@ export default function EditProblem() {
                 <Button variant="ghost" onClick={() => setShowExitModal(false)}>
                   Voltar
                 </Button>
-                <Button variant="danger" onClick={() => navigate(-1)}>
+                <Button variant="danger" onClick={handleExit}>
                   Sair sem Salvar
                 </Button>
               </div>
