@@ -68,23 +68,23 @@ services:
     restart: on-failure
 
     redis:
-    image: redis:alpine
-    restart: always
-    ports:
-      - "6379:6379"
-    secrets:
-      - redis_password
-    volumes:
-      - redis_data:/data
-    command: >
-      sh -c "redis-server --appendonly yes --requirepass $$(cat /run/secrets/redis_password)"
-    networks:
-      - backend_net
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 256M
+      image: redis:alpine
+      restart: always
+      ports:
+        - "6379:6379"
+      secrets:
+        - redis_password
+      volumes:
+        - redis_data:/data
+      command: >
+        sh -c "redis-server --appendonly yes --requirepass $$(cat /run/secrets/redis_password)"
+      networks:
+        - backend_net
+      deploy:
+        resources:
+          limits:
+            cpus: "0.5"
+            memory: 256M
 
 secrets:
   db_password:
