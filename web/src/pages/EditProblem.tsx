@@ -17,7 +17,6 @@ function EditProblem() {
   useEffect(() => {
     const fetchProblem = async () => {
       try {
-        // Substitua pela rota correta da sua API
         const response = await api.get(`/problems/${id}`);
         setInitialData(response.data);
       } catch (err) {
@@ -27,7 +26,12 @@ function EditProblem() {
       }
     };
 
-    if (id) fetchProblem();
+    if (id) {
+      fetchProblem();
+    } else {
+      setError("ID do problema não fornecido ou incompatível na URL.");
+      setIsLoading(false);
+    }
   }, [id]);
 
   const handleSubmit = async (data: ProblemFormValues) => {

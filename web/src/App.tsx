@@ -72,7 +72,7 @@ function App() {
           }
         />
         <Route
-          path="/class/:classroomId/problem/:problemId/edit"
+          path="/class/:classroomId/problem/:id/edit"
           element={
             <PrivateRoute>
               <EditProblem />
