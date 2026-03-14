@@ -35,8 +35,9 @@ const fileEntrySchema = z.object({
   content: z.string().default(""),
 });
 
-const testCaseSchema = z.object({
-  input: z.string().describe("Entrada do caso de teste"),
+export const testCaseSchema = z.object({
+  id: z.string().optional(),
+  input: z.string().min(1, "Entrada é obrigatória"),
   expectedOutput: z.string().min(1, "Saída esperada é obrigatória"),
   isHidden: z.boolean().default(false),
 });

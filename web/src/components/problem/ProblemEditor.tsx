@@ -1,276 +1,392 @@
-import { useState, useEffect } from "react";
-import { useForm, FormProvider } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
+import type { Control, UseFormRegister } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { problemSchema } from "../../schemas/problem.schema";
-import type { ProblemFormValues } from "../../schemas/problem.schema";
 import {
-  Save,
-  Layout,
-  Code2,
-  FlaskConical,
-  Settings2,
-  FileText,
-  Clock,
-} from "lucide-react";
-
-// Reutilizando os componentes existentes
-import { ScaffoldingConfig } from "./steps/ScaffoldingConfig";
-import { ValidationConfig } from "./steps/ValidationConfig";
-import { MarkdownInput } from "../inputs/MarkdownInput";
-
-// UI Components do Design System
+  problemSchema,
+  type ProblemFormValues,
+} from "../../schemas/problem.schema";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
-import { cn } from "../../lib/utils";
+
+// --- FÁBRICAS DE VALORES PADRÃO ---
+const defaultTestCase = () => ({
+  input: "",
+  expectedOutput: "",
+  isHidden: false,
+});
+
+const defaultExerciseDetails = () => ({
+  parameters: [],
+  returnType: "void",
+  starterCode: [{ name: "main.js", content: "" }],
+  solutionCode: [],
+  testCases: [defaultTestCase()],
+});
+
+const defaultQuestion = () => ({
+  title: "",
+  slug: "",
+  description: "",
+  ...defaultExerciseDetails(),
+});
 
 interface ProblemEditorProps {
-  initialValues: ProblemFormValues;
+  initialData?: Partial<ProblemFormValues>;
   onSubmit: (data: ProblemFormValues) => Promise<void>;
-  mode: "CREATE" | "EDIT";
-  // Novo prop para comunicação com o pai
-  onDirtyChange?: (isDirty: boolean) => void;
+  isSubmitting: boolean;
 }
 
-type TabType = "general" | "code" | "validation" | "settings";
-
 export function ProblemEditor({
-  initialValues,
+  initialData,
   onSubmit,
-  mode,
-  onDirtyChange,
+  isSubmitting,
 }: ProblemEditorProps) {
-  const [activeTab, setActiveTab] = useState<TabType>("general");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const methods = useForm<ProblemFormValues>({
-    resolver: zodResolver(problemSchema) as any,
-    defaultValues: initialValues,
-    mode: "onChange",
-  });
-
   const {
     register,
+    control,
     handleSubmit,
     watch,
-    formState: { errors, isDirty },
-  } = methods;
+    setValue,
+    formState: { errors },
+  } = useForm<ProblemFormValues>({
+    resolver: zodResolver(problemSchema) as any,
+    defaultValues: initialData || {
+      type: "EXERCISE",
+      title: "",
+      slug: "",
+      description: "",
+      ...defaultExerciseDetails(),
+    },
+  });
 
-  // Sincroniza o estado "dirty" com o componente pai (EditProblem)
-  useEffect(() => {
-    if (onDirtyChange) {
-      onDirtyChange(isDirty);
-    }
-  }, [isDirty, onDirtyChange]);
-
-  const onFormSubmit = async (data: ProblemFormValues) => {
-    setIsSubmitting(true);
-    await onSubmit(data);
-    setIsSubmitting(false);
-  };
-
-  // Botão de Navegação Interna (Abas) - Responsivo
-  const NavButton = ({
-    tab,
-    icon,
-    label,
-  }: {
-    tab: TabType;
-    icon: React.ReactNode;
-    label: string;
-  }) => (
-    <button
-      type="button"
-      onClick={() => setActiveTab(tab)}
-      className={cn(
-        "flex items-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg text-xs md:text-sm font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary flex-1 md:flex-none justify-center whitespace-nowrap",
-        activeTab === tab
-          ? "bg-primary/10 text-primary border border-primary/20 shadow-sm"
-          : "text-muted hover:text-foreground hover:bg-surface-hover",
-      )}
-    >
-      {icon}
-      <span className="hidden sm:inline">{label}</span>
-    </button>
-  );
+  const currentType = watch("type");
 
   return (
-    <div className="h-full flex flex-col bg-background text-foreground font-sans selection:bg-primary/20 relative">
-      <FormProvider {...methods}>
-        <form
-          onSubmit={handleSubmit(onFormSubmit)}
-          className="h-full flex flex-col"
-        >
-          {/* --- HEADER / NAVIGATION --- */}
-          <div className="flex-none border-b border-border bg-surface px-4 py-3 md:px-6 md:py-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm z-10">
-            {/* Navegação de Abas (Agora ocupa largura total no mobile) */}
-            <div className="w-full md:w-auto overflow-x-auto no-scrollbar">
-              <div className="flex bg-background/50 rounded-lg p-1 border border-border min-w-fit">
-                <NavButton
-                  tab="general"
-                  icon={<Layout size={16} />}
-                  label="Geral"
-                />
-                <NavButton
-                  tab="code"
-                  icon={<Code2 size={16} />}
-                  label="Código"
-                />
-                <NavButton
-                  tab="validation"
-                  icon={<FlaskConical size={16} />}
-                  label="Testes"
-                />
-                <NavButton
-                  tab="settings"
-                  icon={<Settings2 size={16} />}
-                  label="Ajustes"
-                />
-              </div>
-            </div>
+    <form onSubmit={handleSubmit(onSubmit as any)} className="space-y-8">
+      {/* INFORMAÇÕES BÁSICAS */}
+      <div className="space-y-4 border-b pb-6">
+        <h2 className="text-xl font-bold">Informações Básicas</h2>
 
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              isLoading={isSubmitting}
-              className="w-full md:w-auto px-8 h-10 md:h-11 text-sm md:text-base font-semibold shadow-md shadow-primary/10"
+        <div>
+          <label className="block text-sm font-medium">Tipo</label>
+          <select
+            {...register("type")}
+            className="w-full border p-2 rounded bg-transparent"
+            onChange={(e) => {
+              const newType = e.target.value as "EXERCISE" | "EXAM";
+              setValue("type", newType);
+              if (newType === "EXAM") {
+                setValue("questions", [defaultQuestion()]);
+              } else {
+                setValue("testCases", [defaultTestCase()]);
+              }
+            }}
+          >
+            <option value="EXERCISE">Exercício (Isolado)</option>
+            <option value="EXAM">Prova (Múltiplas Questões)</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium">Título</label>
+          <Input {...register("title")} />
+          {errors.title && (
+            <p className="text-red-500 text-sm">{errors.title.message}</p>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium">Slug</label>
+          <Input {...register("slug")} />
+          {errors.slug && (
+            <p className="text-red-500 text-sm">{errors.slug.message}</p>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium">Descrição</label>
+          <textarea
+            {...register("description")}
+            className="w-full border p-2 rounded bg-transparent"
+            rows={4}
+          />
+          {errors.description && (
+            <p className="text-red-500 text-sm">{errors.description.message}</p>
+          )}
+        </div>
+      </div>
+
+      {/* RENDERIZAÇÃO CONDICIONAL BASEADA NO TIPO */}
+      {currentType === "EXERCISE" ? (
+        <ExerciseTestCases
+          control={control}
+          register={register}
+          errors={errors as any}
+        />
+      ) : (
+        <ExamSettings
+          control={control}
+          register={register}
+          errors={errors as any}
+        />
+      )}
+
+      {/* SUBMISSÃO */}
+      <div className="flex justify-end gap-2 pt-6">
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Salvando..." : "Salvar"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+// ============================================================================
+// COMPONENTES INTERNOS PARA GERENCIAMENTO DE ARRAYS (EVITA RE-RENDER GLOBAL)
+// ============================================================================
+
+function ExerciseTestCases({
+  control,
+  register,
+  errors,
+}: {
+  control: Control<any>;
+  register: UseFormRegister<any>;
+  errors: any;
+}) {
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "testCases",
+  });
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-medium">Casos de Teste do Exercício</h3>
+      {fields.map((field, index) => (
+        <TestCaseItem
+          key={field.id}
+          index={index}
+          prefix="testCases"
+          register={register}
+          errors={errors?.testCases?.[index]}
+          onRemove={() => remove(index)}
+        />
+      ))}
+      {errors?.testCases?.root && (
+        <p className="text-red-500 text-sm">
+          {errors.testCases.root.message as string}
+        </p>
+      )}
+      <Button type="button" onClick={() => append(defaultTestCase())}>
+        + Adicionar Caso de Teste
+      </Button>
+    </div>
+  );
+}
+
+function ExamSettings({
+  control,
+  register,
+  errors,
+}: {
+  control: Control<any>;
+  register: UseFormRegister<any>;
+  errors: any;
+}) {
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "questions",
+  });
+
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-3 gap-4 border p-4 rounded bg-opacity-10 bg-gray-500">
+        <div>
+          <label className="block text-sm font-medium">Máx. Tentativas</label>
+          <Input type="number" {...register("maxAttempts")} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium">
+            Tempo Limite (min)
+          </label>
+          <Input type="number" {...register("timeLimit")} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium">
+            Limite Memória (MB)
+          </label>
+          <Input type="number" {...register("memoryLimit")} />
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <h3 className="text-xl font-bold">Questões da Prova</h3>
+        {fields.map((field, index) => {
+          const qError = errors?.questions?.[index];
+
+          return (
+            <div
+              key={field.id}
+              className="border p-6 rounded-lg space-y-4 relative"
             >
-              <Save size={18} className="mr-2" />
-              {mode === "EDIT" ? "Salvar Alterações" : "Criar Atividade"}
-            </Button>
-          </div>
+              <div className="absolute top-4 right-4">
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => remove(index)}
+                >
+                  Remover Questão
+                </Button>
+              </div>
 
-          {/* --- CONTENT AREA --- */}
-          <div className="flex-1 overflow-y-auto p-4 md:p-8 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
-            <div className="max-w-7xl mx-auto min-h-full pb-10">
-              {/* ABA GERAL */}
-              <div
-                className={cn(
-                  "space-y-6 md:space-y-8 animate-in fade-in slide-in-from-bottom-2",
-                  activeTab === "general" ? "block" : "hidden",
-                )}
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                  <Input
-                    label="Título da Atividade"
-                    placeholder="Ex: Soma de Vetores"
-                    error={errors.title?.message}
-                    {...register("title")}
-                    className="h-11 md:h-12 text-base bg-surface border-border focus:border-primary"
-                  />
-                  <Input
-                    label="Slug (URL Amigável)"
-                    placeholder="soma-de-vetores"
-                    error={errors.slug?.message}
-                    {...register("slug")}
-                    className="h-11 md:h-12 text-base bg-surface border-border font-mono text-muted focus:text-foreground"
-                  />
-                </div>
+              <h4 className="font-semibold text-lg">Questão {index + 1}</h4>
 
-                <div className="space-y-3 h-[500px] md:h-[600px] flex flex-col">
-                  <label className="text-sm font-medium text-muted uppercase tracking-wider flex items-center gap-2">
-                    <FileText size={16} /> Enunciado (Markdown)
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium">
+                    Título da Questão
                   </label>
-                  <div className="flex-1 border border-border rounded-xl overflow-hidden bg-surface shadow-sm focus-within:ring-2 focus-within:ring-primary/20 transition-all">
-                    <MarkdownInput
-                      label=""
-                      register={register("description")}
-                      watchValue={watch("description")}
-                      error={errors.description?.message}
-                      placeholder="# Descreva o problema detalhadamente aqui..."
-                    />
-                  </div>
+                  <Input {...register(`questions.${index}.title` as const)} />
+                  {qError?.title && (
+                    <p className="text-red-500 text-sm">
+                      {qError.title.message as string}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium">
+                    Slug da Questão
+                  </label>
+                  <Input {...register(`questions.${index}.slug` as const)} />
+                  {qError?.slug && (
+                    <p className="text-red-500 text-sm">
+                      {qError.slug.message as string}
+                    </p>
+                  )}
                 </div>
               </div>
 
-              {/* ABA CÓDIGO */}
-              <div
-                className={cn(
-                  "h-full animate-in fade-in slide-in-from-bottom-2",
-                  activeTab === "code" ? "block" : "hidden",
+              <div>
+                <label className="block text-sm font-medium">
+                  Descrição da Questão
+                </label>
+                <textarea
+                  {...register(`questions.${index}.description` as const)}
+                  className="w-full border p-2 rounded bg-transparent"
+                  rows={3}
+                />
+                {qError?.description && (
+                  <p className="text-red-500 text-sm">
+                    {qError.description.message as string}
+                  </p>
                 )}
-              >
-                <div className="bg-surface border border-border rounded-xl p-1 h-[600px] md:h-[750px] shadow-lg">
-                  <ScaffoldingConfig />
-                </div>
               </div>
 
-              {/* ABA VALIDAÇÃO */}
-              <div
-                className={cn(
-                  "animate-in fade-in slide-in-from-bottom-2",
-                  activeTab === "validation" ? "block" : "hidden",
-                )}
-              >
-                <div className="bg-surface border border-border rounded-xl p-4 md:p-6 shadow-lg">
-                  <ValidationConfig />
-                </div>
-              </div>
-
-              {/* ABA CONFIGURAÇÕES */}
-              <div
-                className={cn(
-                  "animate-in fade-in slide-in-from-bottom-2",
-                  activeTab === "settings" ? "block" : "hidden",
-                )}
-              >
-                <div className="bg-surface border border-border rounded-xl p-4 md:p-10 space-y-8 md:space-y-12 shadow-lg max-w-5xl mx-auto">
-                  <section className="space-y-6 md:space-y-8">
-                    <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3">
-                      <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
-                        <Settings2 size={24} />
-                      </div>
-                      Regras de Execução
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
-                      <Input
-                        label="Tempo Limite (ms)"
-                        type="number"
-                        {...register("timeLimit", { valueAsNumber: true })}
-                        className="bg-background h-11 md:h-12 text-base border-border"
-                      />
-                      <Input
-                        label="Memória Limite (MB)"
-                        type="number"
-                        {...register("memoryLimit", { valueAsNumber: true })}
-                        className="bg-background h-11 md:h-12 text-base border-border"
-                      />
-                      <Input
-                        label="Tentativas (0 = Infinito)"
-                        type="number"
-                        {...register("maxAttempts", { valueAsNumber: true })}
-                        className="bg-background h-11 md:h-12 text-base border-border"
-                      />
-                    </div>
-                  </section>
-
-                  <section className="space-y-6 md:space-y-8">
-                    <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3">
-                      <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
-                        <Clock size={24} />
-                      </div>
-                      Agendamento
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                      <Input
-                        label="Data de Início"
-                        type="datetime-local"
-                        {...register("startDate")}
-                        className="bg-background h-11 md:h-12 text-base border-border"
-                      />
-                      <Input
-                        label="Prazo de Entrega (Deadline)"
-                        type="datetime-local"
-                        {...register("deadline")}
-                        className="bg-background h-11 md:h-12 text-base border-border"
-                      />
-                    </div>
-                  </section>
-                </div>
-              </div>
+              <ExamQuestionTestCases
+                control={control}
+                questionIndex={index}
+                register={register}
+                errors={qError?.testCases}
+              />
             </div>
-          </div>
-        </form>
-      </FormProvider>
+          );
+        })}
+        {errors?.questions?.root && (
+          <p className="text-red-500 text-sm">
+            {errors.questions.root.message as string}
+          </p>
+        )}
+        <Button type="button" onClick={() => append(defaultQuestion())}>
+          + Adicionar Questão
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ExamQuestionTestCases({
+  control,
+  questionIndex,
+  register,
+  errors,
+}: {
+  control: Control<any>;
+  questionIndex: number;
+  register: UseFormRegister<any>;
+  errors: any;
+}) {
+  const prefix = `questions.${questionIndex}.testCases` as const;
+  const { fields, append, remove } = useFieldArray({ control, name: prefix });
+
+  return (
+    <div className="space-y-4 pt-4 border-t">
+      <h5 className="font-medium">
+        Casos de Teste (Questão {questionIndex + 1})
+      </h5>
+      {fields.map((field, index) => (
+        <TestCaseItem
+          key={field.id}
+          index={index}
+          prefix={prefix}
+          register={register}
+          errors={errors?.[index]}
+          onRemove={() => remove(index)}
+        />
+      ))}
+      <Button type="button" onClick={() => append(defaultTestCase())}>
+        + Adicionar Caso de Teste na Questão
+      </Button>
+    </div>
+  );
+}
+
+function TestCaseItem({
+  index,
+  prefix,
+  register,
+  errors,
+  onRemove,
+}: {
+  index: number;
+  prefix: string;
+  register: UseFormRegister<any>;
+  errors: any;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="border p-4 rounded flex gap-4 items-start bg-black/5">
+      <div className="flex-1 space-y-2">
+        <Input
+          placeholder="Entrada"
+          {...register(`${prefix}.${index}.input` as const)}
+        />
+        {errors?.input?.message && (
+          <p className="text-red-500 text-sm">
+            {errors.input.message as string}
+          </p>
+        )}
+
+        <Input
+          placeholder="Saída Esperada"
+          {...register(`${prefix}.${index}.expectedOutput` as const)}
+        />
+        {errors?.expectedOutput?.message && (
+          <p className="text-red-500 text-sm">
+            {errors.expectedOutput.message as string}
+          </p>
+        )}
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            {...register(`${prefix}.${index}.isHidden` as const)}
+          />
+          Caso de teste oculto
+        </label>
+      </div>
+      <Button type="button" variant="danger" onClick={onRemove}>
+        Remover
+      </Button>
     </div>
   );
 }
