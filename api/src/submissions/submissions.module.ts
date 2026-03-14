@@ -22,10 +22,6 @@ import { UsersModule } from '../users/users.module';
           host: process.env.REDIS_HOST,
           port: parseInt(process.env.REDIS_PORT || '6379'),
           password: getSecret('REDIS_PASSWORD', 'redis_password'),
-          tls:
-            process.env.REDIS_TLS === 'true'
-              ? { rejectUnauthorized: false }
-              : undefined,
         },
       }),
     }),
