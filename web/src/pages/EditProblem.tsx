@@ -70,15 +70,25 @@ export default function EditProblem() {
     if (!problemId) return;
 
     // 1. Sanitização Rigorosa: Monta o payload apenas com os dados editáveis
+    // 1. Sanitização Rigorosa: Monta o payload apenas com os dados editáveis
     const payload: any = {
       title: rawData.title,
       description: rawData.description,
       slug: rawData.slug,
       type: rawData.type,
       returnType: rawData.returnType,
-      timeLimit: Number(rawData.timeLimit) || undefined,
-      memoryLimit: Number(rawData.memoryLimit) || undefined,
-      maxAttempts: Number(rawData.maxAttempts) || undefined,
+      timeLimit:
+        rawData.timeLimit !== "" && rawData.timeLimit != null
+          ? Number(rawData.timeLimit)
+          : undefined,
+      memoryLimit:
+        rawData.memoryLimit !== "" && rawData.memoryLimit != null
+          ? Number(rawData.memoryLimit)
+          : undefined,
+      maxAttempts:
+        rawData.maxAttempts !== "" && rawData.maxAttempts != null
+          ? Number(rawData.maxAttempts)
+          : undefined,
       parameters: rawData.parameters,
       starterCode: rawData.starterCode,
       solutionCode: rawData.solutionCode,

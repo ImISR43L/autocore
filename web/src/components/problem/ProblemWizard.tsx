@@ -96,7 +96,12 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
     mode: "onChange",
   });
 
-  const { clearDraft } = useFormPersist("problem-wizard-draft", methods);
+  const problemIdForDraft = (initialValues as any)?.id;
+  const draftStorageKey = problemIdForDraft
+    ? `problem-wizard-draft-${problemIdForDraft}`
+    : "problem-wizard-draft";
+
+  const { clearDraft } = useFormPersist(draftStorageKey, methods);
 
   const {
     register,

@@ -193,16 +193,17 @@ export class ProblemsService {
   }
 
   async findOne(id: string, userId: string) {
-    const problem = await this.problemsRepository.findOne({
-      where: { id },
-      relations: [
-        'testCases',
-        'children',
-        'children.testCases',
-        'classroom',
-        'classroom.owner',
-      ],
-    });
+    // Substituição do findOne padrão pelo QueryBuilder para forçar a carga de colunas ocultas
+    const problem = await this.problemsRepository
+      .createQueryBuilder('problem')
+      .leftJoinAndSelect('problem.testCases', 'testCases')
+      .leftJoinAndSelect('problem.children', 'children')
+      .leftJoinAndSelect('children.testCases', 'childTestCases')
+      .leftJoinAndSelect('problem.classroom', 'classroom')
+      .leftJoinAndSelect('classroom.owner', 'owner')
+      .addSelect(['problem.solutionCode', 'children.solutionCode']) // Força a buscar o gabarito
+      .where('problem.id = :id', { id })
+      .getOne();
 
     if (!problem) throw new NotFoundException('Problema não encontrado');
 
@@ -220,6 +221,12 @@ export class ProblemsService {
     }
 
     if (problem.classroom && problem.classroom.owner.id !== userId) {
+      // Bloqueio de segurança e remoção estrita do gabarito para alunos com type casting
+      delete (problem as any).solutionCode;
+      if (problem.children && problem.children.length > 0) {
+        problem.children.forEach((child) => delete (child as any).solutionCode);
+      }
+
       if (problem.type === ProblemType.EXAM) {
         const now = new Date();
         if (!problem.startedAt || problem.startedAt > now) {
