@@ -47,6 +47,7 @@ services:
     networks:
       - secure_sandbox
     read_only: true
+    privileged: true
     tmpfs:
       - /tmp:exec,mode=1777
       - /run:exec,mode=1777
