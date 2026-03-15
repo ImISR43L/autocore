@@ -189,11 +189,19 @@ export class ProblemsService {
   }
 
   async findAll() {
-    return this.problemsRepository.find({ relations: ['classroom'] });
+    const problems = await this.problemsRepository.find({
+      relations: ['classroom'],
+    });
+
+    // Proteção de dados: Ocultar gabarito em listagens públicas
+    problems.forEach((problem) => {
+      delete (problem as any).solutionCode;
+    });
+
+    return problems;
   }
 
   async findOne(id: string, userId: string) {
-    // Busca base sem o gabarito
     const problem = await this.problemsRepository.findOne({
       where: { id },
       relations: [
@@ -222,29 +230,13 @@ export class ProblemsService {
 
     const isOwner = problem.classroom && problem.classroom.owner.id === userId;
 
-    if (isOwner) {
-      const rawProblem = await this.problemsRepository
-        .createQueryBuilder('p')
-        .select(['p.id', 'p.solutionCode'])
-        .where('p.id = :id', { id })
-        .getOne();
-
-      (problem as any).solutionCode = rawProblem?.solutionCode || [];
+    if (!isOwner) {
+      delete (problem as any).solutionCode;
 
       if (problem.children && problem.children.length > 0) {
-        const childIds = problem.children.map((c) => c.id);
-        const rawChildren = await this.problemsRepository
-          .createQueryBuilder('c')
-          .select(['c.id', 'c.solutionCode'])
-          .where('c.id IN (:...ids)', { ids: childIds })
-          .getMany();
-
-        problem.children.forEach((child) => {
-          const raw = rawChildren.find((r) => r.id === child.id);
-          (child as any).solutionCode = raw?.solutionCode || [];
-        });
+        problem.children.forEach((child) => delete (child as any).solutionCode);
       }
-    } else {
+
       if (problem.type === ProblemType.EXAM) {
         const now = new Date();
         if (!problem.startedAt || problem.startedAt > now) {

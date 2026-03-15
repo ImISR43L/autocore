@@ -82,7 +82,7 @@ export class Problem {
   @Column({ type: 'jsonb', nullable: true })
   starterCode: StarterCodeDefinition[] | null;
 
-  @Column({ type: 'jsonb', default: [], select: false }) // select: false protege de retornar para o aluno num findAll comum
+  @Column({ type: 'jsonb', default: [] })
   solutionCode: { name: string; content: string }[];
 
   @Column({ default: 'string' })
