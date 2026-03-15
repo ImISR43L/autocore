@@ -1090,8 +1090,7 @@ export default function ClassroomView() {
     }
   };
 
-  const handlePostAnnouncement = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handlePostAnnouncement = async () => {
     if (
       !newAnnouncement.trim() &&
       selectedFiles.length === 0 &&
@@ -1102,33 +1101,35 @@ export default function ClassroomView() {
 
     try {
       const formData = new FormData();
+      formData.append("classroomId", id as string);
 
       formData.append("content", newAnnouncement);
-      formData.append("classroomId", String(classroom?.id));
 
       if (manualLinks.length > 0) {
         formData.append("manualLinks", JSON.stringify(manualLinks));
       }
 
-      selectedFiles.forEach((file) => {
-        formData.append("files", file);
-      });
+      if (selectedFiles.length > 0) {
+        selectedFiles.forEach((file) => {
+          formData.append("files", file);
+        });
+      }
 
-      await api.post(`/announcements`, formData, {
+      await api.post("/announcements", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
       });
 
-      toast.success("Aviso postado com sucesso!");
+      toast.success("Aviso publicado!");
       setNewAnnouncement("");
       setSelectedFiles([]);
       setManualLinks([]);
       setShowLinkInput(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setCurrentLink("");
       fetchClassroomData();
     } catch (error) {
-      toast.error("Erro ao postar aviso.");
+      toast.error("Erro ao publicar aviso.");
       console.error(error);
     } finally {
       setPosting(false);
