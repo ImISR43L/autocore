@@ -1107,9 +1107,7 @@ export default function ClassroomView() {
 
       formData.append("content", newAnnouncement);
 
-      if (manualLinks.length > 0) {
-        formData.append("manualLinks", JSON.stringify(manualLinks));
-      }
+      formData.append("manualLinks", JSON.stringify(manualLinks));
 
       if (selectedFiles.length > 0) {
         selectedFiles.forEach((file) => {
