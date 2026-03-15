@@ -4,7 +4,7 @@ import { ProblemEditor } from "../components/problem/ProblemEditor";
 import type { ProblemFormValues } from "../schemas/problem.schema";
 import { api } from "../lib/api";
 
-export function EditProblem() {
+export default function EditProblem() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [initialData, setInitialData] = useState<ProblemFormValues | null>(
