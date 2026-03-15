@@ -4,7 +4,7 @@ import { ProblemEditor } from "../components/problem/ProblemEditor";
 import type { ProblemFormValues } from "../schemas/problem.schema";
 import { api } from "../lib/api";
 
-export default function EditProblem() {
+export function EditProblem() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [initialData, setInitialData] = useState<ProblemFormValues | null>(
@@ -20,10 +20,8 @@ export default function EditProblem() {
         const response = await api.get(`/problems/${id}`);
         const rawData = response.data;
 
-        // Clonar dados para mutação de hidratação
         const formattedData: any = { ...rawData };
 
-        // Formatar datas do formato ISO para o input type="datetime-local" (YYYY-MM-DDThh:mm)
         if (rawData.startDate)
           formattedData.startDate = new Date(rawData.startDate)
             .toISOString()
@@ -33,9 +31,7 @@ export default function EditProblem() {
             .toISOString()
             .slice(0, 16);
 
-        // Normalização de arrays essenciais com base no tipo
         if (rawData.type === "EXAM") {
-          // Na API as questões de uma prova vêm na propriedade `children`
           formattedData.questions = (rawData.children || []).map(
             (child: any) => ({
               title: child.title || "",
@@ -55,7 +51,6 @@ export default function EditProblem() {
             }),
           );
         } else {
-          // Se for Exercício Isolado
           formattedData.starterCode = rawData.starterCode?.length
             ? rawData.starterCode
             : [{ name: "main.py", content: "" }];
@@ -90,8 +85,22 @@ export default function EditProblem() {
   const handleSubmit = async (data: ProblemFormValues) => {
     setIsSubmitting(true);
     try {
-      // Modificação: de api.put para api.patch
-      await api.patch(`/problems/${id}`, data);
+      // Cria uma cópia profunda para mutação e higienização
+      const cleanPayload = JSON.parse(JSON.stringify(data));
+
+      // Limpeza da propriedade 'id' restrita pelo DTO do backend
+      if (cleanPayload.type === "EXERCISE" && cleanPayload.testCases) {
+        cleanPayload.testCases.forEach((tc: any) => delete tc.id);
+      } else if (cleanPayload.type === "EXAM" && cleanPayload.questions) {
+        cleanPayload.questions.forEach((q: any) => {
+          delete q.id;
+          if (q.testCases) {
+            q.testCases.forEach((tc: any) => delete tc.id);
+          }
+        });
+      }
+
+      await api.patch(`/problems/${id}`, cleanPayload);
       navigate("/dashboard");
     } catch (err) {
       console.error("Erro ao guardar edições:", err);
