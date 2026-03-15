@@ -193,17 +193,17 @@ export class ProblemsService {
   }
 
   async findOne(id: string, userId: string) {
-    // Substituição do findOne padrão pelo QueryBuilder para forçar a carga de colunas ocultas
-    const problem = await this.problemsRepository
-      .createQueryBuilder('problem')
-      .leftJoinAndSelect('problem.testCases', 'testCases')
-      .leftJoinAndSelect('problem.children', 'children')
-      .leftJoinAndSelect('children.testCases', 'childTestCases')
-      .leftJoinAndSelect('problem.classroom', 'classroom')
-      .leftJoinAndSelect('classroom.owner', 'owner')
-      .addSelect(['problem.solutionCode', 'children.solutionCode']) // Força a buscar o gabarito
-      .where('problem.id = :id', { id })
-      .getOne();
+    // Busca base sem o gabarito
+    const problem = await this.problemsRepository.findOne({
+      where: { id },
+      relations: [
+        'testCases',
+        'children',
+        'children.testCases',
+        'classroom',
+        'classroom.owner',
+      ],
+    });
 
     if (!problem) throw new NotFoundException('Problema não encontrado');
 
@@ -220,13 +220,31 @@ export class ProblemsService {
       await this.problemsRepository.save(problem);
     }
 
-    if (problem.classroom && problem.classroom.owner.id !== userId) {
-      // Bloqueio de segurança e remoção estrita do gabarito para alunos com type casting
-      delete (problem as any).solutionCode;
-      if (problem.children && problem.children.length > 0) {
-        problem.children.forEach((child) => delete (child as any).solutionCode);
-      }
+    const isOwner = problem.classroom && problem.classroom.owner.id === userId;
 
+    if (isOwner) {
+      const rawProblem = await this.problemsRepository
+        .createQueryBuilder('p')
+        .select(['p.id', 'p.solutionCode'])
+        .where('p.id = :id', { id })
+        .getOne();
+
+      (problem as any).solutionCode = rawProblem?.solutionCode || [];
+
+      if (problem.children && problem.children.length > 0) {
+        const childIds = problem.children.map((c) => c.id);
+        const rawChildren = await this.problemsRepository
+          .createQueryBuilder('c')
+          .select(['c.id', 'c.solutionCode'])
+          .where('c.id IN (:...ids)', { ids: childIds })
+          .getMany();
+
+        problem.children.forEach((child) => {
+          const raw = rawChildren.find((r) => r.id === child.id);
+          (child as any).solutionCode = raw?.solutionCode || [];
+        });
+      }
+    } else {
       if (problem.type === ProblemType.EXAM) {
         const now = new Date();
         if (!problem.startedAt || problem.startedAt > now) {
