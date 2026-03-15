@@ -90,7 +90,8 @@ export default function EditProblem() {
   const handleSubmit = async (data: ProblemFormValues) => {
     setIsSubmitting(true);
     try {
-      await api.put(`/problems/${id}`, data);
+      // Modificação: de api.put para api.patch
+      await api.patch(`/problems/${id}`, data);
       navigate("/dashboard");
     } catch (err) {
       console.error("Erro ao guardar edições:", err);
