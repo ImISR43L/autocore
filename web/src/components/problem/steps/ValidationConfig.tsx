@@ -162,21 +162,34 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
   // Sincronia Automática Inicial (StarterCode -> SolutionCode)
   useEffect(() => {
     const currentSolution = getValues(getName("solutionCode")) || [];
-    if (starterCode.length === 0) return;
-
-    const starterJson = JSON.stringify(cleanCopy(starterCode));
-    const solutionJson = JSON.stringify(cleanCopy(currentSolution));
+    if (!starterCode || starterCode.length === 0) return;
 
     if (currentSolution.length === 0) {
       forceUpdateSolution(cleanCopy(starterCode));
       return;
     }
 
-    if (starterJson !== solutionJson) {
-      const isSolutionDirty = dirtyFields?.[getName("solutionCode")];
-      if (!isSolutionDirty) {
-        forceUpdateSolution(cleanCopy(starterCode));
+    let hasChanges = false;
+    const newSolution = [...currentSolution];
+
+    // 1. Remove arquivos que foram deletados no código base
+    for (let i = newSolution.length - 1; i >= 0; i--) {
+      if (!starterCode.some((sc: any) => sc.name === newSolution[i].name)) {
+        newSolution.splice(i, 1);
+        hasChanges = true;
       }
+    }
+
+    // 2. Adiciona novos arquivos que foram criados no código base
+    for (const sc of starterCode) {
+      if (!newSolution.some((sol: any) => sol.name === sc.name)) {
+        newSolution.push({ ...sc });
+        hasChanges = true;
+      }
+    }
+
+    if (hasChanges) {
+      forceUpdateSolution(cleanCopy(newSolution));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(starterCode)]);
