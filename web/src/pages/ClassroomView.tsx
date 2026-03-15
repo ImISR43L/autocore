@@ -1090,7 +1090,9 @@ export default function ClassroomView() {
     }
   };
 
-  const handlePostAnnouncement = async () => {
+  const handlePostAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+
     if (
       !newAnnouncement.trim() &&
       selectedFiles.length === 0 &&
