@@ -184,37 +184,22 @@ const LANGUAGES = [
     id: 71,
     name: "Python (3.8.1)",
     fileName: "main.py",
+    ext: ".py",
     defaultCode: `def solve():\n    # Escreva sua lógica aqui\n    pass`,
   },
   {
     id: 63,
     name: "JavaScript (Node.js)",
     fileName: "index.js",
+    ext: ".js",
     defaultCode: `function solve() {\n    // Escreva sua lógica aqui\n}`,
-  },
-  {
-    id: 62,
-    name: "Java (OpenJDK 13.0.1)",
-    fileName: "Main.java",
-    defaultCode: `public class Main {\n    public static void main(String[] args) {\n        // Lógica\n    }\n}`,
-  },
-  {
-    id: 50,
-    name: "C (GCC 9.2.0)",
-    fileName: "main.c",
-    defaultCode: `#include <stdio.h>\n\nint main() {\n    // Lógica\n    return 0;\n}`,
   },
   {
     id: 54,
     name: "C++ (GCC 9.2.0)",
     fileName: "main.cpp",
+    ext: ".cpp",
     defaultCode: `#include <iostream>\n\nint main() {\n    // Lógica\n    return 0;\n}`,
-  },
-  {
-    id: 60,
-    name: "Go (1.13.5)",
-    fileName: "main.go",
-    defaultCode: `package main\n\nfunc main() {\n    // Lógica\n}`,
   },
 ];
 
@@ -309,7 +294,7 @@ export default function ClassroomView() {
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [currentLink, setCurrentLink] = useState("");
   const [posting, setPosting] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]); // NOVO
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [stats, setStats] = useState<StatData[]>([]);
   const [problemStats, setProblemStats] = useState<ProblemStat[]>([]);
@@ -611,6 +596,42 @@ export default function ClassroomView() {
 
     monacoRef.current.editor.setModelMarkers(model, "owner", markers);
   }, []);
+
+  // 1. Deriva os arquivos base dependendo se é Exercício ou Prova
+  // Derivação Dinâmica baseada nos arquivos base (starterCode)
+  const availableLanguages = useMemo(() => {
+    // 1. Extrai o starterCode com base no tipo de atividade
+    const files =
+      currentProblem?.type === "EXAM"
+        ? currentProblem.children?.find((c: any) => c.id === activeTab)
+            ?.starterCode
+        : currentProblem?.starterCode;
+
+    // 2. Se não houver, fallback vazio
+    if (!files || !Array.isArray(files)) return [];
+
+    // 3. Mapeia a extensão do ficheiro para a Linguagem correspondente
+    const langs = new Map();
+    files.forEach((file: any) => {
+      const extension = file.name?.slice(file.name.lastIndexOf("."));
+      const lang = LANGUAGES.find((l) => l.ext === extension);
+      if (lang) langs.set(lang.id, lang);
+    });
+
+    return Array.from(langs.values());
+  }, [currentProblem, activeTab]);
+
+  // Sincronização do estado selecionado (garante que não seleciona linguagem fantasma)
+  // Sincronização do estado selecionado (garante que não seleciona linguagem fantasma)
+  useEffect(() => {
+    if (
+      availableLanguages.length > 0 &&
+      !availableLanguages.find((l) => l.id === languageId)
+    ) {
+      // Define a primeira linguagem disponível, passando apenas o ID
+      setLanguageId(availableLanguages[0].id);
+    }
+  }, [availableLanguages, languageId]);
 
   useEffect(() => {
     if (files.length > 0 && files[activeFileIndex]) {
@@ -2381,12 +2402,21 @@ export default function ClassroomView() {
 
                 <Select
                   value={languageId}
-                  onChange={(e) => setLanguageId(Number(e.target.value))}
-                  className="w-48 h-11 text-base"
+                  onChange={(e) => setLanguageId(parseInt(e.target.value))}
+                  className="bg-transparent border-none text-muted-foreground text-sm focus:ring-0 cursor-pointer outline-none font-medium hover:text-foreground transition-colors"
                 >
-                  {allowedLanguageOptions.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
+                  {availableLanguages.length === 0 && (
+                    <option value="" disabled>
+                      Aguardando Arquivos
+                    </option>
+                  )}
+                  {availableLanguages.map((lang) => (
+                    <option
+                      key={lang.id}
+                      value={lang.id}
+                      className="bg-background text-foreground"
+                    >
+                      {lang.name}
                     </option>
                   ))}
                 </Select>
