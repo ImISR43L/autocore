@@ -55,7 +55,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     getValues,
     setValue,
     watch,
-    formState: { errors, dirtyFields },
+    formState: { errors },
   } = useFormContext();
   const monacoTheme = useMonacoTheme();
 
