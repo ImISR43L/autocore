@@ -33,65 +33,88 @@ export class AnnouncementsService {
     const classroomCheck = await this.classroomsRepository.findOne({
       where: { id: createAnnouncementDto.classroomId },
     });
-    if (!classroomCheck) throw new NotFoundException('Turma não encontrada');
+
+    if (!classroomCheck) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+
     if (classroomCheck.isArchived) {
       throw new ForbiddenException(
         'Turma em modo leitura (arquivada). Ações bloqueadas.',
       );
     }
 
-    let manualUrls: string[] = [];
-    if (createAnnouncementDto.manualLinks) {
-      try {
-        manualUrls = JSON.parse(createAnnouncementDto.manualLinks);
-      } catch (e) {}
-    }
-
-    // Combina os links explícitos com o texto para extrair metadados únicos
-    const textToScrape = `${createAnnouncementDto.content || ''} ${manualUrls.join(' ')}`;
-    const links = await this.extractLinkMetadata(textToScrape);
-
     const attachments: any[] = [];
 
-    // Upload seguro via Backend com Service Role
-    for (const file of files) {
-      const fileExt = file.originalname.split('.').pop();
-      const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
-      const filePath = `announcements/${fileName}`;
+    if (
+      createAnnouncementDto.manualLinks &&
+      createAnnouncementDto.manualLinks !== '[]'
+    ) {
+      try {
+        const manualUrls: string[] = JSON.parse(
+          createAnnouncementDto.manualLinks,
+        );
+        const linksText = manualUrls.join(' ');
+        const extractedLinks = await this.extractLinkMetadata(linksText);
 
-      const { error } = await this.supabase.storage
-        .from('class_attachments')
-        .upload(filePath, file.buffer, {
-          contentType: file.mimetype,
-        });
+        const formattedLinks = extractedLinks.map((link) => ({
+          type: 'link',
+          ...link,
+        }));
 
-      if (error) {
+        attachments.push(...formattedLinks);
+      } catch (error) {
         throw new InternalServerErrorException(
-          `Falha no upload do arquivo ${file.originalname}`,
+          'Falha ao processar os links fornecidos.',
         );
       }
+    }
 
-      const { data } = this.supabase.storage
-        .from('class_attachments')
-        .getPublicUrl(filePath);
+    if (files && files.length > 0) {
+      const uploadPromises = files.map(async (file) => {
+        const fileExt = file.originalname.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const filePath = `announcements/${createAnnouncementDto.classroomId}/${fileName}`;
 
-      attachments.push({
-        url: data.publicUrl,
-        name: file.originalname,
-        size: file.size,
-        mimeType: file.mimetype,
+        // Substituir 'classroom-files' pelo nome exato do seu bucket no Supabase
+        const { error } = await this.supabase.storage
+          .from('classroom-files')
+          .upload(filePath, file.buffer, {
+            contentType: file.mimetype,
+            upsert: false,
+          });
+
+        if (error) {
+          throw new InternalServerErrorException(
+            `Falha no upload do arquivo ${file.originalname}: ${error.message}`,
+          );
+        }
+
+        const { data: publicUrlData } = this.supabase.storage
+          .from('classroom-files')
+          .getPublicUrl(filePath);
+
+        return {
+          type: 'file',
+          url: publicUrlData.publicUrl,
+          name: file.originalname,
+          size: file.size,
+          mimetype: file.mimetype,
+        };
       });
+
+      const uploadedFiles = await Promise.all(uploadPromises);
+      attachments.push(...uploadedFiles);
     }
 
     const announcement = this.announcementsRepository.create({
-      content: createAnnouncementDto.content || '',
+      content: createAnnouncementDto.content,
       classroom: { id: createAnnouncementDto.classroomId },
       author: { id: authorId },
-      links,
-      attachments,
+      attachments: attachments,
     });
 
-    return this.announcementsRepository.save(announcement);
+    return await this.announcementsRepository.save(announcement);
   }
 
   async remove(id: string, userId: string) {
