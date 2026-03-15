@@ -10,6 +10,7 @@ interface JwtPayload {
   role?: string;
   user_metadata?: {
     name?: string;
+    full_name?: string;
   };
 }
 
@@ -36,7 +37,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       userId: payload.sub,
       email: payload.email,
       role: payload.role,
-      name: payload.user_metadata?.name,
+      name: payload.user_metadata?.name || payload.user_metadata?.full_name,
     };
   }
 }

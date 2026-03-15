@@ -81,10 +81,16 @@ export default function Dashboard() {
       if (user) {
         setMyUserId(user.id);
 
-        // Fallback progressivo: full_name -> name -> prefixo do e-mail -> Visitante
+        try {
+          const res = await api.get("/users/me"); // Ajustar para o endpoint real que retorna o User
+          if (res.data?.name) {
+            setUserName(res.data.name.split(" ")[0]);
+            return;
+          }
+        } catch (e) {}
+
         const metaName =
           user.user_metadata?.full_name || user.user_metadata?.name;
-
         if (metaName && metaName.trim() !== "") {
           setUserName(metaName.split(" ")[0]);
         } else if (user.email) {
