@@ -55,7 +55,7 @@ export const basicInfoSchema = z.object({
     ),
   description: z.string().min(10, "Descrição muito curta"),
   type: z.enum(["EXERCISE", "EXAM"]),
-  classroomId: z.string().optional(),
+  classroomId: z.string().min(1, "A vinculação a uma turma é obrigatória"),
 });
 
 export const exerciseDetailsSchema = z.object({

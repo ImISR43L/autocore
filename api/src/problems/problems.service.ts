@@ -5,6 +5,7 @@ import {
   Logger,
   InternalServerErrorException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -37,9 +38,6 @@ export class ProblemsService {
     private classroomsRepository: Repository<Classroom>,
   ) {}
 
-  /**
-   * Validação Robusta com Logs de Debug
-   */
   private compareOutputs(actual: string, expected: string): boolean {
     this.logger.debug(
       `[COMPARE-START]\nActual (Raw):   ${JSON.stringify(actual)}\nExpected (Raw): ${JSON.stringify(expected)}`,
@@ -129,19 +127,24 @@ export class ProblemsService {
       ...problemData
     } = createProblemDto;
 
-    let classroom: Classroom | undefined = undefined;
+    if (!classroomId) {
+      throw new BadRequestException(
+        'A vinculação a uma turma (classroomId) é obrigatória.',
+      );
+    }
 
-    if (classroomId) {
-      const foundClassroom = await this.classroomsRepository.findOne({
-        where: { id: String(classroomId) },
-      });
-      if (!foundClassroom) throw new NotFoundException('Turma não encontrada');
-      if (foundClassroom.isArchived) {
-        throw new ForbiddenException(
-          'Turma em modo leitura (arquivada). Ações bloqueadas.',
-        );
-      }
-      classroom = foundClassroom;
+    const classroom = await this.classroomsRepository.findOne({
+      where: { id: String(classroomId) },
+    });
+
+    if (!classroom) {
+      throw new NotFoundException('Turma não encontrada.');
+    }
+
+    if (classroom.isArchived) {
+      throw new ForbiddenException(
+        'Turma em modo leitura (arquivada). Ações bloqueadas.',
+      );
     }
 
     const existingProblem = await this.problemsRepository.findOne({
@@ -286,13 +289,19 @@ export class ProblemsService {
     });
     if (!problem) throw new NotFoundException('Problema não encontrado');
 
-    if (problem.classroom?.isArchived) {
+    if (!problem.classroom) {
+      throw new ForbiddenException(
+        'Atividades sem turma não possuem proprietário e não podem ser editadas.',
+      );
+    }
+
+    if (problem.classroom.isArchived) {
       throw new ForbiddenException(
         'Turma em modo leitura (arquivada). Ações bloqueadas.',
       );
     }
 
-    if (problem.classroom && problem.classroom.owner.id !== userId) {
+    if (problem.classroom.owner.id !== userId) {
       throw new ForbiddenException('Apenas o dono da turma pode editar.');
     }
 
@@ -382,13 +391,19 @@ export class ProblemsService {
 
     if (!problem) throw new NotFoundException('Problema não encontrado');
 
-    if (problem.classroom?.isArchived) {
+    if (!problem.classroom) {
+      throw new ForbiddenException(
+        'Atividades sem turma não possuem proprietário e não podem ser excluídas.',
+      );
+    }
+
+    if (problem.classroom.isArchived) {
       throw new ForbiddenException(
         'Turma em modo leitura (arquivada). Ações bloqueadas.',
       );
     }
 
-    if (problem.classroom && problem.classroom.owner.id !== userId) {
+    if (problem.classroom.owner.id !== userId) {
       throw new ForbiddenException('Apenas o dono da turma pode excluir.');
     }
 
