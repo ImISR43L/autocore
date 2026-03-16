@@ -85,10 +85,8 @@ export default function EditProblem() {
   const handleSubmit = async (data: ProblemFormValues) => {
     setIsSubmitting(true);
     try {
-      // Cria uma cópia profunda para mutação e higienização
       const cleanPayload = JSON.parse(JSON.stringify(data));
 
-      // Limpeza da propriedade 'id' restrita pelo DTO do backend
       if (cleanPayload.type === "EXERCISE" && cleanPayload.testCases) {
         cleanPayload.testCases.forEach((tc: any) => delete tc.id);
       } else if (cleanPayload.type === "EXAM" && cleanPayload.questions) {
@@ -101,7 +99,7 @@ export default function EditProblem() {
       }
 
       await api.patch(`/problems/${id}`, cleanPayload);
-      navigate("/dashboard");
+      navigate(-1);
     } catch (err) {
       console.error("Erro ao guardar edições:", err);
       alert(
@@ -114,29 +112,19 @@ export default function EditProblem() {
 
   if (isLoading)
     return (
-      <div className="p-12 text-center text-lg text-gray-600">
-        A carregar ambiente de edição...
+      <div className="p-12 text-center text-lg text-muted">
+        Carregando ambiente de edição...
       </div>
     );
   if (error)
     return (
-      <div className="p-12 text-center text-lg text-red-500 font-medium">
+      <div className="p-12 text-center text-lg text-destructive font-medium">
         Erro: {error}
       </div>
     );
 
   return (
-    <div className="max-w-6xl mx-auto p-6 lg:p-10">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-          Editor de Problema
-        </h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-2">
-          Atualize as informações, o código base, o gabarito e os limites de
-          execução diretamente abaixo.
-        </p>
-      </div>
-
+    <div className="h-[calc(100vh-5rem)] w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
       {initialData && (
         <ProblemEditor
           initialData={initialData}

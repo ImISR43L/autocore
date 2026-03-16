@@ -72,7 +72,7 @@ export function ProblemEditor({
     remove: removeQuestion,
   } = useFieldArray({ control, name: "questions" });
 
-  // Configuração dos passos do Stepper
+  // Configuração das Abas
   const steps =
     currentType === "EXERCISE"
       ? [
@@ -101,67 +101,40 @@ export function ProblemEditor({
       onSubmit={handleSubmit(onSubmit as any)}
       className="flex flex-col pb-32"
     >
-      {/* NAVEGAÇÃO SUPERIOR (STEPPER HORIZONTAL) */}
-      <div className="w-full bg-white/80 dark:bg-gray-950/80 backdrop-blur-md sticky top-0 z-40 mb-8 pt-4 border-b border-gray-200 dark:border-gray-800 shadow-sm">
-        <div className="overflow-x-auto hide-scrollbar px-4 sm:px-8 pb-6 max-w-7xl mx-auto">
-          <ol className="flex items-center w-full min-w-max space-x-2 sm:space-x-4">
+      {/* NAVEGAÇÃO SUPERIOR (SISTEMA DE ABAS) */}
+      <div className="w-full bg-white/90 dark:bg-gray-950/90 backdrop-blur-md sticky top-0 z-40 mb-8 border-b border-gray-200 dark:border-gray-800 shadow-sm">
+        <div className="overflow-x-auto hide-scrollbar px-4 sm:px-8 max-w-7xl mx-auto pt-2">
+          <nav className="flex space-x-6 sm:space-x-8" aria-label="Tabs">
             {steps.map((step, idx) => {
               const isActive = activeTab === step.id;
-              const isPast = steps.findIndex((s) => s.id === activeTab) > idx;
               const hasError =
                 step.id.startsWith("q_") &&
                 !!(errors as any)?.questions?.[idx - 2];
 
               return (
-                <li
+                <button
                   key={step.id}
-                  className={`flex items-center ${idx !== steps.length - 1 ? "w-full sm:w-auto sm:flex-1" : ""}`}
+                  type="button"
+                  onClick={() => setActiveTab(step.id)}
+                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm transition-all focus:outline-none ${
+                    isActive
+                      ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
+                      : hasError
+                        ? "border-red-500 text-red-600 dark:border-red-500 dark:text-red-400"
+                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-700"
+                  }`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab(step.id)}
-                    className="flex items-center flex-row focus:outline-none group"
-                  >
-                    <span
-                      className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold shrink-0 transition-colors ${
-                        isActive
-                          ? "bg-blue-600 text-white shadow-md shadow-blue-500/30"
-                          : isPast
-                            ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
-                            : hasError
-                              ? "bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-400"
-                              : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-700"
-                      }`}
-                    >
-                      {idx + 1}
-                    </span>
-                    <span
-                      className={`ml-3 whitespace-nowrap font-semibold text-sm transition-colors ${
-                        isActive
-                          ? "text-gray-900 dark:text-white"
-                          : hasError
-                            ? "text-red-500"
-                            : "text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-300"
-                      }`}
-                    >
-                      {step.label}
-                    </span>
-                  </button>
-                  {idx !== steps.length - 1 && (
-                    <div
-                      className={`hidden sm:block w-12 xl:w-24 h-0.5 mx-4 rounded ${isPast ? "bg-blue-600" : "bg-gray-200 dark:bg-gray-700"}`}
-                    />
-                  )}
-                </li>
+                  {step.label}
+                </button>
               );
             })}
 
             {currentType === "EXAM" && (
-              <li className="flex items-center ml-4 pl-4 border-l border-gray-200 dark:border-gray-700">
+              <div className="py-2 flex items-center ml-auto pl-4 border-l border-gray-200 dark:border-gray-800">
                 <Button
                   type="button"
                   variant="ghost"
-                  className="text-sm font-bold"
+                  className="text-sm font-bold h-8 text-blue-600 dark:text-blue-400"
                   onClick={() => {
                     appendQuestion(defaultQuestion());
                     setActiveTab(`q_${examQuestions.length}`);
@@ -169,9 +142,9 @@ export function ProblemEditor({
                 >
                   + Nova Questão
                 </Button>
-              </li>
+              </div>
             )}
-          </ol>
+          </nav>
         </div>
       </div>
 
@@ -622,7 +595,6 @@ function FileGroupEditor({
                   Remover
                 </Button>
               </div>
-              {/* Fallback de Code Editor (Textarea com fonte monospaced clara, simulando Monaco) */}
               <textarea
                 {...register(`${baseName}.${index}.content` as const)}
                 className="w-full p-4 font-mono text-[14px] bg-transparent text-gray-100 outline-none resize-y leading-relaxed"
