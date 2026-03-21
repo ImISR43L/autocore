@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Request,
+  Req,
 } from '@nestjs/common';
 import { ProblemsService } from './problems.service';
 import { CreateProblemDto } from './dto/create-problem.dto';
@@ -52,6 +53,12 @@ export class ProblemsController {
   @Patch(':id/start')
   startExam(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.problemsService.startExam(id, req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/edit')
+  findOneForEditing(@Param('id') id: string, @Req() req: any) {
+    return this.problemsService.findOne(id, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)

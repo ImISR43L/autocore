@@ -28,7 +28,7 @@ export default function EditProblem() {
 
     async function loadProblem() {
       try {
-        const res = await api.get(`/problems/${problemId}`);
+        const res = await api.get(`/problems/${problemId}/edit`);
 
         if (res.data.classroom?.isArchived) {
           toast.warning(
@@ -49,6 +49,23 @@ export default function EditProblem() {
             ? res.data.solutionCode
             : [{ name: "main.py", content: "" }],
         };
+
+        if (res.data.type === "EXAM") {
+          formatted.questions = (res.data.children || []).map((child: any) => ({
+            ...child,
+            starterCode: child.starterCode?.length
+              ? child.starterCode
+              : [{ name: "main.py", content: "" }],
+            solutionCode: child.solutionCode?.length
+              ? child.solutionCode
+              : [{ name: "main.py", content: "" }],
+            testCases: child.testCases?.length
+              ? child.testCases
+              : [{ input: "", expectedOutput: "", isHidden: false }],
+            parameters: child.parameters || [],
+            returnType: child.returnType || "void",
+          }));
+        }
 
         if (formatted.startDate) {
           formatted.startDate = new Date(formatted.startDate)
