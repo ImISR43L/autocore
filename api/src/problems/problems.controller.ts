@@ -57,8 +57,8 @@ export class ProblemsController {
 
   @UseGuards(JwtAuthGuard)
   @Get(':id/edit')
-  findOneForEditing(@Param('id') id: string, @Req() req: any) {
-    return this.problemsService.findOne(id, req.user.id);
+  findOneForEditing(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.problemsService.findOne(id, req.user.userId);
   }
 
   @UseGuards(JwtAuthGuard)

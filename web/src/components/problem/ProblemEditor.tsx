@@ -72,8 +72,12 @@ export function ProblemEditor({
 
   const tabs: { id: TabType; label: string; icon: any }[] = [
     { id: "general", label: "Informações Básicas", icon: Layout },
-    { id: "code", label: "Código Base & Gabarito", icon: Code2 },
-    { id: "validation", label: "Casos de Teste", icon: FlaskConical },
+    { id: "code", label: "Template Padrão (Alunos)", icon: Code2 },
+    {
+      id: "validation",
+      label: "Gabarito & Casos de Teste",
+      icon: FlaskConical,
+    },
     { id: "settings", label: "Regras e Agendamento", icon: Settings2 },
   ];
 
@@ -201,7 +205,7 @@ export function ProblemEditor({
                 </div>
               </div>
 
-              {/* === ABA: GESTÃO DE CÓDIGO === */}
+              {/* === ABA: GESTÃO DE CÓDIGO (TEMPLATE ALUNOS) === */}
               <div
                 className={cn(
                   "animate-in fade-in zoom-in-95 duration-300 h-full",
@@ -209,18 +213,34 @@ export function ProblemEditor({
                 )}
               >
                 <div className="h-full min-h-[600px] flex flex-col">
-                  <ScaffoldingConfig />
+                  <ScaffoldingConfig targetField="starterCode" />
                 </div>
               </div>
 
-              {/* === ABA: AFERIÇÃO COMPUTACIONAL === */}
+              {/* === ABA: AFERIÇÃO COMPUTACIONAL (GABARITO E TESTES) === */}
               <div
                 className={cn(
                   "animate-in fade-in zoom-in-95 duration-300",
                   activeTab !== "validation" && "hidden",
                 )}
               >
-                <ValidationConfig />
+                <div className="space-y-8 md:space-y-12">
+                  <section>
+                    <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3 mb-6">
+                      <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
+                        <Code2 size={24} />
+                      </div>
+                      Código Fonte do Gabarito
+                    </h3>
+                    <div className="h-[500px] border border-border rounded-xl overflow-hidden">
+                      <ScaffoldingConfig targetField="solutionCode" />
+                    </div>
+                  </section>
+
+                  <section>
+                    <ValidationConfig />
+                  </section>
+                </div>
               </div>
 
               {/* === ABA: TEMPO E TOLERÂNCIA === */}

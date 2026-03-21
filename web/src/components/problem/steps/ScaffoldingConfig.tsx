@@ -19,6 +19,7 @@ const Editor = lazy(() => import("@monaco-editor/react"));
 
 interface ScaffoldingConfigProps {
   basePath?: string;
+  targetField?: "starterCode" | "solutionCode";
 }
 
 const getLanguageFromExt = (filename: string) => {
@@ -28,6 +29,16 @@ const getLanguageFromExt = (filename: string) => {
   if (filename?.endsWith(".java")) return "java";
   if (filename?.endsWith(".cpp") || filename?.endsWith(".c")) return "cpp";
   return "plaintext";
+};
+
+const getNestedValue = (obj: any, path: string) => {
+  return path
+    .split(/[\.\[\]]/)
+    .filter(Boolean)
+    .reduce(
+      (acc, part) => (acc && acc[part] !== undefined ? acc[part] : undefined),
+      obj,
+    );
 };
 
 type LangKey = "python" | "javascript" | "cpp";
@@ -55,9 +66,12 @@ const STANDARD_NAMES = [
   "main.c",
 ];
 
-export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
+export function ScaffoldingConfig({
+  basePath = "",
+  targetField = "starterCode",
+}: ScaffoldingConfigProps) {
   const editorRef = useRef<any>(null);
-  const { control, watch, setValue, getValues } = useFormContext();
+  const { control, watch, setValue, getValues, formState } = useFormContext();
   const [activeIndex, setActiveIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [, setIsLightMode] = useState(
@@ -65,6 +79,15 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
   );
 
   const monacoTheme = useMonacoTheme();
+
+  const fieldName = basePath ? `${basePath}.${targetField}` : targetField;
+
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: fieldName as any,
+  });
+
+  const fieldErrors = getNestedValue(formState.errors, fieldName) || [];
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -78,11 +101,6 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
   }, []);
 
   const getName = (name: string) => (basePath ? `${basePath}.${name}` : name);
-
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: getName("starterCode"),
-  });
 
   const parameters = watch(getName("parameters")) || [];
   const allowedLanguages: LangKey[] = watch(getName("allowedLanguages")) || [
@@ -418,6 +436,9 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
         <div className="flex bg-background/50 overflow-x-auto no-scrollbar flex-none border-b border-border">
           {visibleFiles.map(({ field, index }) => {
             const isMainFile = STANDARD_NAMES.includes(field.name);
+
+            const hasError = !!fieldErrors?.[index];
+
             return (
               <div
                 key={field.id}
@@ -427,12 +448,17 @@ export function ScaffoldingConfig({ basePath = "" }: ScaffoldingConfigProps) {
                   index === activeIndex
                     ? "bg-surface text-foreground border-t-2 border-t-primary"
                     : "text-muted hover:bg-surface-hover",
+                  // Mutação visual condicionada ao erro
+                  hasError && "text-destructive",
                 )}
               >
                 <div className="flex items-center gap-2">
                   <File
                     size={14}
-                    className={index === activeIndex ? "text-primary" : ""}
+                    className={cn(
+                      index === activeIndex && !hasError ? "text-primary" : "",
+                      hasError && "text-destructive",
+                    )}
                   />
                   <Controller
                     control={control}
