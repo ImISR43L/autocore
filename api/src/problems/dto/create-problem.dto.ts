@@ -8,12 +8,19 @@ import {
   IsInt,
   IsISO8601,
   Min,
-  IsNumber,
   IsUUID,
   IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ProblemType } from '../entities/problem.entity';
+
+class SolutionFileDto {
+  @IsString()
+  name: string;
+
+  @IsString()
+  content: string;
+}
 
 // 1. Nova estrutura para arquivos (substitui o antigo StarterCodeDto)
 export class ProblemFileDto {
@@ -139,8 +146,8 @@ export class CreateProblemDto {
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ProblemFileDto)
-  solutionCode?: ProblemFileDto[];
+  @Type(() => SolutionFileDto)
+  solutionCode?: SolutionFileDto[];
 
   @IsOptional()
   @IsArray()

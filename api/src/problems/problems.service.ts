@@ -231,9 +231,39 @@ export class ProblemsService {
       await this.problemsRepository.save(problem);
     }
 
-    throw new BadRequestException(
-      `[DEBUG] OwnerID: ${problem.classroom?.owner?.id ?? 'UNDEFINED'} | UserID: ${userId ?? 'UNDEFINED'}`,
-    );
+    const isOwner =
+      problem.classroom &&
+      String(problem.classroom.owner.id) === String(userId);
+
+    if (!isOwner) {
+      delete (problem as any).solutionCode;
+
+      if (problem.children && problem.children.length > 0) {
+        problem.children.forEach((child) => delete (child as any).solutionCode);
+      }
+
+      if (problem.type === ProblemType.EXAM) {
+        const now = new Date();
+        if (!problem.startedAt || problem.startedAt > now) {
+          throw new ForbiddenException(
+            'Esta prova ainda não foi iniciada pelo professor.',
+          );
+        }
+      }
+
+      if (problem.testCases) {
+        problem.testCases = problem.testCases.filter((tc) => !tc.isHidden);
+      }
+      if (problem.children && problem.children.length > 0) {
+        problem.children.forEach((child) => {
+          if (child.testCases) {
+            child.testCases = child.testCases.filter((tc) => !tc.isHidden);
+          }
+        });
+      }
+    }
+
+    return problem;
   }
 
   async startExam(id: string, userId: string) {
