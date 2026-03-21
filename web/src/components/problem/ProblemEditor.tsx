@@ -93,11 +93,15 @@ export function ProblemEditor({
     </button>
   );
 
+  const onInvalid = (errors: any) => {
+    console.error("[Erro de Validação Zod]:", errors);
+  };
+
   return (
     <div className="h-full flex flex-col bg-background text-foreground font-sans selection:bg-primary/20 relative">
       <FormProvider {...methods}>
         <form
-          onSubmit={handleSubmit(onFormSubmit)}
+          onSubmit={methods.handleSubmit(onSubmit, onInvalid)}
           className="h-full flex flex-col"
         >
           {/* --- HEADER / NAVIGATION --- */}
