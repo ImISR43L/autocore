@@ -231,8 +231,11 @@ export class ProblemsService {
       await this.problemsRepository.save(problem);
     }
 
-    console.log('[DEBUG Backend] Owner ID:', problem.classroom?.owner?.id);
-    console.log('[DEBUG Backend] User ID do Request:', userId);
+    throw new BadRequestException({
+      message: '[DEBUG]',
+      dadoDoBanco_OwnerId: problem.classroom?.owner?.id || 'UNDEFINED',
+      dadoDoToken_UserId: userId || 'UNDEFINED',
+    });
 
     const isOwner =
       problem.classroom &&
