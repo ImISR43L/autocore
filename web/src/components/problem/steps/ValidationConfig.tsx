@@ -161,13 +161,31 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
 
   // Sincronia Automática Inicial (StarterCode -> SolutionCode)
   useEffect(() => {
+    // LOG 4: Estado do starterCode no disparo do hook
+    console.log(
+      "[ValidationConfig] Sincronia Triggered. starterCode:",
+      starterCode,
+    );
+
     // Evita executar enquanto o React Hook Form não tiver injetado os valores padrão corretamente
-    if (!starterCode || starterCode.length === 0) return;
+    if (!starterCode || starterCode.length === 0) {
+      console.log("[ValidationConfig] starterCode vazio, abortando sincronia.");
+      return;
+    }
 
     const currentSolution = getValues(getName("solutionCode")) || [];
 
+    // LOG 5: Estado do solutionCode antes de qualquer mutação
+    console.log(
+      "[ValidationConfig] currentSolution before sync:",
+      currentSolution,
+    );
+
     // Se realmente não há nenhum solutionCode (modo CREATE puro), injetamos uma cópia limpa do starterCode
     if (currentSolution.length === 0) {
+      console.log(
+        "[ValidationConfig] currentSolution vazio. Injetando starterCode limpo.",
+      );
       forceUpdateSolution(cleanCopy(starterCode));
       return;
     }

@@ -30,6 +30,8 @@ export default function EditProblem() {
       try {
         const res = await api.get(`/problems/${problemId}`);
 
+        console.log("[EditProblem] Raw API Response:", res.data);
+
         if (res.data.classroom?.isArchived) {
           toast.warning(
             "Turma arquivada. O modo de leitura não permite edições.",
@@ -52,6 +54,8 @@ export default function EditProblem() {
             ? new Date(res.data.deadline).toISOString().slice(0, 16)
             : "",
         };
+
+        console.log("[EditProblem] Formatted Problem to set:", formatted);
         setProblem(formatted);
       } catch (error) {
         console.error(error);

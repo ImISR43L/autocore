@@ -66,6 +66,7 @@ const generateSlug = (text: string) => {
 };
 
 export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
+  console.log("[ProblemWizard] Received initialValues:", initialValues);
   const params = useParams();
   const classroomId = params.id || params.classroomId || "";
   const navigate = useNavigate();
