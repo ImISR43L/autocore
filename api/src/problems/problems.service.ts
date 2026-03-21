@@ -231,7 +231,9 @@ export class ProblemsService {
       await this.problemsRepository.save(problem);
     }
 
-    const isOwner = problem.classroom && problem.classroom.owner.id === userId;
+    const isOwner =
+      problem.classroom &&
+      String(problem.classroom.owner.id) === String(userId);
 
     if (!isOwner) {
       delete (problem as any).solutionCode;
