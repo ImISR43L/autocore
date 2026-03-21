@@ -231,6 +231,9 @@ export class ProblemsService {
       await this.problemsRepository.save(problem);
     }
 
+    console.log('[DEBUG Backend] Owner ID:', problem.classroom?.owner?.id);
+    console.log('[DEBUG Backend] User ID do Request:', userId);
+
     const isOwner =
       problem.classroom &&
       String(problem.classroom.owner.id) === String(userId);
