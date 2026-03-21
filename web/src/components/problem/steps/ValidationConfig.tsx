@@ -161,9 +161,12 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
 
   // Sincronia Automática Inicial (StarterCode -> SolutionCode)
   useEffect(() => {
-    const currentSolution = getValues(getName("solutionCode")) || [];
+    // Evita executar enquanto o React Hook Form não tiver injetado os valores padrão corretamente
     if (!starterCode || starterCode.length === 0) return;
 
+    const currentSolution = getValues(getName("solutionCode")) || [];
+
+    // Se realmente não há nenhum solutionCode (modo CREATE puro), injetamos uma cópia limpa do starterCode
     if (currentSolution.length === 0) {
       forceUpdateSolution(cleanCopy(starterCode));
       return;
@@ -172,7 +175,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
     let hasChanges = false;
     const newSolution = [...currentSolution];
 
-    // 1. Remove arquivos que foram deletados no código base
+    // 1. Remove arquivos do gabarito que foram apagados no código base
     for (let i = newSolution.length - 1; i >= 0; i--) {
       if (!starterCode.some((sc: any) => sc.name === newSolution[i].name)) {
         newSolution.splice(i, 1);
@@ -180,7 +183,8 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
       }
     }
 
-    // 2. Adiciona novos arquivos que foram criados no código base
+    // 2. Adiciona novos arquivos criados no código base para dentro do gabarito
+    // (Mantém o 'content' vazio ou o do template, mas NÃO sobrescreve os que já existem)
     for (const sc of starterCode) {
       if (!newSolution.some((sol: any) => sol.name === sc.name)) {
         newSolution.push({ ...sc });
