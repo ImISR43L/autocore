@@ -231,11 +231,9 @@ export class ProblemsService {
       await this.problemsRepository.save(problem);
     }
 
-    throw new BadRequestException({
-      message: '[DEBUG]',
-      dadoDoBanco_OwnerId: problem.classroom?.owner?.id || 'UNDEFINED',
-      dadoDoToken_UserId: userId || 'UNDEFINED',
-    });
+    throw new BadRequestException(
+      `[DEBUG] OwnerID: ${problem.classroom?.owner?.id ?? 'UNDEFINED'} | UserID: ${userId ?? 'UNDEFINED'}`,
+    );
   }
 
   async startExam(id: string, userId: string) {
