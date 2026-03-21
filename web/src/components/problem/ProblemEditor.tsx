@@ -55,224 +55,187 @@ export function ProblemEditor({
     formState: { errors, isDirty },
   } = methods;
 
+  // Sincroniza o estado "dirty" com o componente pai (EditProblem)
   useEffect(() => {
     if (onDirtyChange) {
       onDirtyChange(isDirty);
     }
   }, [isDirty, onDirtyChange]);
 
-  const handleFormSubmit = async (data: ProblemFormValues) => {
+  const onFormSubmit = async (data: ProblemFormValues) => {
     setIsSubmitting(true);
-    try {
-      await onSubmit(data);
-    } finally {
-      setIsSubmitting(false);
-    }
+    await onSubmit(data);
+    setIsSubmitting(false);
   };
 
-  const tabs: { id: TabType; label: string; icon: any }[] = [
-    { id: "general", label: "Informações Básicas", icon: Layout },
-    { id: "code", label: "Template Padrão (Alunos)", icon: Code2 },
-    {
-      id: "validation",
-      label: "Gabarito & Casos de Teste",
-      icon: FlaskConical,
-    },
-    { id: "settings", label: "Regras e Agendamento", icon: Settings2 },
-  ];
+  // Botão de Navegação Interna (Abas) - Responsivo
+  const NavButton = ({
+    tab,
+    icon,
+    label,
+  }: {
+    tab: TabType;
+    icon: React.ReactNode;
+    label: string;
+  }) => (
+    <button
+      type="button"
+      onClick={() => setActiveTab(tab)}
+      className={cn(
+        "flex items-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg text-xs md:text-sm font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary flex-1 md:flex-none justify-center whitespace-nowrap",
+        activeTab === tab
+          ? "bg-primary/10 text-primary border border-primary/20 shadow-sm"
+          : "text-muted hover:text-foreground hover:bg-surface-hover",
+      )}
+    >
+      {icon}
+      <span className="hidden sm:inline">{label}</span>
+    </button>
+  );
 
   return (
-    <div className="h-full flex flex-col lg:flex-row bg-background text-foreground">
-      {/* Sidebar de Navegação */}
-      <div className="w-full lg:w-72 flex-none border-b lg:border-b-0 lg:border-r border-border bg-surface p-4 flex flex-row lg:flex-col gap-2 overflow-x-auto hide-scrollbar z-10">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                "flex items-center gap-3 px-4 py-3.5 lg:py-3 rounded-xl font-medium transition-all duration-200 min-w-max lg:min-w-0 text-sm lg:text-base outline-none",
-                isActive
-                  ? "bg-primary/10 text-primary shadow-sm"
-                  : "text-muted hover:bg-surface-hover hover:text-foreground",
-              )}
-            >
-              <Icon
-                size={20}
-                className={isActive ? "text-primary" : "text-muted"}
-              />
-              {tab.label}
-            </button>
-          );
-        })}
-
-        <div className="mt-auto hidden lg:block pt-6">
-          <Button
-            type="submit"
-            onClick={handleSubmit(handleFormSubmit as any)}
-            disabled={isSubmitting}
-            className="w-full shadow-lg font-bold h-12 text-base transition-transform hover:scale-[1.02]"
-          >
-            {isSubmitting ? (
-              "A Guardar..."
-            ) : (
-              <>
-                <Save className="mr-2" size={20} />
-                Guardar Problema
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-
-      {/* Container de Formulário Injectável */}
+    <div className="h-full flex flex-col bg-background text-foreground font-sans selection:bg-primary/20 relative">
       <FormProvider {...methods}>
         <form
-          id="problem-editor-form"
-          onSubmit={handleSubmit(handleFormSubmit as any)}
-          className="flex-1 min-w-0 h-full flex flex-col overflow-hidden"
+          onSubmit={handleSubmit(onFormSubmit)}
+          className="h-full flex flex-col"
         >
+          {/* --- HEADER / NAVIGATION --- */}
+          <div className="flex-none border-b border-border bg-surface px-4 py-3 md:px-6 md:py-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm z-10">
+            {/* Navegação de Abas (Agora ocupa largura total no mobile) */}
+            <div className="w-full md:w-auto overflow-x-auto no-scrollbar">
+              <div className="flex bg-background/50 rounded-lg p-1 border border-border min-w-fit">
+                <NavButton
+                  tab="general"
+                  icon={<Layout size={16} />}
+                  label="Geral"
+                />
+                <NavButton
+                  tab="code"
+                  icon={<Code2 size={16} />}
+                  label="Código"
+                />
+                <NavButton
+                  tab="validation"
+                  icon={<FlaskConical size={16} />}
+                  label="Testes"
+                />
+                <NavButton
+                  tab="settings"
+                  icon={<Settings2 size={16} />}
+                  label="Ajustes"
+                />
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              isLoading={isSubmitting}
+              className="w-full md:w-auto px-8 h-10 md:h-11 text-sm md:text-base font-semibold shadow-md shadow-primary/10"
+            >
+              <Save size={18} className="mr-2" />
+              {mode === "EDIT" ? "Salvar Alterações" : "Criar Atividade"}
+            </Button>
+          </div>
+
+          {/* --- CONTENT AREA --- */}
           <div className="flex-1 overflow-y-auto p-4 md:p-8 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
-            <div className="max-w-4xl mx-auto pb-24 lg:pb-8">
-              {/* === ABA: IDENTIFICAÇÃO GERAL === */}
+            <div className="max-w-7xl mx-auto min-h-full pb-10">
+              {/* ABA GERAL */}
               <div
                 className={cn(
-                  "animate-in fade-in zoom-in-95 duration-300",
-                  activeTab !== "general" && "hidden",
+                  "space-y-6 md:space-y-8 animate-in fade-in slide-in-from-bottom-2",
+                  activeTab === "general" ? "block" : "hidden",
                 )}
               >
-                <div className="space-y-6 md:space-y-8">
-                  <section>
-                    <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3 mb-6">
-                      <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
-                        <FileText size={24} />
-                      </div>
-                      Identidade Visual
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <Input
-                        label="Título da Atividade"
-                        {...register("title")}
-                        className="bg-background h-11 md:h-12 text-base border-border"
-                        error={errors.title?.message}
-                      />
-                      <Input
-                        label="URL do Identificador (Slug)"
-                        {...register("slug")}
-                        className="bg-background h-11 md:h-12 text-base font-mono border-border"
-                        error={errors.slug?.message}
-                      />
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+                  <Input
+                    label="Título da Atividade"
+                    placeholder="Ex: Soma de Vetores"
+                    error={errors.title?.message}
+                    {...register("title")}
+                    className="h-11 md:h-12 text-base bg-surface border-border focus:border-primary"
+                  />
+                  <Input
+                    label="Slug (URL Amigável)"
+                    placeholder="soma-de-vetores"
+                    error={errors.slug?.message}
+                    {...register("slug")}
+                    className="h-11 md:h-12 text-base bg-surface border-border font-mono text-muted focus:text-foreground"
+                  />
+                </div>
 
-                    <div className="mt-6">
-                      <label className="text-sm font-medium mb-2 block text-foreground">
-                        Formato Estático
-                      </label>
-                      <select
-                        {...register("type")}
-                        disabled={mode === "EDIT"}
-                        className="w-full bg-background border border-border rounded-lg p-3.5 text-base outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
-                      >
-                        <option value="EXERCISE">
-                          Atividade Lógica Padrão
-                        </option>
-                        <option value="EXAM">Provas (Múltiplas Frentes)</option>
-                      </select>
-                    </div>
-                  </section>
-
-                  <section>
-                    <label className="text-sm font-medium mb-2 block text-foreground">
-                      Corpo do Enunciado (Markdown Nativo)
-                    </label>
-                    <div
-                      className={cn(
-                        "rounded-xl overflow-hidden border border-border",
-                        errors.description && "border-destructive",
-                      )}
-                    >
-                      <MarkdownInput
-                        label=""
-                        register={register("description")}
-                        watchValue={watch("description")}
-                        error={errors.description?.message}
-                      />
-                    </div>
-                  </section>
+                <div className="space-y-3 h-[500px] md:h-[600px] flex flex-col">
+                  <label className="text-sm font-medium text-muted uppercase tracking-wider flex items-center gap-2">
+                    <FileText size={16} /> Enunciado (Markdown)
+                  </label>
+                  <div className="flex-1 border border-border rounded-xl overflow-hidden bg-surface shadow-sm focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+                    <MarkdownInput
+                      label=""
+                      register={register("description")}
+                      watchValue={watch("description")}
+                      error={errors.description?.message}
+                      placeholder="# Descreva o problema detalhadamente aqui..."
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* === ABA: GESTÃO DE CÓDIGO (TEMPLATE ALUNOS) === */}
+              {/* ABA CÓDIGO */}
               <div
                 className={cn(
-                  "animate-in fade-in zoom-in-95 duration-300 h-full",
-                  activeTab !== "code" && "hidden",
+                  "h-full animate-in fade-in slide-in-from-bottom-2",
+                  activeTab === "code" ? "block" : "hidden",
                 )}
               >
-                <div className="h-full min-h-[600px] flex flex-col">
-                  <ScaffoldingConfig targetField="starterCode" />
+                <div className="bg-surface border border-border rounded-xl p-1 h-[600px] md:h-[750px] shadow-lg">
+                  <ScaffoldingConfig />
                 </div>
               </div>
 
-              {/* === ABA: AFERIÇÃO COMPUTACIONAL (GABARITO E TESTES) === */}
+              {/* ABA VALIDAÇÃO */}
               <div
                 className={cn(
-                  "animate-in fade-in zoom-in-95 duration-300",
-                  activeTab !== "validation" && "hidden",
+                  "animate-in fade-in slide-in-from-bottom-2",
+                  activeTab === "validation" ? "block" : "hidden",
                 )}
               >
-                <div className="space-y-8 md:space-y-12">
-                  <section>
-                    <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3 mb-6">
-                      <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
-                        <Code2 size={24} />
-                      </div>
-                      Código Fonte do Gabarito
-                    </h3>
-                    <div className="h-[500px] border border-border rounded-xl overflow-hidden">
-                      <ScaffoldingConfig targetField="solutionCode" />
-                    </div>
-                  </section>
-
-                  <section>
-                    <ValidationConfig />
-                  </section>
+                <div className="bg-surface border border-border rounded-xl p-4 md:p-6 shadow-lg">
+                  <ValidationConfig />
                 </div>
               </div>
 
-              {/* === ABA: TEMPO E TOLERÂNCIA === */}
+              {/* ABA CONFIGURAÇÕES */}
               <div
                 className={cn(
-                  "animate-in fade-in zoom-in-95 duration-300",
-                  activeTab !== "settings" && "hidden",
+                  "animate-in fade-in slide-in-from-bottom-2",
+                  activeTab === "settings" ? "block" : "hidden",
                 )}
               >
-                <div className="space-y-8 md:space-y-10">
+                <div className="bg-surface border border-border rounded-xl p-4 md:p-10 space-y-8 md:space-y-12 shadow-lg max-w-5xl mx-auto">
                   <section className="space-y-6 md:space-y-8">
                     <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3">
                       <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
                         <Settings2 size={24} />
                       </div>
-                      Restrições de Sistema
+                      Regras de Execução
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
                       <Input
-                        label="Tempo Limite Máx (min)"
+                        label="Tempo Limite (ms)"
                         type="number"
                         {...register("timeLimit", { valueAsNumber: true })}
                         className="bg-background h-11 md:h-12 text-base border-border"
                       />
                       <Input
-                        label="Limite de Ram alocada (MB)"
+                        label="Memória Limite (MB)"
                         type="number"
                         {...register("memoryLimit", { valueAsNumber: true })}
                         className="bg-background h-11 md:h-12 text-base border-border"
                       />
                       <Input
-                        label="Fluxo de Tentativas (Zero = Infinitas)"
+                        label="Tentativas (0 = Infinito)"
                         type="number"
                         {...register("maxAttempts", { valueAsNumber: true })}
                         className="bg-background h-11 md:h-12 text-base border-border"
@@ -305,17 +268,6 @@ export function ProblemEditor({
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Botão de Salvamento no Mobile */}
-          <div className="lg:hidden p-4 border-t border-border bg-surface mt-auto">
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full shadow-lg font-bold h-12 text-base"
-            >
-              {isSubmitting ? "A Guardar..." : "Guardar Problema"}
-            </Button>
           </div>
         </form>
       </FormProvider>

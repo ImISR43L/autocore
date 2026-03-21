@@ -28,7 +28,7 @@ export default function EditProblem() {
 
     async function loadProblem() {
       try {
-        const res = await api.get(`/problems/${problemId}/edit`);
+        const res = await api.get(`/problems/${problemId}`);
 
         if (res.data.classroom?.isArchived) {
           toast.warning(
@@ -42,76 +42,69 @@ export default function EditProblem() {
           ...res.data,
           parameters: res.data.parameters || [],
           testCases: res.data.testCases || [],
-          starterCode: res.data.starterCode?.length
-            ? res.data.starterCode
-            : [{ name: "main.py", content: "" }],
-          solutionCode: res.data.solutionCode?.length
-            ? res.data.solutionCode
-            : [{ name: "main.py", content: "" }],
+          starterCode: res.data.starterCode || [],
+          solutionCode: res.data.solutionCode || [],
+          // Formata datas vindas do banco (ISO) para o formato do input (YYYY-MM-DDThh:mm)
+          startDate: res.data.startDate
+            ? new Date(res.data.startDate).toISOString().slice(0, 16)
+            : "",
+          deadline: res.data.deadline
+            ? new Date(res.data.deadline).toISOString().slice(0, 16)
+            : "",
         };
-
-        if (res.data.type === "EXAM") {
-          formatted.questions = (res.data.children || []).map((child: any) => ({
-            ...child,
-            starterCode: child.starterCode?.length
-              ? child.starterCode
-              : [{ name: "main.py", content: "" }],
-            solutionCode: child.solutionCode?.length
-              ? child.solutionCode
-              : [{ name: "main.py", content: "" }],
-            testCases: child.testCases?.length
-              ? child.testCases
-              : [{ input: "", expectedOutput: "", isHidden: false }],
-            parameters: child.parameters || [],
-            returnType: child.returnType || "void",
-          }));
-        }
-
-        if (formatted.startDate) {
-          formatted.startDate = new Date(formatted.startDate)
-            .toISOString()
-            .slice(0, 16);
-        }
-        if (formatted.deadline) {
-          formatted.deadline = new Date(formatted.deadline)
-            .toISOString()
-            .slice(0, 16);
-        }
-
         setProblem(formatted);
       } catch (error) {
-        toast.error("Falha ao carregar os dados da atividade.");
+        console.error(error);
+        toast.error("Erro ao carregar dados.");
+        navigate("/dashboard");
       } finally {
         setIsLoading(false);
       }
     }
-
     loadProblem();
   }, [problemId, navigate]);
 
-  const handleUpdate = async (data: any) => {
+  const handleUpdate = async (rawData: any) => {
+    if (!problemId) return;
+
+    // 1. Sanitização e Limpeza
+    const payload = { ...rawData };
+
+    // Remove questions se for EXERCISE para evitar erro de validação no backend
+    if (payload.type === "EXERCISE") {
+      delete payload.questions;
+    }
+
+    // 2. Conversão de Datas para ISO 8601
     try {
-      const cleanPayload = JSON.parse(JSON.stringify(data));
+      payload.startDate = payload.startDate
+        ? new Date(payload.startDate).toISOString()
+        : null;
+      payload.deadline = payload.deadline
+        ? new Date(payload.deadline).toISOString()
+        : null;
+    } catch (e) {
+      toast.error("Data inválida.");
+      return;
+    }
 
-      // Limpeza de IDs espúrios se for um exercício
-      if (cleanPayload.type === "EXERCISE" && cleanPayload.testCases) {
-        cleanPayload.testCases.forEach((tc: any) => delete tc.id);
-      } else if (cleanPayload.type === "EXAM" && cleanPayload.questions) {
-        cleanPayload.questions.forEach((q: any) => {
-          delete q.id;
-          if (q.testCases) {
-            q.testCases.forEach((tc: any) => delete tc.id);
-          }
-        });
-      }
+    try {
+      await api.patch(`/problems/${problemId}`, payload);
+      toast.success("Atualizado com sucesso!");
 
-      await api.patch(`/problems/${problemId}`, cleanPayload);
-      toast.success("Problema atualizado com sucesso!");
       setIsFormDirty(false);
-      navigate(-1);
-    } catch (error) {
-      toast.error("Ocorreu um erro ao guardar as alterações.");
+
+      if (payload.classroomId) {
+        navigate(`/class/${payload.classroomId}`, {
+          state: { activeTab: "classwork" },
+        });
+      } else {
+        navigate("/dashboard");
+      }
+    } catch (error: any) {
       console.error(error);
+      const msg = error.response?.data?.message;
+      toast.error(Array.isArray(msg) ? msg[0] : "Erro ao atualizar.");
     }
   };
 
@@ -125,14 +118,14 @@ export default function EditProblem() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center p-12 h-[calc(100vh-4rem)]">
-        <Loader2 className="animate-spin text-primary w-8 h-8" />
+      <div className="min-h-screen bg-background flex items-center justify-center text-muted">
+        <Loader2 className="animate-spin mr-2" /> Carregando...
       </div>
     );
   }
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col bg-background relative overflow-hidden">
+    <div className="h-screen w-full bg-background text-foreground flex flex-col font-sans overflow-hidden">
       {showExitModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full animate-in zoom-in-95">
@@ -140,7 +133,7 @@ export default function EditProblem() {
               <div className="flex items-center gap-3 text-amber-500">
                 <AlertTriangle size={24} />
                 <h3 className="text-lg font-bold text-foreground">
-                  Sair sem salvar?
+                  Sair da edição?
                 </h3>
               </div>
               <p className="text-sm text-muted">
