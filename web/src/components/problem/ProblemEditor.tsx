@@ -1,958 +1,304 @@
 import { useState, useEffect } from "react";
-import { useForm, useFieldArray, useWatch } from "react-hook-form";
-import type { Control, UseFormRegister } from "react-hook-form";
+import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { problemSchema } from "../../schemas/problem.schema";
+import type { ProblemFormValues } from "../../schemas/problem.schema";
 import {
-  problemSchema,
-  type ProblemFormValues,
-} from "../../schemas/problem.schema";
-import { Button } from "../ui/Button";
-import { Input } from "../ui/Input";
-import { Card } from "../ui/Card";
+  Save,
+  Layout,
+  Code2,
+  FlaskConical,
+  Settings2,
+  FileText,
+  Clock,
+} from "lucide-react";
+
+// Reutilizando os componentes existentes
+import { ScaffoldingConfig } from "./steps/ScaffoldingConfig";
+import { ValidationConfig } from "./steps/ValidationConfig";
 import { MarkdownInput } from "../inputs/MarkdownInput";
 
-// --- UTILITÁRIOS E FÁBRICAS DE VALORES ---
-const defaultFile = () => ({ name: "main.py", content: "" });
-const defaultTestCase = () => ({
-  input: "",
-  expectedOutput: "",
-  isHidden: false,
-});
-
-const defaultExerciseDetails = () => ({
-  parameters: [],
-  returnType: "void",
-  starterCode: [defaultFile()],
-  solutionCode: [defaultFile()],
-  testCases: [defaultTestCase()],
-});
-
-const defaultQuestion = () => ({
-  title: "",
-  slug: "",
-  description: "",
-  ...defaultExerciseDetails(),
-});
+// UI Components do Design System
+import { Button } from "../ui/Button";
+import { Input } from "../ui/Input";
+import { cn } from "../../lib/utils";
 
 interface ProblemEditorProps {
-  initialData?: Partial<ProblemFormValues>;
+  initialValues: ProblemFormValues;
   onSubmit: (data: ProblemFormValues) => Promise<void>;
-  isSubmitting: boolean;
+  mode: "CREATE" | "EDIT";
+  // Novo prop para comunicação com o pai
+  onDirtyChange?: (isDirty: boolean) => void;
 }
+
+type TabType = "general" | "code" | "validation" | "settings";
 
 export function ProblemEditor({
-  initialData,
+  initialValues,
   onSubmit,
-  isSubmitting,
+  mode,
+  onDirtyChange,
 }: ProblemEditorProps) {
-  const {
-    register,
-    control,
-    handleSubmit,
-    watch,
-    setValue,
-    formState: { errors },
-  } = useForm<ProblemFormValues>({
+  const [activeTab, setActiveTab] = useState<TabType>("general");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const methods = useForm<ProblemFormValues>({
     resolver: zodResolver(problemSchema) as any,
-    defaultValues: initialData || {
-      type: "EXERCISE",
-      title: "",
-      slug: "",
-      description: "",
-      ...defaultExerciseDetails(),
-    },
+    defaultValues: initialValues,
+    mode: "onChange",
   });
 
-  const currentType = watch("type");
-  const [activeTab, setActiveTab] = useState("basic");
-
   const {
-    fields: examQuestions,
-    append: appendQuestion,
-    remove: removeQuestion,
-  } = useFieldArray({ control, name: "questions" });
-
-  // Configuração das Abas
-  const steps =
-    currentType === "EXERCISE"
-      ? [
-          { id: "basic", label: "Identificação e Enunciado" },
-          { id: "params", label: "Configuração de Parâmetros" },
-          { id: "code", label: "Código e Gabarito" },
-          { id: "tests", label: "Casos de Teste" },
-        ]
-      : [
-          { id: "basic", label: "Identificação e Enunciado" },
-          { id: "settings", label: "Regras da Prova" },
-          ...examQuestions.map((_, idx) => ({
-            id: `q_${idx}`,
-            label: `Questão ${idx + 1}`,
-          })),
-        ];
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors, isDirty },
+  } = methods;
 
   useEffect(() => {
-    if (!steps.find((s) => s.id === activeTab)) {
-      setActiveTab("basic");
+    if (onDirtyChange) {
+      onDirtyChange(isDirty);
     }
-  }, [currentType, activeTab, steps.length]);
+  }, [isDirty, onDirtyChange]);
 
-  return (
-    <form
-      onSubmit={handleSubmit(onSubmit as any)}
-      className="flex flex-col pb-32"
-    >
-      {/* NAVEGAÇÃO SUPERIOR (SISTEMA DE ABAS) */}
-      <div className="w-full bg-white/90 dark:bg-gray-950/90 backdrop-blur-md sticky top-0 z-40 mb-8 border-b border-gray-200 dark:border-gray-800 shadow-sm">
-        <div className="overflow-x-auto hide-scrollbar px-4 sm:px-8 max-w-7xl mx-auto pt-2">
-          <nav className="flex space-x-6 sm:space-x-8" aria-label="Tabs">
-            {steps.map((step, idx) => {
-              const isActive = activeTab === step.id;
-              const hasError =
-                step.id.startsWith("q_") &&
-                !!(errors as any)?.questions?.[idx - 2];
-
-              return (
-                <button
-                  key={step.id}
-                  type="button"
-                  onClick={() => setActiveTab(step.id)}
-                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm transition-all focus:outline-none ${
-                    isActive
-                      ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
-                      : hasError
-                        ? "border-red-500 text-red-600 dark:border-red-500 dark:text-red-400"
-                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-700"
-                  }`}
-                >
-                  {step.label}
-                </button>
-              );
-            })}
-
-            {currentType === "EXAM" && (
-              <div className="py-2 flex items-center ml-auto pl-4 border-l border-gray-200 dark:border-gray-800">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="text-sm font-bold h-8 text-blue-600 dark:text-blue-400"
-                  onClick={() => {
-                    appendQuestion(defaultQuestion());
-                    setActiveTab(`q_${examQuestions.length}`);
-                  }}
-                >
-                  + Nova Questão
-                </Button>
-              </div>
-            )}
-          </nav>
-        </div>
-      </div>
-
-      {/* ÁREA DE CONTEÚDO PRINCIPAL (CARDS) */}
-      <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 min-w-0">
-        {activeTab === "basic" && (
-          <Card className="p-8 shadow-sm animate-in fade-in zoom-in-95 duration-300">
-            <h2 className="text-2xl font-bold border-b border-gray-200 dark:border-gray-800 pb-4 mb-6 text-gray-800 dark:text-white">
-              Identificação e Enunciado
-            </h2>
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-                  Tipo de Avaliação
-                </label>
-                <select
-                  {...register("type")}
-                  disabled={!!initialData?.title}
-                  className="w-full border p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-700 disabled:opacity-50 outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                  onChange={(e) => {
-                    const newType = e.target.value as "EXERCISE" | "EXAM";
-                    setValue("type", newType);
-                    if (newType === "EXAM") {
-                      setValue("questions", [defaultQuestion()]);
-                    } else {
-                      setValue("testCases", [defaultTestCase()]);
-                      setValue("starterCode", [defaultFile()]);
-                      setValue("solutionCode", [defaultFile()]);
-                    }
-                  }}
-                >
-                  <option value="EXERCISE">Exercício Isolado</option>
-                  <option value="EXAM">Prova (Múltiplas Questões)</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-                    Título do Problema
-                  </label>
-                  <Input
-                    {...register("title")}
-                    className="p-3.5 rounded-xl"
-                    placeholder="Ex: Algoritmo de Dijkstra"
-                  />
-                  {errors.title && (
-                    <p className="text-red-500 text-sm mt-1">
-                      {errors.title.message as string}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-                    Identificador URL (Slug)
-                  </label>
-                  <Input
-                    {...register("slug")}
-                    className="p-3.5 rounded-xl"
-                    placeholder="ex: algoritmo-dijkstra"
-                  />
-                  {errors.slug && (
-                    <p className="text-red-500 text-sm mt-1">
-                      {errors.slug.message as string}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <MarkdownInput
-                  label="Enunciado Completo (Markdown)"
-                  register={register("description")}
-                  watchValue={watch("description")}
-                />
-                {errors.description && (
-                  <p className="text-red-500 text-sm mt-1">
-                    {errors.description.message as string}
-                  </p>
-                )}
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {activeTab === "params" && currentType === "EXERCISE" && (
-          <div className="animate-in fade-in zoom-in-95 duration-300">
-            <ParametersEditor
-              control={control}
-              register={register}
-              errors={errors}
-              prefix=""
-            />
-          </div>
-        )}
-
-        {activeTab === "code" && currentType === "EXERCISE" && (
-          <div className="animate-in fade-in zoom-in-95 duration-300">
-            <LanguageManager
-              control={control}
-              register={register}
-              errors={errors}
-              prefix=""
-            />
-          </div>
-        )}
-
-        {activeTab === "tests" && currentType === "EXERCISE" && (
-          <div className="animate-in fade-in zoom-in-95 duration-300">
-            <TestCasesEditor
-              control={control}
-              register={register}
-              errors={errors}
-              prefix=""
-            />
-          </div>
-        )}
-
-        {activeTab === "settings" && currentType === "EXAM" && (
-          <Card className="p-8 shadow-sm animate-in fade-in zoom-in-95 duration-300">
-            <h2 className="text-2xl font-bold border-b border-gray-200 dark:border-gray-800 pb-4 mb-6">
-              Regras e Restrições Globais
-            </h2>
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                  <label className="block text-sm font-semibold mb-2">
-                    Tentativas Máximas
-                  </label>
-                  <Input
-                    type="number"
-                    {...register("maxAttempts")}
-                    className="p-3.5 rounded-xl"
-                    placeholder="0 = Infinitas"
-                  />
-                  {(errors as any).maxAttempts && (
-                    <p className="text-red-500 text-sm mt-1">
-                      {(errors as any).maxAttempts.message as string}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold mb-2">
-                    Tempo Limite (minutos)
-                  </label>
-                  <Input
-                    type="number"
-                    {...register("timeLimit")}
-                    className="p-3.5 rounded-xl"
-                  />
-                  {(errors as any).timeLimit && (
-                    <p className="text-red-500 text-sm mt-1">
-                      {(errors as any).timeLimit.message as string}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold mb-2">
-                    Limite de Memória (MB)
-                  </label>
-                  <Input
-                    type="number"
-                    {...register("memoryLimit")}
-                    className="p-3.5 rounded-xl"
-                  />
-                  {(errors as any).memoryLimit && (
-                    <p className="text-red-500 text-sm mt-1">
-                      {(errors as any).memoryLimit.message as string}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-semibold mb-2">
-                    Liberação (Início)
-                  </label>
-                  <Input
-                    type="datetime-local"
-                    {...register("startDate")}
-                    className="p-3.5 rounded-xl"
-                  />
-                  {(errors as any).startDate && (
-                    <p className="text-red-500 text-sm mt-1">
-                      {(errors as any).startDate.message as string}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold mb-2">
-                    Prazo Final (Encerramento)
-                  </label>
-                  <Input
-                    type="datetime-local"
-                    {...register("deadline")}
-                    className="p-3.5 rounded-xl"
-                  />
-                  {(errors as any).deadline && (
-                    <p className="text-red-500 text-sm mt-1">
-                      {(errors as any).deadline.message as string}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {activeTab.startsWith("q_") && currentType === "EXAM" && (
-          <QuestionEditor
-            index={parseInt(activeTab.split("_")[1])}
-            control={control}
-            register={register}
-            watch={watch}
-            errors={errors}
-            remove={(idx: number) => {
-              removeQuestion(idx);
-              setActiveTab("basic");
-            }}
-          />
-        )}
-      </div>
-
-      {/* FOOTER FIXO (AÇÕES DE SALVAMENTO) */}
-      <div className="fixed bottom-0 left-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 p-4 sm:p-6 z-50 shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.1)]">
-        <div className="w-full max-w-7xl mx-auto flex justify-end gap-4">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => window.history.back()}
-            className="px-8 rounded-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm hover:bg-gray-50"
-          >
-            Cancelar Edição
-          </Button>
-          <Button
-            type="submit"
-            disabled={isSubmitting}
-            className="px-10 rounded-full shadow-xl font-bold text-base transition-transform hover:scale-[1.02] bg-blue-600 text-white"
-          >
-            {isSubmitting ? "Gravando Atualizações..." : "Salvar Problema"}
-          </Button>
-        </div>
-      </div>
-    </form>
-  );
-}
-
-// =======================================================================================
-// LÓGICA DE DETECÇÃO E EXIBIÇÃO DE ARQUIVOS (LIMITADO AS LINGUAGENS SUPORTADAS)
-// =======================================================================================
-
-type SupportedLanguage = "Python" | "Javascript" | "C++";
-
-const LANGUAGES: { id: string; name: SupportedLanguage; ext: string }[] = [
-  { id: "python", name: "Python", ext: ".py" },
-  { id: "javascript", name: "Javascript", ext: ".js" },
-  { id: "cpp", name: "C++", ext: ".cpp" },
-];
-
-const getLangByExt = (filename: string): string => {
-  if (!filename) return "python";
-  const ext = filename.slice(filename.lastIndexOf("."));
-  const lang = LANGUAGES.find((l) => l.ext === ext);
-  return lang ? lang.id : "python";
-};
-
-function LanguageManager({
-  control,
-  register,
-  errors,
-  prefix,
-}: {
-  control: Control<any>;
-  register: UseFormRegister<any>;
-  errors: any;
-  prefix: string;
-}) {
-  const starterName = prefix ? `${prefix}starterCode` : "starterCode";
-  const solutionName = prefix ? `${prefix}solutionCode` : "solutionCode";
-
-  const starterArray = useFieldArray({ control, name: starterName as any });
-  const solutionArray = useFieldArray({ control, name: solutionName as any });
-
-  const watchedStarter =
-    (useWatch({ control, name: starterName as any }) as
-      | { name?: string; content?: string }[]
-      | undefined) || [];
-  const watchedSolution =
-    (useWatch({ control, name: solutionName as any }) as
-      | { name?: string; content?: string }[]
-      | undefined) || [];
-
-  const allFiles = [...watchedStarter, ...watchedSolution];
-  // Filtra apenas linguagens estritamente suportadas, fallback padrão para Python se vazio
-  const activeLangs = Array.from(
-    new Set(allFiles.map((f) => getLangByExt(f?.name || ""))),
-  ).filter((l) => LANGUAGES.some((sl) => sl.id === l));
-
-  const [activeTab, setActiveTab] = useState<string>(
-    activeLangs[0] || "python",
-  );
-
-  useEffect(() => {
-    if (activeLangs.length > 0 && !activeLangs.includes(activeTab)) {
-      setActiveTab(activeLangs[0]);
+  const handleFormSubmit = async (data: ProblemFormValues) => {
+    setIsSubmitting(true);
+    try {
+      await onSubmit(data);
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [activeLangs, activeTab]);
-
-  const handleAddLang = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const langId = e.target.value;
-    if (!langId) return;
-    const lang = LANGUAGES.find((l) => l.id === langId);
-    if (lang) {
-      starterArray.append({ name: `main${lang.ext}`, content: "" });
-      solutionArray.append({ name: `main${lang.ext}`, content: "" });
-      setActiveTab(langId);
-    }
-    e.target.value = "";
   };
 
-  return (
-    <Card className="p-8 shadow-sm">
-      <h3 className="text-xl font-bold border-b border-gray-200 dark:border-gray-800 pb-4 mb-6">
-        Código e Gabarito
-      </h3>
+  const tabs: { id: TabType; label: string; icon: any }[] = [
+    { id: "general", label: "Informações Básicas", icon: Layout },
+    { id: "code", label: "Código Base & Gabarito", icon: Code2 },
+    { id: "validation", label: "Casos de Teste", icon: FlaskConical },
+    { id: "settings", label: "Regras e Agendamento", icon: Settings2 },
+  ];
 
-      <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 pb-2">
-        {activeLangs.map((langId) => {
-          const langName = LANGUAGES.find((l) => l.id === langId)?.name;
+  return (
+    <div className="h-full flex flex-col lg:flex-row bg-background text-foreground">
+      {/* Sidebar de Navegação */}
+      <div className="w-full lg:w-72 flex-none border-b lg:border-b-0 lg:border-r border-border bg-surface p-4 flex flex-row lg:flex-col gap-2 overflow-x-auto hide-scrollbar z-10">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
           return (
             <button
-              key={langId}
+              key={tab.id}
               type="button"
-              onClick={() => setActiveTab(langId)}
-              className={`px-6 py-2.5 text-sm font-bold rounded-t-xl transition-colors ${
-                activeTab === langId
-                  ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 border-b-2 border-blue-600"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800/50 dark:text-gray-400 dark:hover:bg-gray-700"
-              }`}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "flex items-center gap-3 px-4 py-3.5 lg:py-3 rounded-xl font-medium transition-all duration-200 min-w-max lg:min-w-0 text-sm lg:text-base outline-none",
+                isActive
+                  ? "bg-primary/10 text-primary shadow-sm"
+                  : "text-muted hover:bg-surface-hover hover:text-foreground",
+              )}
             >
-              {langName}
+              <Icon
+                size={20}
+                className={isActive ? "text-primary" : "text-muted"}
+              />
+              {tab.label}
             </button>
           );
         })}
-        <select
-          onChange={handleAddLang}
-          className="ml-auto text-sm border-none bg-transparent font-bold text-blue-600 dark:text-blue-400 cursor-pointer outline-none focus:ring-0"
-        >
-          <option value="">+ Selecionar Linguagem</option>
-          {LANGUAGES.filter((l) => !activeLangs.includes(l.id)).map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.name}
-            </option>
-          ))}
-        </select>
-      </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 pt-6">
-        <FileGroupEditor
-          title="Starter Code (Visível para o Aluno)"
-          fields={starterArray.fields}
-          watchedFiles={watchedStarter}
-          append={starterArray.append}
-          remove={starterArray.remove}
-          register={register}
-          errors={
-            prefix
-              ? errors?.questions?.[parseInt(prefix.split(".")[1])]?.starterCode
-              : errors?.starterCode
-          }
-          baseName={starterName}
-          activeLang={activeTab}
-        />
-        <FileGroupEditor
-          title="Solution Code (Gabarito de Validação)"
-          fields={solutionArray.fields}
-          watchedFiles={watchedSolution}
-          append={solutionArray.append}
-          remove={solutionArray.remove}
-          register={register}
-          errors={
-            prefix
-              ? errors?.questions?.[parseInt(prefix.split(".")[1])]
-                  ?.solutionCode
-              : errors?.solutionCode
-          }
-          baseName={solutionName}
-          activeLang={activeTab}
-        />
-      </div>
-    </Card>
-  );
-}
-
-function FileGroupEditor({
-  title,
-  fields,
-  watchedFiles,
-  append,
-  remove,
-  register,
-  errors,
-  baseName,
-  activeLang,
-}: any) {
-  const currentLangExt =
-    LANGUAGES.find((l) => l.id === activeLang)?.ext || ".py";
-
-  return (
-    <div className="space-y-4">
-      <h4 className="font-semibold text-gray-800 dark:text-gray-200">
-        {title}
-      </h4>
-      <div className="space-y-5">
-        {fields.map((field: any, index: number) => {
-          const filename = watchedFiles[index]?.name || field.name || "";
-          const fileLang = getLangByExt(filename);
-          if (fileLang !== activeLang) return null;
-
-          const fileErrors = errors?.[index];
-
-          return (
-            <div
-              key={field.id}
-              className="border border-gray-300 dark:border-gray-700 rounded-xl overflow-hidden bg-[#1e1e1e] focus-within:ring-2 focus-within:ring-blue-500 transition-shadow shadow-sm flex flex-col"
-            >
-              <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-800 p-2.5 border-b border-gray-300 dark:border-gray-700">
-                <div>
-                  <Input
-                    {...register(`${baseName}.${index}.name` as const)}
-                    className="font-mono text-sm h-9 w-64 bg-white dark:bg-black border-gray-300 dark:border-gray-700 rounded-md px-3"
-                    placeholder="nome_do_arquivo.ext"
-                  />
-                  {fileErrors?.name && (
-                    <p className="text-red-500 text-xs mt-1 font-medium">
-                      {fileErrors.name.message}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  type="button"
-                  variant="danger"
-                  size="sm"
-                  onClick={() => remove(index)}
-                  className="ml-4 font-bold rounded-lg px-3"
-                >
-                  Remover
-                </Button>
-              </div>
-              <textarea
-                {...register(`${baseName}.${index}.content` as const)}
-                className="w-full p-4 font-mono text-[14px] bg-transparent text-gray-100 outline-none resize-y leading-relaxed"
-                rows={15}
-                spellCheck="false"
-                placeholder="// Insira a lógica de programação principal aqui..."
-              />
-            </div>
-          );
-        })}
-      </div>
-      <Button
-        type="button"
-        variant="ghost"
-        className="w-full border-dashed border-2 py-4 rounded-xl text-gray-500 hover:text-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors font-semibold"
-        onClick={() =>
-          append({ name: `novo_arquivo${currentLangExt}`, content: "" })
-        }
-      >
-        + Adicionar Novo Arquivo (
-        {LANGUAGES.find((l) => l.id === activeLang)?.name})
-      </Button>
-    </div>
-  );
-}
-
-// =======================================================================================
-// SUBCOMPONENTES SECUNDÁRIOS
-// =======================================================================================
-
-function ParametersEditor({
-  control,
-  register,
-  errors,
-  prefix,
-}: {
-  control: Control<any>;
-  register: UseFormRegister<any>;
-  errors: any;
-  prefix: string;
-}) {
-  const fieldName = prefix ? `${prefix}parameters` : "parameters";
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: fieldName as any,
-  });
-  const paramErrors = prefix
-    ? errors?.questions?.[parseInt(prefix.split(".")[1])]?.parameters
-    : errors?.parameters;
-
-  return (
-    <Card className="p-8 shadow-sm">
-      <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-800 pb-4 mb-6">
-        <h3 className="text-xl font-bold">Configuração de Parâmetros</h3>
-        <select
-          {...register(prefix ? `${prefix}returnType` : "returnType")}
-          className="border p-2.5 rounded-lg bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="" disabled>
-            Tipo de Retorno
-          </option>
-          <option value="void">void (Sem Retorno / Print)</option>
-          <option value="int">int</option>
-          <option value="float">float</option>
-          <option value="string">string</option>
-          <option value="boolean">boolean</option>
-          <option value="int[]">int[]</option>
-          <option value="string[]">string[]</option>
-        </select>
-      </div>
-
-      <div className="space-y-4">
-        {fields.map((field, index) => (
-          <div
-            key={field.id}
-            className="flex gap-4 items-start bg-gray-50 dark:bg-gray-800/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-800"
-          >
-            <div className="flex-1">
-              <label className="text-xs font-bold text-gray-500 mb-1.5 block uppercase tracking-wider">
-                Nome da Variável
-              </label>
-              <Input
-                placeholder="Ex: target_arr"
-                {...register(`${fieldName}.${index}.name` as const)}
-                className="p-3 bg-white dark:bg-black rounded-xl"
-              />
-              {paramErrors?.[index]?.name && (
-                <p className="text-red-500 text-xs mt-1.5 font-medium">
-                  {paramErrors[index].name.message as string}
-                </p>
-              )}
-            </div>
-            <div className="flex-1">
-              <label className="text-xs font-bold text-gray-500 mb-1.5 block uppercase tracking-wider">
-                Tipo Primitivo
-              </label>
-              <select
-                {...register(`${fieldName}.${index}.type` as const)}
-                className="w-full border p-3 rounded-xl bg-white dark:bg-black border-gray-300 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="int">int</option>
-                <option value="float">float</option>
-                <option value="string">string</option>
-                <option value="boolean">boolean</option>
-                <option value="int[]">int[]</option>
-                <option value="string[]">string[]</option>
-              </select>
-            </div>
-            <div className="pt-6">
-              <Button
-                type="button"
-                variant="danger"
-                className="px-4 py-3 rounded-xl font-bold"
-                onClick={() => remove(index)}
-              >
-                X
-              </Button>
-            </div>
-          </div>
-        ))}
-        <Button
-          type="button"
-          variant="ghost"
-          className="w-full border-dashed border-2 py-4 rounded-xl font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-          onClick={() => append({ name: "", type: "int" })}
-        >
-          + Adicionar Parâmetro Requerido
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-function TestCasesEditor({
-  control,
-  register,
-  errors,
-  prefix,
-}: {
-  control: Control<any>;
-  register: UseFormRegister<any>;
-  errors: any;
-  prefix: string;
-}) {
-  const fieldName = prefix ? `${prefix}testCases` : "testCases";
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: fieldName as any,
-  });
-  const tcErrors = prefix
-    ? errors?.questions?.[parseInt(prefix.split(".")[1])]?.testCases
-    : errors?.testCases;
-
-  return (
-    <Card className="p-8 shadow-sm">
-      <h3 className="text-xl font-bold border-b border-gray-200 dark:border-gray-800 pb-4 mb-6">
-        Casos de Teste Lógicos
-      </h3>
-      <div className="space-y-4">
-        {fields.map((field, index) => (
-          <div
-            key={field.id}
-            className="border border-gray-200 dark:border-gray-700 p-6 rounded-2xl flex flex-col lg:flex-row gap-8 items-start bg-gray-50 dark:bg-gray-950"
-          >
-            <div className="flex-1 w-full space-y-5">
-              <div>
-                <label className="text-sm font-bold mb-2 block text-gray-700 dark:text-gray-300">
-                  Inputs (Entrada Computada)
-                </label>
-                <textarea
-                  placeholder="Ex: 5\n10"
-                  rows={2}
-                  className="w-full border p-4 rounded-xl font-mono text-[14px] bg-white dark:bg-black dark:border-gray-800 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
-                  {...register(`${fieldName}.${index}.input` as const)}
-                />
-                {tcErrors?.[index]?.input && (
-                  <p className="text-red-500 text-xs mt-1 font-medium">
-                    {tcErrors[index].input.message as string}
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="text-sm font-bold mb-2 block text-gray-700 dark:text-gray-300">
-                  Output Final Esperado (Gabarito)
-                </label>
-                <textarea
-                  placeholder="Ex: 15"
-                  rows={2}
-                  className="w-full border p-4 rounded-xl font-mono text-[14px] bg-white dark:bg-black dark:border-gray-800 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
-                  {...register(`${fieldName}.${index}.expectedOutput` as const)}
-                />
-                {tcErrors?.[index]?.expectedOutput && (
-                  <p className="text-red-500 text-xs mt-1 font-medium">
-                    {tcErrors[index].expectedOutput.message as string}
-                  </p>
-                )}
-              </div>
-
-              {/* TOGGLE SWITCH ESTILO "OCULTAR" */}
-              <label className="flex items-center gap-3 text-sm font-bold text-gray-600 dark:text-gray-400 mt-4 cursor-pointer w-max hover:text-gray-900 dark:hover:text-white transition-colors">
-                <div className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    {...register(`${fieldName}.${index}.isHidden` as const)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                </div>
-                Ocultar este teste do aluno (Blind Test)
-              </label>
-            </div>
-            <Button
-              type="button"
-              variant="danger"
-              onClick={() => remove(index)}
-              className="mt-4 lg:mt-0 px-6 py-3 rounded-xl shadow-sm font-bold"
-            >
-              Excluir Teste
-            </Button>
-          </div>
-        ))}
-      </div>
-      {tcErrors?.root && (
-        <p className="text-red-500 text-sm font-bold bg-red-50 p-4 rounded-xl text-center border border-red-100 mt-4">
-          {tcErrors.root.message as string}
-        </p>
-      )}
-      <Button
-        type="button"
-        variant="ghost"
-        onClick={() => append(defaultTestCase())}
-        className="font-bold border-2 border-dashed w-full py-5 mt-6 rounded-xl text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-      >
-        + Adicionar Novo Caso de Teste
-      </Button>
-    </Card>
-  );
-}
-
-function QuestionEditor({
-  index,
-  control,
-  register,
-  watch,
-  errors,
-  remove,
-}: any) {
-  const prefix = `questions.${index}.`;
-  const qError = errors?.questions?.[index];
-
-  return (
-    <div className="space-y-8 animate-in fade-in zoom-in-95 duration-300">
-      <Card className="p-8 shadow-sm">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-200 dark:border-gray-800 pb-4 mb-6 gap-4">
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-3">
-            <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm">
-              {index + 1}
-            </span>
-            Identificação da Questão
-          </h2>
+        <div className="mt-auto hidden lg:block pt-6">
           <Button
-            type="button"
-            variant="danger"
-            size="sm"
-            onClick={() => remove(index)}
-            className="font-bold rounded-xl px-5 py-2"
+            type="submit"
+            onClick={handleSubmit(handleFormSubmit as any)}
+            disabled={isSubmitting}
+            className="w-full shadow-lg font-bold h-12 text-base transition-transform hover:scale-[1.02]"
           >
-            Descartar Esta Questão
+            {isSubmitting ? (
+              "A Guardar..."
+            ) : (
+              <>
+                <Save className="mr-2" size={20} />
+                Guardar Problema
+              </>
+            )}
           </Button>
         </div>
-
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-semibold mb-2">
-                Título da Questão
-              </label>
-              <Input
-                {...register(`${prefix}title` as const)}
-                className="p-3.5 rounded-xl"
-                placeholder="Ex: Cifra de César"
-              />
-              {qError?.title && (
-                <p className="text-red-500 text-sm mt-1">
-                  {qError.title.message as string}
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2">
-                Identificador Contextual (Slug)
-              </label>
-              <Input
-                {...register(`${prefix}slug` as const)}
-                className="p-3.5 rounded-xl"
-                placeholder="ex: cifra-cesar"
-              />
-              {qError?.slug && (
-                <p className="text-red-500 text-sm mt-1">
-                  {qError.slug.message as string}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <MarkdownInput
-              label="Enunciado Prático (Markdown)"
-              register={register(`${prefix}description` as const)}
-              watchValue={watch(`${prefix}description`)}
-            />
-            {qError?.description && (
-              <p className="text-red-500 text-sm mt-1">
-                {qError.description.message as string}
-              </p>
-            )}
-          </div>
-        </div>
-      </Card>
-
-      <ParametersEditor
-        control={control}
-        register={register}
-        errors={errors}
-        prefix={prefix}
-      />
-
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl p-8 shadow-sm">
-        <h3 className="text-xl font-bold border-b border-gray-200 dark:border-gray-800 pb-4 mb-6">
-          Retorno da Função
-        </h3>
-        <select
-          {...register(`${prefix}returnType` as const)}
-          className="w-full md:w-1/2 border p-3.5 rounded-xl bg-gray-50 dark:bg-gray-950 border-gray-300 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="void">void (Apenas Print/Mutação)</option>
-          <option value="int">int</option>
-          <option value="float">float</option>
-          <option value="string">string</option>
-          <option value="boolean">boolean</option>
-          <option value="int[]">int[]</option>
-          <option value="string[]">string[]</option>
-        </select>
       </div>
 
-      <LanguageManager
-        control={control}
-        register={register}
-        errors={errors}
-        prefix={prefix}
-      />
+      {/* Container de Formulário Injectável */}
+      <FormProvider {...methods}>
+        <form
+          id="problem-editor-form"
+          onSubmit={handleSubmit(handleFormSubmit as any)}
+          className="flex-1 min-w-0 h-full flex flex-col overflow-hidden"
+        >
+          <div className="flex-1 overflow-y-auto p-4 md:p-8 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+            <div className="max-w-4xl mx-auto pb-24 lg:pb-8">
+              {/* === ABA: IDENTIFICAÇÃO GERAL === */}
+              <div
+                className={cn(
+                  "animate-in fade-in zoom-in-95 duration-300",
+                  activeTab !== "general" && "hidden",
+                )}
+              >
+                <div className="space-y-6 md:space-y-8">
+                  <section>
+                    <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3 mb-6">
+                      <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
+                        <FileText size={24} />
+                      </div>
+                      Identidade Visual
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <Input
+                        label="Título da Atividade"
+                        {...register("title")}
+                        className="bg-background h-11 md:h-12 text-base border-border"
+                        error={errors.title?.message}
+                      />
+                      <Input
+                        label="URL do Identificador (Slug)"
+                        {...register("slug")}
+                        className="bg-background h-11 md:h-12 text-base font-mono border-border"
+                        error={errors.slug?.message}
+                      />
+                    </div>
 
-      <TestCasesEditor
-        control={control}
-        register={register}
-        errors={errors}
-        prefix={prefix}
-      />
+                    <div className="mt-6">
+                      <label className="text-sm font-medium mb-2 block text-foreground">
+                        Formato Estático
+                      </label>
+                      <select
+                        {...register("type")}
+                        disabled={mode === "EDIT"}
+                        className="w-full bg-background border border-border rounded-lg p-3.5 text-base outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+                      >
+                        <option value="EXERCISE">
+                          Atividade Lógica Padrão
+                        </option>
+                        <option value="EXAM">Provas (Múltiplas Frentes)</option>
+                      </select>
+                    </div>
+                  </section>
+
+                  <section>
+                    <label className="text-sm font-medium mb-2 block text-foreground">
+                      Corpo do Enunciado (Markdown Nativo)
+                    </label>
+                    <div
+                      className={cn(
+                        "rounded-xl overflow-hidden border border-border",
+                        errors.description && "border-destructive",
+                      )}
+                    >
+                      <MarkdownInput
+                        label=""
+                        register={register("description")}
+                        watchValue={watch("description")}
+                        error={errors.description?.message}
+                      />
+                    </div>
+                  </section>
+                </div>
+              </div>
+
+              {/* === ABA: GESTÃO DE CÓDIGO === */}
+              <div
+                className={cn(
+                  "animate-in fade-in zoom-in-95 duration-300 h-full",
+                  activeTab !== "code" && "hidden",
+                )}
+              >
+                <div className="h-full min-h-[600px] flex flex-col">
+                  <ScaffoldingConfig />
+                </div>
+              </div>
+
+              {/* === ABA: AFERIÇÃO COMPUTACIONAL === */}
+              <div
+                className={cn(
+                  "animate-in fade-in zoom-in-95 duration-300",
+                  activeTab !== "validation" && "hidden",
+                )}
+              >
+                <ValidationConfig />
+              </div>
+
+              {/* === ABA: TEMPO E TOLERÂNCIA === */}
+              <div
+                className={cn(
+                  "animate-in fade-in zoom-in-95 duration-300",
+                  activeTab !== "settings" && "hidden",
+                )}
+              >
+                <div className="space-y-8 md:space-y-10">
+                  <section className="space-y-6 md:space-y-8">
+                    <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3">
+                      <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
+                        <Settings2 size={24} />
+                      </div>
+                      Restrições de Sistema
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
+                      <Input
+                        label="Tempo Limite Máx (min)"
+                        type="number"
+                        {...register("timeLimit", { valueAsNumber: true })}
+                        className="bg-background h-11 md:h-12 text-base border-border"
+                      />
+                      <Input
+                        label="Limite de Ram alocada (MB)"
+                        type="number"
+                        {...register("memoryLimit", { valueAsNumber: true })}
+                        className="bg-background h-11 md:h-12 text-base border-border"
+                      />
+                      <Input
+                        label="Fluxo de Tentativas (Zero = Infinitas)"
+                        type="number"
+                        {...register("maxAttempts", { valueAsNumber: true })}
+                        className="bg-background h-11 md:h-12 text-base border-border"
+                      />
+                    </div>
+                  </section>
+
+                  <section className="space-y-6 md:space-y-8">
+                    <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3">
+                      <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
+                        <Clock size={24} />
+                      </div>
+                      Agendamento
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+                      <Input
+                        label="Data de Início"
+                        type="datetime-local"
+                        {...register("startDate")}
+                        className="bg-background h-11 md:h-12 text-base border-border"
+                      />
+                      <Input
+                        label="Prazo de Entrega (Deadline)"
+                        type="datetime-local"
+                        {...register("deadline")}
+                        className="bg-background h-11 md:h-12 text-base border-border"
+                      />
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Botão de Salvamento no Mobile */}
+          <div className="lg:hidden p-4 border-t border-border bg-surface mt-auto">
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full shadow-lg font-bold h-12 text-base"
+            >
+              {isSubmitting ? "A Guardar..." : "Guardar Problema"}
+            </Button>
+          </div>
+        </form>
+      </FormProvider>
     </div>
   );
 }

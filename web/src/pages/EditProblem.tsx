@@ -1,92 +1,82 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { ProblemEditor } from "../components/problem/ProblemEditor";
-import type { ProblemFormValues } from "../schemas/problem.schema";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
+import { ProblemEditor } from "../components/problem/ProblemEditor";
+import { toast } from "sonner";
+import { ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
+import { Button } from "../components/ui/Button";
 
 export default function EditProblem() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams();
   const navigate = useNavigate();
-  const [initialData, setInitialData] = useState<ProblemFormValues | null>(
-    null,
-  );
+
+  // Suporte a rotas aninhadas ou diretas
+  const problemId = params.problemId || params.id;
+
+  const [problem, setProblem] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const [isFormDirty, setIsFormDirty] = useState(false);
+  const [showExitModal, setShowExitModal] = useState(false);
 
   useEffect(() => {
-    const fetchProblem = async () => {
+    if (!problemId) {
+      toast.error("ID não encontrado.");
+      navigate("/dashboard");
+      return;
+    }
+
+    async function loadProblem() {
       try {
-        const response = await api.get(`/problems/${id}`);
-        const rawData = response.data;
+        const res = await api.get(`/problems/${problemId}`);
 
-        const formattedData: any = { ...rawData };
-
-        if (rawData.startDate)
-          formattedData.startDate = new Date(rawData.startDate)
-            .toISOString()
-            .slice(0, 16);
-        if (rawData.deadline)
-          formattedData.deadline = new Date(rawData.deadline)
-            .toISOString()
-            .slice(0, 16);
-
-        if (rawData.type === "EXAM") {
-          formattedData.questions = (rawData.children || []).map(
-            (child: any) => ({
-              title: child.title || "",
-              slug: child.slug || "",
-              description: child.description || "",
-              starterCode: child.starterCode?.length
-                ? child.starterCode
-                : [{ name: "main.py", content: "" }],
-              solutionCode: child.solutionCode?.length
-                ? child.solutionCode
-                : [{ name: "main.py", content: "" }],
-              testCases: child.testCases?.length
-                ? child.testCases
-                : [{ input: "", expectedOutput: "", isHidden: false }],
-              parameters: child.parameters || [],
-              returnType: child.returnType || "void",
-            }),
+        if (res.data.classroom?.isArchived) {
+          toast.warning(
+            "Turma arquivada. O modo de leitura não permite edições.",
           );
-        } else {
-          formattedData.starterCode = rawData.starterCode?.length
-            ? rawData.starterCode
-            : [{ name: "main.py", content: "" }];
-          formattedData.solutionCode = rawData.solutionCode?.length
-            ? rawData.solutionCode
-            : [{ name: "main.py", content: "" }];
-          formattedData.testCases = rawData.testCases?.length
-            ? rawData.testCases
-            : [{ input: "", expectedOutput: "", isHidden: false }];
-          formattedData.parameters = rawData.parameters || [];
-          formattedData.returnType = rawData.returnType || "void";
+          navigate(`/class/${res.data.classroom.id}`);
+          return;
         }
 
-        setInitialData(formattedData);
-      } catch (err) {
-        setError(
-          "Falha ao carregar os detalhes do problema. Verifique a conexão.",
-        );
+        const formatted = {
+          ...res.data,
+          parameters: res.data.parameters || [],
+          testCases: res.data.testCases || [],
+          starterCode: res.data.starterCode?.length
+            ? res.data.starterCode
+            : [{ name: "main.py", content: "" }],
+          solutionCode: res.data.solutionCode?.length
+            ? res.data.solutionCode
+            : [{ name: "main.py", content: "" }],
+        };
+
+        if (formatted.startDate) {
+          formatted.startDate = new Date(formatted.startDate)
+            .toISOString()
+            .slice(0, 16);
+        }
+        if (formatted.deadline) {
+          formatted.deadline = new Date(formatted.deadline)
+            .toISOString()
+            .slice(0, 16);
+        }
+
+        setProblem(formatted);
+      } catch (error) {
+        toast.error("Falha ao carregar os dados da atividade.");
       } finally {
         setIsLoading(false);
       }
-    };
-
-    if (id) {
-      fetchProblem();
-    } else {
-      setError("ID do problema não fornecido na URL.");
-      setIsLoading(false);
     }
-  }, [id]);
 
-  const handleSubmit = async (data: ProblemFormValues) => {
-    setIsSubmitting(true);
+    loadProblem();
+  }, [problemId, navigate]);
+
+  const handleUpdate = async (data: any) => {
     try {
       const cleanPayload = JSON.parse(JSON.stringify(data));
 
+      // Limpeza de IDs espúrios se for um exercício
       if (cleanPayload.type === "EXERCISE" && cleanPayload.testCases) {
         cleanPayload.testCases.forEach((tc: any) => delete tc.id);
       } else if (cleanPayload.type === "EXAM" && cleanPayload.questions) {
@@ -98,40 +88,89 @@ export default function EditProblem() {
         });
       }
 
-      await api.patch(`/problems/${id}`, cleanPayload);
+      await api.patch(`/problems/${problemId}`, cleanPayload);
+      toast.success("Problema atualizado com sucesso!");
+      setIsFormDirty(false);
       navigate(-1);
-    } catch (err) {
-      console.error("Erro ao guardar edições:", err);
-      alert(
-        "Ocorreu um erro ao guardar as alterações no banco de dados. Verifique os logs.",
-      );
-    } finally {
-      setIsSubmitting(false);
+    } catch (error) {
+      toast.error("Ocorreu um erro ao guardar as alterações.");
+      console.error(error);
     }
   };
 
-  if (isLoading)
+  const handleBack = () => {
+    if (isFormDirty) {
+      setShowExitModal(true);
+    } else {
+      navigate(-1);
+    }
+  };
+
+  if (isLoading) {
     return (
-      <div className="p-12 text-center text-lg text-muted">
-        Carregando ambiente de edição...
+      <div className="flex-1 flex items-center justify-center p-12 h-[calc(100vh-4rem)]">
+        <Loader2 className="animate-spin text-primary w-8 h-8" />
       </div>
     );
-  if (error)
-    return (
-      <div className="p-12 text-center text-lg text-destructive font-medium">
-        Erro: {error}
-      </div>
-    );
+  }
 
   return (
-    <div className="h-[calc(100vh-5rem)] w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
-      {initialData && (
-        <ProblemEditor
-          initialData={initialData}
-          onSubmit={handleSubmit}
-          isSubmitting={isSubmitting}
-        />
+    <div className="h-[calc(100vh-4rem)] flex flex-col bg-background relative overflow-hidden">
+      {showExitModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full animate-in zoom-in-95">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3 text-amber-500">
+                <AlertTriangle size={24} />
+                <h3 className="text-lg font-bold text-foreground">
+                  Sair sem salvar?
+                </h3>
+              </div>
+              <p className="text-sm text-muted">
+                Alterações não salvas serão perdidas.
+              </p>
+              <div className="flex gap-3 mt-2 justify-end">
+                <Button variant="ghost" onClick={() => setShowExitModal(false)}>
+                  Voltar
+                </Button>
+                <Button variant="danger" onClick={() => navigate(-1)}>
+                  Sair sem Salvar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
+
+      <div className="p-4 md:p-6 pb-2 flex-none flex items-center gap-4">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handleBack}
+          className="border-border hover:bg-surface text-muted hover:text-foreground"
+        >
+          <ArrowLeft size={20} />
+        </Button>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            Editar Atividade
+          </h1>
+          <p className="text-muted text-sm">
+            {problem?.title || "Carregando..."}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 p-4 md:p-6 pt-2">
+        <div className="h-full bg-surface border border-border rounded-xl shadow-2xl overflow-hidden">
+          <ProblemEditor
+            initialValues={problem}
+            onSubmit={handleUpdate}
+            mode="EDIT"
+            onDirtyChange={setIsFormDirty}
+          />
+        </div>
+      </div>
     </div>
   );
 }
