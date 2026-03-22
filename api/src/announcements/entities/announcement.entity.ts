@@ -19,7 +19,10 @@ export class Announcement {
   @CreateDateColumn()
   createdAt: Date;
 
-  @ManyToOne(() => User, { eager: true }) // Carrega o autor automaticamente
+  @ManyToOne(() => User, {
+    eager: true,
+    onDelete: 'CASCADE',
+  })
   author: User;
 
   @ManyToOne(() => Classroom, (classroom) => classroom.announcements, {

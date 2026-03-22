@@ -67,6 +67,8 @@ export class Submission {
   })
   problem: Problem;
 
-  @ManyToOne(() => User, (user) => user.submissions)
+  @ManyToOne(() => User, (user) => user.submissions, {
+    onDelete: 'CASCADE',
+  })
   user: User;
 }

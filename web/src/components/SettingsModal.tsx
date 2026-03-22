@@ -1,10 +1,15 @@
-// web/src/components/SettingsModal.tsx
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { usePreferences } from "../contexts/PreferencesContext";
-import { Settings, X } from "lucide-react";
+import { Settings, X, AlertTriangle } from "lucide-react";
+import { api } from "../lib/api";
+import { toast } from "sonner";
+import { supabase } from "../lib/supabase";
 
 export function SettingsModal() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const navigate = useNavigate();
   const {
     theme,
     setTheme,
@@ -15,6 +20,33 @@ export function SettingsModal() {
     fontFamily,
     setFontFamily,
   } = usePreferences();
+
+  const handleDeleteAccount = async () => {
+    const confirmDelete = window.confirm(
+      "Tem certeza absoluta que deseja excluir sua conta? Esta ação é irreversível e apagará todos os seus dados, turmas matriculadas e submissões.",
+    );
+
+    if (!confirmDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await api.delete("/users/me");
+
+      await supabase.auth.signOut();
+
+      toast.success("Conta excluída com sucesso.");
+      setIsOpen(false);
+      navigate("/login", { replace: true });
+    } catch (error: any) {
+      console.error("Erro ao deletar conta:", error);
+      toast.error(
+        error.response?.data?.message ||
+          "Não foi possível excluir a conta no momento.",
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   if (!isOpen) {
     return (
@@ -110,6 +142,24 @@ export function SettingsModal() {
               <option value="standard">Padrão (Inter)</option>
               <option value="dyslexic">OpenDyslexic (Foco em Dislexia)</option>
             </select>
+          </div>
+
+          <div className="pt-6 mt-6 border-t border-border">
+            <h3 className="text-sm font-bold text-red-500 mb-2 flex items-center gap-2">
+              <AlertTriangle size={16} />
+              Zona de Risco
+            </h3>
+            <p className="text-xs text-muted mb-4">
+              A exclusão da conta é permanente. Todos os seus dados pessoais,
+              submissões e histórico serão apagados.
+            </p>
+            <button
+              onClick={handleDeleteAccount}
+              disabled={isDeleting}
+              className="w-full py-2.5 px-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20 transition-colors rounded-md text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isDeleting ? "Processando..." : "Excluir Minha Conta Permanente"}
+            </button>
           </div>
         </div>
       </div>

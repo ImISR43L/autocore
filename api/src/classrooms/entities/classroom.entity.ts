@@ -24,12 +24,13 @@ export class Classroom {
   @Column({ unique: true })
   code: string;
 
-  // --- NOVA COLUNA NECESSÁRIA PARA ORDENAÇÃO ---
   @CreateDateColumn()
   createdAt: Date;
-  // ---------------------------------------------
 
-  @ManyToOne(() => User, (user) => user.ownedClassrooms)
+  @ManyToOne(() => User, (user) => user.ownedClassrooms, {
+    onDelete: 'SET NULL',
+    nullable: true,
+  })
   owner: User;
 
   @ManyToMany(() => User, (user) => user.joinedClassrooms)
