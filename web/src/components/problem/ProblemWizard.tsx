@@ -164,7 +164,15 @@ export function ProblemWizard({ initialValues, onSubmit }: ProblemWizardProps) {
 
   const step2ValidationFields =
     problemType === "EXERCISE"
-      ? ["parameters", "returnType", "startDate", "deadline"]
+      ? [
+          "parameters",
+          "returnType",
+          "startDate",
+          "deadline",
+          "timeLimit",
+          "memoryLimit",
+          "maxAttempts",
+        ]
       : ["startDate", "deadline", "timeLimit", "memoryLimit", "maxAttempts"];
 
   return (

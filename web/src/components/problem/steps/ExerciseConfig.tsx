@@ -1,5 +1,5 @@
 import { useFieldArray, useFormContext } from "react-hook-form";
-import { Plus, Trash2, Type, CalendarClock } from "lucide-react"; // Importar CalendarClock
+import { Plus, Trash2, Type, CalendarClock, Settings2 } from "lucide-react"; // Importar CalendarClock
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
 import { Select } from "../../ui/Select";
@@ -156,7 +156,43 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
             </div>
           </Card>
 
-          {/* NOVO: Card de Prazos para Exercícios */}
+          <Card className="p-6 flex flex-col gap-5">
+            <div className="flex items-center gap-3 text-foreground border-b border-border pb-3">
+              <div className="p-2 bg-primary/10 rounded-md text-primary">
+                <Settings2 size={18} />
+              </div>
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider block text-muted">
+                  Limites
+                </span>
+                <span className="text-sm font-semibold text-foreground">
+                  Regras de Execução
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <Input
+                label="Tempo Limite (ms)"
+                type="number"
+                {...register(getName("timeLimit"), { valueAsNumber: true })}
+                className="bg-background"
+              />
+              <Input
+                label="Memória Limite (MB)"
+                type="number"
+                {...register(getName("memoryLimit"), { valueAsNumber: true })}
+                className="bg-background"
+              />
+              <Input
+                label="Tentativas (0 = Infinito)"
+                type="number"
+                {...register(getName("maxAttempts"), { valueAsNumber: true })}
+                className="bg-background"
+              />
+            </div>
+          </Card>
+
           <Card className="p-6 flex flex-col gap-5">
             <div className="flex items-center gap-3 text-foreground border-b border-border pb-3">
               <div className="p-2 bg-primary/10 rounded-md text-primary">

@@ -12,6 +12,7 @@ import {
   FileText,
   Clock,
 } from "lucide-react";
+import { toast } from "sonner";
 
 // Reutilizando os componentes existentes
 import { ScaffoldingConfig } from "./steps/ScaffoldingConfig";
@@ -64,8 +65,18 @@ export function ProblemEditor({
 
   const onFormSubmit = async (data: ProblemFormValues) => {
     setIsSubmitting(true);
-    await onSubmit(data);
-    setIsSubmitting(false);
+    try {
+      await onSubmit(data);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const onInvalid = (errors: any) => {
+    console.error("[Erro de Validação Zod]:", errors);
+    toast.error(
+      "Erro de validação. Verifique campos obrigatórios ou com erro nas outras abas.",
+    );
   };
 
   // Botão de Navegação Interna (Abas) - Responsivo
@@ -93,15 +104,11 @@ export function ProblemEditor({
     </button>
   );
 
-  const onInvalid = (errors: any) => {
-    console.error("[Erro de Validação Zod]:", errors);
-  };
-
   return (
     <div className="h-full flex flex-col bg-background text-foreground font-sans selection:bg-primary/20 relative">
       <FormProvider {...methods}>
         <form
-          onSubmit={methods.handleSubmit(onSubmit, onInvalid)}
+          onSubmit={methods.handleSubmit(onFormSubmit, onInvalid)}
           className="h-full flex flex-col"
         >
           {/* --- HEADER / NAVIGATION --- */}

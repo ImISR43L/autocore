@@ -42,6 +42,7 @@ export default function EditProblem() {
 
         const formatted = {
           ...res.data,
+          classroomId: res.data.classroomId || res.data.classroom?.id || "",
           parameters: res.data.parameters || [],
           testCases: res.data.testCases || [],
           starterCode: res.data.starterCode || [],
@@ -49,10 +50,10 @@ export default function EditProblem() {
           // Formata datas vindas do banco (ISO) para o formato do input (YYYY-MM-DDThh:mm)
           startDate: res.data.startDate
             ? new Date(res.data.startDate).toISOString().slice(0, 16)
-            : "",
+            : undefined,
           deadline: res.data.deadline
             ? new Date(res.data.deadline).toISOString().slice(0, 16)
-            : "",
+            : undefined,
         };
 
         console.log("[EditProblem] Formatted Problem to set:", formatted);
@@ -79,6 +80,20 @@ export default function EditProblem() {
       delete payload.questions;
     }
 
+    // Remove propriedade 'id' dos testCases do problema
+    if (Array.isArray(payload.testCases)) {
+      payload.testCases = payload.testCases.map(({ id, ...rest }: any) => rest);
+    }
+
+    // Remove propriedade 'id' dos testCases dentro de cada questão (caso seja EXAM)
+    if (Array.isArray(payload.questions)) {
+      payload.questions = payload.questions.map((question: any) => ({
+        ...question,
+        testCases: Array.isArray(question.testCases)
+          ? question.testCases.map(({ id, ...rest }: any) => rest)
+          : question.testCases,
+      }));
+    }
     // 2. Conversão de Datas para ISO 8601
     try {
       payload.startDate = payload.startDate

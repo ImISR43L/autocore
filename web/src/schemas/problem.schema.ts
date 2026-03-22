@@ -56,6 +56,20 @@ export const basicInfoSchema = z.object({
   description: z.string().min(10, "Descrição muito curta"),
   type: z.enum(["EXERCISE", "EXAM"]),
   classroomId: z.string().min(1, "A vinculação a uma turma é obrigatória"),
+  // --- CONFIGURAÇÕES COMUNS (Movidas para cá para abranger EXERCISE e EXAM) ---
+  maxAttempts: z.coerce.number().int().min(0).optional(),
+  timeLimit: z.coerce.number().int().min(1).optional(),
+  memoryLimit: z.coerce.number().int().min(1).optional(),
+  startDate: z
+    .string()
+    .datetime({ message: "Data inválida" })
+    .optional()
+    .or(z.literal("")),
+  deadline: z
+    .string()
+    .datetime({ message: "Data inválida" })
+    .optional()
+    .or(z.literal("")),
 });
 
 export const exerciseDetailsSchema = z.object({
@@ -94,41 +108,9 @@ const nestedQuestionSchema = z
   .merge(exerciseDetailsSchema); // Herda parameters, starterCode, testCases...
 
 // Configurações da Prova (Datas/Limites)
-export const examSettingsSchema = z
-  .object({
-    maxAttempts: z.coerce.number().int().min(0).optional(),
-    timeLimit: z.coerce.number().int().min(1).optional(),
-    memoryLimit: z.coerce.number().int().min(1).optional(),
-    startDate: z
-      .string()
-      .datetime({ message: "Data inválida" })
-      .optional()
-      .or(z.literal("")),
-    deadline: z
-      .string()
-      .datetime({ message: "Data inválida" })
-      .optional()
-      .or(z.literal("")),
-    // --- O CAMPO QUE FALTAVA ---
-    questions: z.array(nestedQuestionSchema).default([]),
-  })
-  .refine(
-    (data) => {
-      if (
-        data.startDate &&
-        data.deadline &&
-        data.startDate !== "" &&
-        data.deadline !== ""
-      ) {
-        return new Date(data.startDate) < new Date(data.deadline);
-      }
-      return true;
-    },
-    {
-      message: "A data de entrega deve ser posterior à data de início",
-      path: ["deadline"],
-    },
-  );
+export const examSettingsSchema = z.object({
+  questions: z.array(nestedQuestionSchema).default([]),
+});
 
 // --- Schema Unificado (Discriminated Union) ---
 export const problemSchema = z
@@ -141,6 +123,23 @@ export const problemSchema = z
       .merge(examSettingsSchema),
   ])
   .superRefine((data, ctx) => {
+    // 1. Validação de datas movida para cá para funcionar nos dois tipos
+    if (
+      data.startDate &&
+      data.deadline &&
+      data.startDate !== "" &&
+      data.deadline !== ""
+    ) {
+      if (new Date(data.startDate) >= new Date(data.deadline)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "A data de entrega deve ser posterior à data de início",
+          path: ["deadline"],
+        });
+      }
+    }
+
+    // 2. Validação de Casos de Teste
     const checkTestCases = (
       parameters: any[],
       returnType: string,

@@ -120,7 +120,7 @@ export default function Dashboard() {
       const endpoint =
         viewMode === "active" ? "/classrooms" : "/classrooms/archived";
       const res = await api.get(endpoint);
-      setClassrooms(res.data);
+      setClassrooms(Array.isArray(res.data) ? res.data : []);
     } catch (error) {
       console.error(error);
       toast.error("Sessão expirada. Faça login novamente.");

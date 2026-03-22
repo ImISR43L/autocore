@@ -8,8 +8,9 @@ services:
     init: true
     ports:
       - "9229:9229"
+      - "3000:3000"
     env_file:
-      - ./api/.env
+      - ./api/.env.development
     environment:
       - REDIS_HOST=redis
       - EXECUTOR_URL=http://go-judge:5050/run
@@ -48,24 +49,6 @@ services:
         limits:
           cpus: "1.0"
           memory: 1.5G
-
-  proxy:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./certs:/etc/nginx/certs:ro # Diretório local contendo os certificados SSL
-    depends_on:
-      - api
-    networks:
-      - backend_net
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 256M
 
   redis:
     image: redis:alpine
@@ -126,7 +109,7 @@ services:
     ports:
       - "8080:5173"
     env_file:
-      - ./web/.env
+      - ./web/.env.development
     command: npm run dev -- --host
     networks:
       - backend_net

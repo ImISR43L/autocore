@@ -19,9 +19,6 @@ export class WrapperGenerator {
   };
 
   static apply(files: any[], problem: Problem, languageId: number): any[] {
-    this.logger.log(`[log] Iniciando Wrapper para LangID: ${languageId}`);
-    this.logger.log(`[log] Arquivos: ${files.map((f) => f.name).join(', ')}`);
-
     const sanitizedFiles = files.map((file) => ({
       ...file,
       content: this.sanitize(file.content || ''),
@@ -30,7 +27,6 @@ export class WrapperGenerator {
     const entryFileIndex = this.findEntryFileIndex(sanitizedFiles, languageId);
 
     if (entryFileIndex === -1) {
-      this.logger.warn(`[WRAPPER-FAIL] Arquivo de entrada não encontrado.`);
       return sanitizedFiles;
     }
 
@@ -55,15 +51,8 @@ export class WrapperGenerator {
         if (!entryFile.content.includes('int main')) {
           wrapperCode = this.generateCppWrapper(problem);
           entryFile.content = `${entryFile.content}\n\n${wrapperCode}`;
-        } else {
-          this.logger.warn(`[WRAPPER-SKIP] 'int main' detectado.`);
         }
         break;
-
-      default:
-        this.logger.warn(
-          `[WRAPPER-FAIL] Sem gerador para LangID ${languageId}`,
-        );
     }
 
     sanitizedFiles[entryFileIndex] = entryFile;

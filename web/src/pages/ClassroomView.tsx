@@ -256,6 +256,7 @@ export default function ClassroomView() {
   const monacoRef = useRef<any>(null);
 
   const [verdict, setVerdict] = useState<string | null>(null);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const loadingRef = useRef(false);
   const [showSubmissions, setShowSubmissions] = useState(false);
@@ -930,6 +931,7 @@ export default function ClassroomView() {
 
   useEffect(() => {
     setVerdict(null);
+    setSubmissionError(null);
     setLoading(false);
     loadingRef.current = false;
   }, [displayProblem?.id]);
@@ -1210,6 +1212,7 @@ export default function ClassroomView() {
     setLoading(true);
     loadingRef.current = true;
     setVerdict("Processando...");
+    setSubmissionError(null);
 
     if (window.innerWidth < 1024) {
       setMobileIdeTab("console");
@@ -1240,11 +1243,24 @@ export default function ClassroomView() {
       setLoading(false);
       loadingRef.current = false;
       console.error(error);
+
+      const errorMessage =
+        error?.response?.data?.message || "Erro ao enviar submissão.";
+      const displayMessage = Array.isArray(errorMessage)
+        ? errorMessage[0]
+        : errorMessage;
+
       if (error?.response?.status === 429) {
         setVerdict("Muitas Tentativas");
+        setSubmissionError("Aguarde um momento antes de enviar novamente.");
         toast.warning("Aguarde um momento antes de enviar novamente.");
+      } else if (error?.response?.status === 403) {
+        setVerdict("Bloqueado");
+        setSubmissionError(displayMessage);
+        toast.error(displayMessage);
       } else {
         setVerdict("Erro");
+        setSubmissionError(displayMessage);
         toast.error("Erro ao enviar submissão.");
       }
     }
@@ -1401,15 +1417,18 @@ export default function ClassroomView() {
     );
 
   const isExam = currentProblem?.type === "EXAM";
-  const hasLimit = currentProblem?.maxAttempts != null;
+  const hasLimit =
+    currentProblem?.maxAttempts != null && currentProblem.maxAttempts > 0;
   const maxAttempts = hasLimit ? currentProblem!.maxAttempts! : Infinity;
   const isDeadlinePassed = currentProblem?.deadline
     ? new Date() > new Date(currentProblem.deadline)
     : false;
-  const attemptsLeft =
-    isExam && hasLimit ? Math.max(0, maxAttempts - myAttemptsCount) : Infinity;
+  const attemptsLeft = hasLimit
+    ? Math.max(0, maxAttempts - myAttemptsCount)
+    : Infinity;
+
   const isBlocked =
-    (isExam && !isOwner && hasLimit && attemptsLeft === 0) ||
+    (!isOwner && hasLimit && attemptsLeft <= 0) ||
     (!isOwner && isDeadlinePassed) ||
     (isExam && examStatus === "WAITING" && !isOwner) ||
     (isExam && examStatus === "FINISHED" && !isOwner);
@@ -1720,10 +1739,16 @@ export default function ClassroomView() {
                 : "Logs Técnicos / Detalhes"}
             </div>
             <div className="shrink-0 overflow-hidden rounded-lg border border-border/50">
-              <LogViewer
-                logs={lastSubmission?.output || lastSubmission?.stderr || ""}
-                status={(lastSubmission?.status as any) || "Pending"}
-              />
+              {submissionError ? (
+                <div className="bg-background p-4 text-red-500 font-mono text-sm whitespace-pre-wrap">
+                  {submissionError}
+                </div>
+              ) : (
+                <LogViewer
+                  logs={lastSubmission?.output || lastSubmission?.stderr || ""}
+                  status={(lastSubmission?.status as any) || "Pending"}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -2444,7 +2469,9 @@ export default function ClassroomView() {
                         (isBlocked
                           ? isDeadlinePassed
                             ? "Prazo Encerrado"
-                            : "Bloqueado"
+                            : hasLimit && attemptsLeft <= 0
+                              ? "Limite Excedido"
+                              : "Bloqueado"
                           : "Enviar Rascunho")}
                     </Button>
                   </div>

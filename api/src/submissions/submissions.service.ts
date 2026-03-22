@@ -28,9 +28,7 @@ export class SubmissionsService {
     @InjectRepository(Problem)
     private problemsRepository: Repository<Problem>,
     @InjectQueue('submission-queue') private submissionsQueue: Queue,
-  ) {
-    this.logger.log('[DEBUG] SubmissionsService inicializado.');
-  }
+  ) {}
   // ... (getProblemStats, getTeacherStats, grade mantidos iguais) ...
   async getProblemStats(problemId: string) {
     const submissions = await this.submissionsRepository.find({
@@ -94,17 +92,12 @@ export class SubmissionsService {
   }
 
   async create(createSubmissionDto: CreateSubmissionDto, userId: string) {
-    this.logger.log(
-      `[DEBUG] Iniciando criação de submissão. UserID: ${userId}, ProblemID: ${createSubmissionDto.problem_id}`,
-    );
-
     const problem = await this.problemsRepository.findOne({
       where: { id: createSubmissionDto.problem_id },
       relations: ['testCases', 'classroom'], // <--- Adicione 'classroom' aqui
     });
 
     if (!problem) {
-      this.logger.error('[DEBUG] Problema não encontrado.');
       throw new NotFoundException('Problema não encontrado');
     }
 
@@ -150,6 +143,14 @@ export class SubmissionsService {
       where: { problem: { id: problem.id }, user: { id: userId } },
     });
 
+    if (problem.maxAttempts && problem.maxAttempts > 0) {
+      if (existingCount >= problem.maxAttempts) {
+        throw new ForbiddenException(
+          `Limite de envios excedido. O máximo permitido para esta atividade é de ${problem.maxAttempts} tentativa(s).`,
+        );
+      }
+    }
+
     // Criação da Entidade
     const submission = this.submissionsRepository.create({
       files: createSubmissionDto.files,
@@ -161,16 +162,9 @@ export class SubmissionsService {
     });
 
     const savedSubmission = await this.submissionsRepository.save(submission);
-    this.logger.log(
-      `[DEBUG] Submissão salva no DB. ID: ${savedSubmission.id}. Status: Pending`,
-    );
 
     // Envio para Fila
     try {
-      this.logger.log(
-        `[DEBUG] Tentando adicionar Job à fila 'submission-queue'...`,
-      );
-
       const job = await this.submissionsQueue.add('grade', {
         submissionId: savedSubmission.id,
         files: savedSubmission.files,
@@ -179,16 +173,7 @@ export class SubmissionsService {
         timeLimit: problem.timeLimit,
         memoryLimit: problem.memoryLimit,
       });
-
-      this.logger.log(
-        `[DEBUG] SUCESSO: Job adicionado à fila. Job ID: ${job.id}`,
-      );
     } catch (error) {
-      this.logger.error(
-        `[DEBUG] FALHA CRÍTICA ao adicionar Job na fila: ${error.message}`,
-        error.stack,
-      );
-      // Opcional: Atualizar status para erro se falhar o envio para fila
       savedSubmission.status = 'Internal Error';
       savedSubmission.output = 'Falha no sistema de filas.';
       await this.submissionsRepository.save(savedSubmission);
