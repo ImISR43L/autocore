@@ -85,9 +85,21 @@ export class ClassroomsService {
       relations: ['owner', 'problems'],
     });
 
+    const now = new Date();
+
     return [
       ...teaching.map((c) => ({ ...c, isOwner: true })),
-      ...enrolled.map((c) => ({ ...c, isOwner: false })),
+      ...enrolled.map((c) => {
+        if (c.problems) {
+          c.problems = c.problems.filter((p) => {
+            if (p.parent) return false;
+            if (p.startedAt) return true;
+            if (p.startDate && new Date(p.startDate) > now) return false;
+            return true;
+          });
+        }
+        return { ...c, isOwner: false };
+      }),
     ];
   }
 
@@ -126,10 +138,10 @@ export class ClassroomsService {
         classroom.problems = classroom.problems.filter((p) => {
           if (p.parent) return false;
 
-          // PRIORIDADE PARA INÍCIO MANUAL
-          if (p.startDate) return true; // Se tem data de início marcada (manual ou auto), verificamos
+          // PRIORIDADE PARA INÍCIO MANUAL: Se a atividade/prova já foi iniciada manualmente
+          if (p.startedAt) return true;
 
-          // Se tiver agendamento futuro e AINDA não começou
+          // Se tiver agendamento futuro (startDate) e AINDA não começou, oculta do aluno
           if (p.startDate && new Date(p.startDate) > now) return false;
 
           return true;

@@ -62,12 +62,16 @@ export const basicInfoSchema = z.object({
   memoryLimit: z.coerce.number().int().min(1).optional(),
   startDate: z
     .string()
-    .datetime({ message: "Data inválida" })
+    .refine((val) => val === "" || !isNaN(Date.parse(val)), {
+      message: "Data inválida",
+    })
     .optional()
     .or(z.literal("")),
   deadline: z
     .string()
-    .datetime({ message: "Data inválida" })
+    .refine((val) => val === "" || !isNaN(Date.parse(val)), {
+      message: "Data inválida",
+    })
     .optional()
     .or(z.literal("")),
 });

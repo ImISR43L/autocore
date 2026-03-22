@@ -31,6 +31,7 @@ interface Problem {
   id: string;
   title: string;
   deadline?: string;
+  startDate?: string;
 }
 
 interface PendingWork {
@@ -136,8 +137,16 @@ export default function Dashboard() {
     const nextWeek = new Date();
     nextWeek.setDate(now.getDate() + 7);
 
+    const isOwner = cls.owner.id === myUserId;
+
     return cls.problems
-      .filter((p) => p.deadline)
+      .filter((p) => {
+        if (!p.deadline) return false;
+        if (!isOwner && p.startDate && new Date(p.startDate) > now) {
+          return false;
+        }
+        return true;
+      })
       .map((p) => ({ ...p, deadline: new Date(p.deadline!) }))
       .filter((p) => p.deadline > now && p.deadline <= nextWeek)
       .sort((a, b) => a.deadline.getTime() - b.deadline.getTime())

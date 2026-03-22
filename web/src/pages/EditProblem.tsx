@@ -40,6 +40,12 @@ export default function EditProblem() {
           return;
         }
 
+        const formatToLocalDatetime = (isoString: string) => {
+          const date = new Date(isoString);
+          const offset = date.getTimezoneOffset() * 60000;
+          return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+        };
+
         const formatted = {
           ...res.data,
           classroomId: res.data.classroomId || res.data.classroom?.id || "",
@@ -47,12 +53,11 @@ export default function EditProblem() {
           testCases: res.data.testCases || [],
           starterCode: res.data.starterCode || [],
           solutionCode: res.data.solutionCode || [],
-          // Formata datas vindas do banco (ISO) para o formato do input (YYYY-MM-DDThh:mm)
           startDate: res.data.startDate
-            ? new Date(res.data.startDate).toISOString().slice(0, 16)
+            ? formatToLocalDatetime(res.data.startDate)
             : undefined,
           deadline: res.data.deadline
-            ? new Date(res.data.deadline).toISOString().slice(0, 16)
+            ? formatToLocalDatetime(res.data.deadline)
             : undefined,
         };
 
