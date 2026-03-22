@@ -100,6 +100,8 @@ def parse_arg(raw, arg_type):
     if arg_type == 'string': return raw
     
     if arg_type.endswith('[]'):
+        if arg_type == 'boolean[]':
+            raw = raw.replace('true', 'True').replace('false', 'False')
         try:
             return ast.literal_eval(raw)
         except (ValueError, SyntaxError):
