@@ -207,8 +207,10 @@ export class SubmissionsProcessor {
                 { name: 'stdout', max: 10240 },
                 { name: 'stderr', max: 10240 },
               ],
-              cpuLimit: (timeLimit || 2) * 1000000000,
-              memoryLimit: (memoryLimit || 128) * 1024 * 1024,
+              cpuLimit: timeLimit ? timeLimit * 1000000 : 2000000000,
+              memoryLimit: memoryLimit
+                ? memoryLimit * 1024 * 1024
+                : 128 * 1024 * 1024,
               procLimit: 64,
               copyIn: copyIn,
             },
@@ -217,6 +219,17 @@ export class SubmissionsProcessor {
 
         const response = await axios.post(this.executorUrl, runPayload);
         const res = (response.data as ExecutorResponse[])[0];
+
+        const executedTimeMs = Math.floor((res.time || 0) / 1000000);
+        const executedMemMb = Math.floor((res.memory || 0) / (1024 * 1024));
+
+        if (res.status === 'Accepted') {
+          if (timeLimit && executedTimeMs > timeLimit) {
+            res.status = 'Time Limit Exceeded';
+          } else if (memoryLimit && executedMemMb > memoryLimit) {
+            res.status = 'Memory Limit Exceeded';
+          }
+        }
 
         if (res.status !== 'Accepted') {
           finalStatus =
@@ -229,7 +242,13 @@ export class SubmissionsProcessor {
             'Erro desconhecido (sem output)';
 
           if (!firstErrorOutput) {
-            firstErrorOutput = this.cleanLog(rawError, language);
+            if (res.status === 'Time Limit Exceeded') {
+              firstErrorOutput = `Tempo limite excedido (${executedTimeMs}ms / ${timeLimit}ms). O código demorou muito para executar ou entrou em loop infinito.`;
+            } else if (res.status === 'Memory Limit Exceeded') {
+              firstErrorOutput = `Memória limite excedida (${executedMemMb}MB / ${memoryLimit}MB).`;
+            } else {
+              firstErrorOutput = this.cleanLog(rawError, language);
+            }
           }
           break;
         }
