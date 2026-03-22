@@ -53,6 +53,7 @@ import {
   Copy,
   Users,
   Archive,
+  EyeOff,
 } from "lucide-react";
 import {
   Panel,
@@ -1559,8 +1560,16 @@ export default function ClassroomView() {
                 className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface p-4 rounded-lg border border-border"
               >
                 <div>
-                  <div className="text-sm text-muted mb-2 font-semibold">
-                    Entrada
+                  <div className="text-sm text-muted mb-2 font-semibold flex items-center justify-between gap-2">
+                    <span>Entrada</span>
+                    {isOwner && tc.isHidden && (
+                      <span
+                        className="flex items-center gap-1 text-xs bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded border border-amber-500/20"
+                        title="Este caso de teste está oculto para os alunos"
+                      >
+                        <EyeOff size={14} /> Oculto
+                      </span>
+                    )}
                   </div>
                   <code className="text-base font-mono block bg-background/20 p-2 rounded break-all whitespace-pre-wrap">
                     {tc.input}
