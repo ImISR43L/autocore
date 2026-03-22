@@ -51,7 +51,6 @@ export function ProblemEditor({
 
   const {
     register,
-    handleSubmit,
     watch,
     formState: { errors, isDirty },
   } = methods;
