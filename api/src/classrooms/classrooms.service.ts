@@ -55,7 +55,7 @@ export class ClassroomsService {
 
     if (!classroom) throw new NotFoundException('Código inválido');
 
-    if (classroom.owner.id === userId) {
+    if (classroom.owner?.id === userId) {
       throw new ForbiddenException(
         'Você é o professor desta turma e não pode entrar como aluno.',
       );
@@ -124,7 +124,7 @@ export class ClassroomsService {
 
     if (!classroom) throw new NotFoundException('Turma não encontrada');
 
-    if (userId && classroom.owner.id !== userId) {
+    if (userId && classroom.owner?.id !== userId) {
       if (classroom.students) {
         classroom.students = classroom.students.map((student) => {
           const { email, ...safeStudent } = student;
@@ -199,7 +199,7 @@ export class ClassroomsService {
     });
 
     if (!classroom) throw new NotFoundException('Turma não encontrada');
-    if (classroom.owner.id !== userId)
+    if (classroom.owner?.id !== userId)
       throw new ForbiddenException('Ação não permitida');
 
     classroom.isArchived = true;
@@ -213,7 +213,7 @@ export class ClassroomsService {
     });
 
     if (!classroom) throw new NotFoundException('Turma não encontrada');
-    if (classroom.owner.id !== userId)
+    if (classroom.owner?.id !== userId)
       throw new ForbiddenException('Ação não permitida');
 
     classroom.isArchived = false;
@@ -227,7 +227,7 @@ export class ClassroomsService {
     });
 
     if (!classroom) throw new NotFoundException('Turma não encontrada');
-    if (classroom.owner.id !== userId) {
+    if (classroom.owner?.id !== userId) {
       throw new ForbiddenException(
         'Apenas o professor (dono) pode excluir esta turma.',
       );

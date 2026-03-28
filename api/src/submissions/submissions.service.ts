@@ -239,7 +239,7 @@ export class SubmissionsService {
 
     if (!problem) throw new NotFoundException('Problema não encontrado');
 
-    const isOwner = problem.classroom.owner.id === userId;
+    const isOwner = problem.classroom.owner?.id === userId;
 
     if (isOwner) {
       // O professor apenas vê as entregas oficiais (uma por aluno)

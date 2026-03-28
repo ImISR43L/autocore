@@ -21,7 +21,8 @@ export class Announcement {
 
   @ManyToOne(() => User, {
     eager: true,
-    onDelete: 'CASCADE',
+    onDelete: 'SET NULL',
+    nullable: true,
   })
   author: User;
 

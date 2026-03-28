@@ -48,7 +48,6 @@ export class ClassroomsController {
     return this.classroomsService.findAll(req.user.userId);
   }
 
-  // NOVA ROTA: Listar Arquivados (Deve ficar ANTES do @Get(':id'))
   @Get('archived')
   findArchived(@Request() req: RequestWithUser) {
     return this.classroomsService.findArchived(req.user.userId);

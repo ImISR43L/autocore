@@ -78,7 +78,7 @@ export class AnnouncementsService {
 
         // Substituir 'classroom-files' pelo nome exato do seu bucket no Supabase
         const { error } = await this.supabase.storage
-          .from('classroom-files')
+          .from('class_attachments')
           .upload(filePath, file.buffer, {
             contentType: file.mimetype,
             upsert: false,
@@ -91,7 +91,7 @@ export class AnnouncementsService {
         }
 
         const { data: publicUrlData } = this.supabase.storage
-          .from('classroom-files')
+          .from('class_attachments')
           .getPublicUrl(filePath);
 
         return {
@@ -131,7 +131,7 @@ export class AnnouncementsService {
       );
     }
 
-    if (announcement.classroom.owner.id !== userId) {
+    if (announcement.classroom.owner?.id !== userId) {
       throw new ForbiddenException('Apenas o professor pode apagar avisos.');
     }
 

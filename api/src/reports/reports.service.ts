@@ -33,7 +33,7 @@ export class ReportsService {
     });
 
     if (!classroom) throw new NotFoundException('Turma não encontrada');
-    if (classroom.owner.id !== requesterId) {
+    if (classroom.owner?.id !== requesterId) {
       throw new ForbiddenException(
         'Apenas o professor pode exportar relatórios.',
       );

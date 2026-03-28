@@ -2050,7 +2050,9 @@ export default function ClassroomView() {
                           </div>
                           <div>
                             <div className="text-base font-medium text-foreground">
-                              {a.author?.name || a.author?.email}
+                              {a.author?.name || a.author?.email
+                                ? a.author.name || a.author.email
+                                : "Professor Excluído"}
                             </div>
                             <div className="text-sm text-muted">
                               {new Date(a.createdAt).toLocaleDateString()}
@@ -2115,32 +2117,129 @@ export default function ClassroomView() {
                             ))}
 
                           {a.attachments && a.attachments.length > 0 && (
-                            <div className="flex flex-wrap gap-3 mt-4 border-t border-border/50 pt-4">
-                              {a.attachments.map((file, idx) => (
-                                <a
-                                  key={idx}
-                                  href={file.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-3 bg-background border border-border rounded-lg p-3 hover:border-primary/50 transition-all min-w-[200px] max-w-[320px] group"
-                                >
-                                  <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors shrink-0">
-                                    <FileText size={20} />
-                                  </div>
-                                  <div className="flex flex-col min-w-0">
-                                    <span className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
-                                      {file.name}
-                                    </span>
-                                    <span className="text-xs text-muted">
-                                      {(file.size / 1024 / 1024).toFixed(2)} MB
-                                      •{" "}
-                                      {file.mimeType
-                                        .split("/")[1]
-                                        ?.toUpperCase() || "ARQUIVO"}
-                                    </span>
-                                  </div>
-                                </a>
-                              ))}
+                            <div className="flex flex-col gap-4 mt-4">
+                              {/* 1. LINHA DE LINKS (Tamanho maior, ocupando mais largura) */}
+                              {a.attachments?.some(
+                                (att) => att.type === "link",
+                              ) && (
+                                <div className="flex flex-col gap-3">
+                                  {a.attachments
+                                    ?.filter((att) => att.type === "link")
+                                    ?.map((attachment, index) => {
+                                      // Link com Imagem (Rich Preview)
+                                      if (attachment.imageUrl) {
+                                        return (
+                                          <a
+                                            key={`link-${index}`}
+                                            href={attachment.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex flex-col sm:flex-row bg-background border border-border rounded-lg overflow-hidden hover:border-primary/50 transition-all max-w-2xl group"
+                                          >
+                                            <div className="w-full sm:w-48 h-40 sm:h-auto shrink-0 bg-muted/10 relative">
+                                              <img
+                                                src={attachment.imageUrl}
+                                                alt={
+                                                  attachment.title ||
+                                                  "Preview do link"
+                                                }
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                onError={(e) => {
+                                                  (
+                                                    e.target as HTMLImageElement
+                                                  ).src =
+                                                    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlNWU3ZWIiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5Y2EzYWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5JbWFnZW0gSW5kaXNwb27DrXZlbDwvdGV4dD48L3N2Zz4=";
+                                                }}
+                                              />
+                                              <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm p-1.5 rounded-md text-white">
+                                                <Link2 size={16} />
+                                              </div>
+                                            </div>
+                                            <div className="flex flex-col p-4 min-w-0 justify-center">
+                                              <span className="text-base font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                                                {attachment.title ||
+                                                  attachment.url}
+                                              </span>
+                                              {attachment.description && (
+                                                <span
+                                                  className="text-sm text-muted line-clamp-3 mt-1"
+                                                  title={attachment.description}
+                                                >
+                                                  {attachment.description}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </a>
+                                        );
+                                      }
+
+                                      // Link sem imagem (Fallback mais largo)
+                                      return (
+                                        <a
+                                          key={`link-${index}`}
+                                          href={attachment.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="flex items-center gap-3 bg-background border border-border rounded-lg p-3 hover:border-primary/50 transition-all max-w-2xl group"
+                                        >
+                                          <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors shrink-0">
+                                            <Link2 size={20} />
+                                          </div>
+                                          <div className="flex flex-col min-w-0">
+                                            <span className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                                              {attachment.title ||
+                                                attachment.url}
+                                            </span>
+                                            {attachment.description && (
+                                              <span className="text-xs text-muted truncate">
+                                                {attachment.description}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </a>
+                                      );
+                                    })}
+                                </div>
+                              )}
+
+                              {/* 2. LINHA DE ARQUIVOS (Lado a lado, menores) */}
+                              {a.attachments?.some(
+                                (att) => att.type === "file",
+                              ) && (
+                                <div className="flex flex-wrap gap-3">
+                                  {a.attachments
+                                    ?.filter((att) => att.type === "file")
+                                    ?.map((attachment, index) => (
+                                      <a
+                                        key={`file-${index}`}
+                                        href={attachment.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-3 bg-background border border-border rounded-lg p-3 hover:border-primary/50 transition-all min-w-[200px] max-w-[320px] group"
+                                      >
+                                        <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors shrink-0">
+                                          <FileText size={20} />
+                                        </div>
+                                        <div className="flex flex-col min-w-0">
+                                          <span className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                                            {attachment.name}
+                                          </span>
+                                          <span className="text-xs text-muted">
+                                            {attachment.size
+                                              ? `${(attachment.size / 1024 / 1024).toFixed(2)} MB • `
+                                              : ""}
+                                            {(
+                                              attachment.mimeType ||
+                                              attachment.mimetype
+                                            )
+                                              ?.split("/")[1]
+                                              ?.toUpperCase() || "ARQUIVO"}
+                                          </span>
+                                        </div>
+                                      </a>
+                                    ))}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>

@@ -137,7 +137,7 @@ export default function Dashboard() {
     const nextWeek = new Date();
     nextWeek.setDate(now.getDate() + 7);
 
-    const isOwner = cls.owner.id === myUserId;
+    const isOwner = cls.owner?.id === myUserId;
 
     return cls.problems
       .filter((p) => {
@@ -378,7 +378,7 @@ export default function Dashboard() {
         ) : filteredClassrooms.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {filteredClassrooms.map((c) => {
-              const isOwner = c.owner.id === myUserId;
+              const isOwner = c.owner?.id === myUserId;
               const pendingWork = getPendingForClass(c);
 
               return (
@@ -399,7 +399,9 @@ export default function Dashboard() {
                     {isOwner ? (
                       <span className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium text-primary-dark dark:text-primary border border-primary/20 dark:border-primary/10">
                         <Crown size={14} />{" "}
-                        <span className="hidden xs:inline">Professor</span>
+                        <span className="hidden xs:inline">
+                          {c.owner?.id ? `Professor` : "Professor Excluído"}
+                        </span>
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5 rounded-md bg-background/50 dark:bg-muted/10 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium text-foreground border border-border/80 dark:border-border/50">

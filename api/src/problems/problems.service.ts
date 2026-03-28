@@ -233,7 +233,7 @@ export class ProblemsService {
 
     const isOwner =
       problem.classroom &&
-      String(problem.classroom.owner.id) === String(userId);
+      String(problem.classroom.owner?.id) === String(userId);
 
     if (!isOwner) {
       delete (problem as any).solutionCode;
@@ -274,7 +274,7 @@ export class ProblemsService {
 
     if (!problem) throw new NotFoundException('Prova não encontrada');
 
-    if (problem.classroom.owner.id !== userId)
+    if (problem.classroom.owner?.id !== userId)
       throw new ForbiddenException('Apenas o professor pode iniciar.');
 
     if (problem.type !== ProblemType.EXAM)
@@ -303,7 +303,7 @@ export class ProblemsService {
       );
     }
 
-    if (problem.classroom.owner.id !== userId) {
+    if (problem.classroom.owner?.id !== userId) {
       throw new ForbiddenException('Apenas o dono da turma pode editar.');
     }
 
@@ -405,7 +405,7 @@ export class ProblemsService {
       );
     }
 
-    if (problem.classroom.owner.id !== userId) {
+    if (problem.classroom.owner?.id !== userId) {
       throw new ForbiddenException('Apenas o dono da turma pode excluir.');
     }
 
