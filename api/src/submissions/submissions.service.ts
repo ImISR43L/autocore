@@ -29,7 +29,7 @@ export class SubmissionsService {
     private problemsRepository: Repository<Problem>,
     @InjectQueue('submission-queue') private submissionsQueue: Queue,
   ) {}
-  // ... (getProblemStats, getTeacherStats, grade mantidos iguais) ...
+
   async getProblemStats(problemId: string) {
     const submissions = await this.submissionsRepository.find({
       where: { problem: { id: problemId }, isDelivery: true },
@@ -94,11 +94,17 @@ export class SubmissionsService {
   async create(createSubmissionDto: CreateSubmissionDto, userId: string) {
     const problem = await this.problemsRepository.findOne({
       where: { id: createSubmissionDto.problem_id },
-      relations: ['testCases', 'classroom'], // <--- Adicione 'classroom' aqui
+      relations: ['testCases', 'classroom', 'classroom.owner'],
     });
 
     if (!problem) {
       throw new NotFoundException('Problema não encontrado');
+    }
+
+    if (!problem.classroom?.owner) {
+      throw new ForbiddenException(
+        'O professor responsável por esta turma não existe mais. Não é possível enviar novas resoluções.',
+      );
     }
 
     if (problem.classroom?.isArchived) {
@@ -194,13 +200,23 @@ export class SubmissionsService {
   async markAsDelivery(id: string, userId: string) {
     const submission = await this.submissionsRepository.findOne({
       where: { id },
-      // Adição da relação 'problem.classroom' necessária para a validação
-      relations: ['problem', 'problem.classroom', 'user'],
+      relations: [
+        'problem',
+        'problem.classroom',
+        'problem.classroom.owner',
+        'user',
+      ],
     });
 
     if (!submission) throw new NotFoundException('Submissão não encontrada');
     if (submission.user.id !== userId)
       throw new ForbiddenException('Ação não permitida.');
+
+    if (!submission.problem?.classroom?.owner) {
+      throw new ForbiddenException(
+        'O professor responsável por esta turma não existe mais. Ações bloqueadas.',
+      );
+    }
 
     // NOVA VALIDAÇÃO: Bloqueio de turmas arquivadas
     if (submission.problem?.classroom?.isArchived) {

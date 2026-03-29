@@ -133,8 +133,7 @@ interface Classroom {
   id: number;
   name: string;
   code: string;
-  // Alterado: Adicionado 'name?: string'
-  owner: { id: string; email: string; name?: string };
+  owner: { id: string; email: string; name?: string } | null;
   students: { id: string; email: string; name?: string }[];
   problems: Problem[];
   announcements: Announcement[];
@@ -435,6 +434,7 @@ export default function ClassroomView() {
   }, []);
 
   const isOwner = classroom?.owner?.id === myUserId;
+  const hasTeacher = !!classroom?.owner;
 
   const displayProblem =
     currentProblem?.children && currentProblem.children.length > 0
@@ -1194,6 +1194,11 @@ export default function ClassroomView() {
 
     if (isOwner) {
       toast.error("Professor não pode enviar soluções.");
+      return;
+    }
+
+    if (!classroom?.owner) {
+      toast.error("O professor desta turma não existe mais. Envio bloqueado.");
       return;
     }
 
@@ -2561,7 +2566,7 @@ export default function ClassroomView() {
                 </Select>
 
                 {/* BOTÃO DE ENVIAR E ESTADO DE ENTREGA: Apenas para Alunos */}
-                {!isOwner && (
+                {!isOwner && hasTeacher && (
                   <div className="flex items-center gap-3">
                     {myDeliverySubmission && (
                       <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-500/10 text-emerald-500 text-xs font-bold uppercase tracking-wider border border-emerald-500/20">
@@ -2591,7 +2596,7 @@ export default function ClassroomView() {
               {/* Toolbar Mobile (Hamburguer + Submit Conditional) */}
               <div className="lg:hidden flex items-center gap-2">
                 {/* Botão de Enviar (Apenas na aba Editor e para Alunos) */}
-                {mobileIdeTab === "editor" && !isOwner && (
+                {mobileIdeTab === "editor" && !isOwner && hasTeacher && (
                   <Button
                     onClick={submitSolution}
                     disabled={loading || !selectedProblemId || isBlocked}
@@ -3116,7 +3121,7 @@ export default function ClassroomView() {
                                 <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-500/10 text-emerald-500 text-xs font-bold uppercase tracking-wider border border-emerald-500/20">
                                   <CheckCircle size={14} /> Entregue
                                 </span>
-                              ) : (
+                              ) : hasTeacher ? (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -3125,6 +3130,13 @@ export default function ClassroomView() {
                                 >
                                   Marcar Entrega
                                 </Button>
+                              ) : (
+                                <span
+                                  className="text-xs text-muted"
+                                  title="Turma sem professor"
+                                >
+                                  Bloqueado
+                                </span>
                               )}
                             </td>
                           )}
