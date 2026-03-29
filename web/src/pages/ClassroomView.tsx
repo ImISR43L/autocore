@@ -2045,8 +2045,8 @@ export default function ClassroomView() {
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-sm">
                             {(a.author?.name || a.author?.email)
-                              .charAt(0)
-                              .toUpperCase()}
+                              ?.charAt(0)
+                              ?.toUpperCase() || "U"}
                           </div>
                           <div>
                             <div className="text-base font-medium text-foreground">
@@ -2265,17 +2265,19 @@ export default function ClassroomView() {
                 <Card className="bg-surface border-border">
                   <div className="flex items-center gap-5 p-4">
                     <div className="w-12 h-12 rounded-full bg-primary/10 dark:bg-primary/20 text-primary-dark dark:text-primary flex items-center justify-center font-bold border border-primary/20 dark:border-primary/10 text-lg">
-                      {(classroom.owner.name || classroom.owner.email)
-                        .charAt(0)
-                        .toUpperCase()}
+                      {(classroom?.owner?.name || classroom?.owner?.email)
+                        ?.charAt(0)
+                        ?.toUpperCase() || "P"}
                     </div>
                     <div className="flex flex-col">
                       <span className="text-foreground font-medium text-lg truncate">
-                        {classroom.owner.name || classroom.owner.email}
+                        {classroom?.owner?.name ||
+                          classroom?.owner?.email ||
+                          "Professor (Conta Excluída)"}
                       </span>
-                      {classroom.owner.name && (
+                      {classroom?.owner?.name && (
                         <span className="text-xs text-muted truncate">
-                          {classroom.owner.email}
+                          {classroom?.owner?.email}
                         </span>
                       )}
                     </div>
@@ -2315,7 +2317,7 @@ export default function ClassroomView() {
                         className="flex items-center gap-5 p-4 hover:bg-surface-hover transition-colors"
                       >
                         <div className="w-10 h-10 rounded-full hover:bg-surface-hover text-muted flex items-center justify-center font-bold text-base">
-                          {(s.name || s.email || "?").charAt(0).toUpperCase()}
+                          {(s.name || s.email || "?").charAt(0)?.toUpperCase()}
                         </div>
                         <div className="flex-1 flex flex-col justify-center">
                           <div className="text-base text-foreground font-medium truncate">
@@ -3098,10 +3100,13 @@ export default function ClassroomView() {
                             <td className="px-6 py-4 text-foreground">
                               <div className="flex items-center gap-3">
                                 <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold">
-                                  {sub.user.email.charAt(0).toUpperCase()}
+                                  {sub.user?.email?.charAt(0)?.toUpperCase() ||
+                                    "U"}
                                 </div>
                                 <span className="truncate max-w-[180px]">
-                                  {sub.user.name || sub.user.email}
+                                  {sub.user?.name ||
+                                    sub.user?.email ||
+                                    "Conta Excluída"}
                                 </span>
                               </div>
                             </td>
