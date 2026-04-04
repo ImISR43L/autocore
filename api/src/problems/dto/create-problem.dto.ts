@@ -118,10 +118,6 @@ export class CreateProblemDto {
   @IsEnum(SubjectType)
   subject?: SubjectType;
 
-  @IsEnum(['EASY', 'MEDIUM', 'HARD'])
-  @IsOptional()
-  difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
-
   @IsString()
   @IsOptional()
   teacherNotes?: string;

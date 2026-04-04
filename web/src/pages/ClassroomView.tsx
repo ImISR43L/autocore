@@ -76,6 +76,7 @@ import { Card } from "../components/ui/Card";
 import { cn } from "../lib/utils";
 
 import { MoleculeWorkspace } from "../features/molecule-env";
+import { useMoleculeStore } from "../features/molecule-env/store/useMoleculeStore";
 
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
@@ -1229,19 +1230,40 @@ export default function ClassroomView() {
     }
 
     try {
+      // 👇 NOVA LÓGICA: Intercepta os dados se for Química 👇
+      let payloadFiles = files;
+      let payloadLanguageId = languageId;
+
+      if (classroom?.subject === "CHEMISTRY") {
+        const studentSmiles = useMoleculeStore
+          .getState()
+          .exportCurrentMolecule("smiles");
+
+        if (!studentSmiles) {
+          toast.error("A tela está vazia! Desenhe a molécula antes de enviar.");
+          setLoading(false);
+          loadingRef.current = false;
+          setVerdict(null);
+          return; // Aborta o envio se não houver molécula
+        }
+
+        // Empacota o SMILES no formato que o NestJS já espera
+        payloadFiles = [{ name: "submission.smi", content: studentSmiles }];
+        payloadLanguageId = 71; // ID arbitrário (Python), o backend vai ignorar porque subject é CHEMISTRY
+      }
+
       // 2. Envia para a API (que deposita na fila e retorna imediatamente)
       await api.post(`/submissions`, {
-        files,
-        language_id: languageId,
+        files: payloadFiles, // Usa a variável que criámos
+        language_id: payloadLanguageId, // Usa a variável que criámos
         problem_id: displayProblem.id,
       });
 
-      // 3. ALTERAÇÃO CRÍTICA: Libera a interface IMEDIATAMENTE após a API responder.
-      // Isso permite que o usuário continue digitando e faça novas submissões.
+      // 3. Libera a interface IMEDIATAMENTE após a API responder.
       setLoading(false);
       loadingRef.current = false;
       setVerdict("Na Fila...");
-      toast.info("Código na fila! Você já pode continuar editando.");
+      toast.info("Gabarito enviado! Aguardando o motor químico...");
 
       // 4. Fallback de atualização
       setTimeout(() => {

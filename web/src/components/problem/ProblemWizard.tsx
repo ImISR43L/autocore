@@ -132,19 +132,19 @@ export function ProblemWizard({
       data.classroomId = classroomId;
     }
 
+    (data as any).subject = classroomSubject;
+
     if (classroomSubject === "CHEMISTRY") {
       try {
-        // Correção 1: Chamamos a função diretamente do estado do Zustand
         const expectedSmiles = useMoleculeStore
           .getState()
           .exportCurrentMolecule("smiles");
-
         if (!expectedSmiles) {
           toast.error("Por favor, desenhe uma molécula válida no gabarito.");
           return;
         }
 
-        // Correção 2: Forçamos o TypeScript a aceitar a nova propriedade com (data as any)
+        // Injeta o SMILES no JSONB que preparamos no backend!
         (data as any).validationConfig = {
           expectedSmiles: expectedSmiles,
         };

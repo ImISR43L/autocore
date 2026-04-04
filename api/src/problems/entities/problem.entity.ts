@@ -61,13 +61,6 @@ export class Problem {
   })
   subject: SubjectType;
 
-  @Column({
-    type: 'enum',
-    enum: ['EASY', 'MEDIUM', 'HARD'],
-    default: 'EASY',
-  })
-  difficulty: string;
-
   @Column({ type: 'text', nullable: true })
   teacherNotes: string;
 
