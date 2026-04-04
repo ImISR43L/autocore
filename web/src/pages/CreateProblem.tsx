@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { ProblemWizard } from "../components/problem/ProblemWizard";
@@ -8,6 +8,10 @@ export default function CreateProblem() {
   const navigate = useNavigate();
   const params = useParams();
   const hasCheckedRef = useRef(false);
+
+  const [classroomSubject, setClassroomSubject] = useState<
+    "PROGRAMMING" | "CHEMISTRY"
+  >("PROGRAMMING");
 
   useEffect(() => {
     const classId = params.id || params.classroomId;
@@ -23,6 +27,10 @@ export default function CreateProblem() {
             navigate(`/class/${classId}`, {
               state: { activeTab: "classwork" },
             });
+          }
+
+          if (res.data.subject) {
+            setClassroomSubject(res.data.subject);
           }
         })
         .catch(() => {});
@@ -99,7 +107,10 @@ export default function CreateProblem() {
       </div>
 
       <div className="flex-1 min-h-0 p-4 md:p-6 pt-2">
-        <ProblemWizard onSubmit={handleCreate} />
+        <ProblemWizard
+          onSubmit={handleCreate}
+          classroomSubject={classroomSubject}
+        />
       </div>
     </div>
   );
