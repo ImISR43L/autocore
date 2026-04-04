@@ -18,6 +18,8 @@ import {
   Archive,
   RefreshCcw,
   Trash2,
+  Code,
+  Beaker,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -44,6 +46,7 @@ interface Classroom {
   id: string;
   name: string;
   code: string;
+  subject?: "PROGRAMMING" | "CHEMISTRY";
   owner: {
     id: string;
     email: string;
@@ -66,6 +69,9 @@ export default function Dashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [newClassName, setNewClassName] = useState("");
+  const [newClassroomSubject, setNewClassroomSubject] = useState<
+    "PROGRAMMING" | "CHEMISTRY"
+  >("PROGRAMMING");
   const [joinCode, setJoinCode] = useState("");
 
   const navigate = useNavigate();
@@ -171,15 +177,24 @@ export default function Dashboard() {
   };
 
   const handleCreateClassroom = async () => {
-    if (!newClassName.trim()) return toast.warning("Nome inválido");
+    if (!newClassName.trim()) {
+      toast.error("O nome da turma é obrigatório.");
+      return;
+    }
+
     try {
-      await api.post("/classrooms", { name: newClassName });
-      toast.success("Turma criada!");
+      const response = await api.post("/classrooms", {
+        name: newClassName,
+        subject: newClassroomSubject,
+      });
+
+      setClassrooms([response.data, ...classrooms]);
       setShowCreateModal(false);
       setNewClassName("");
-      fetchClassrooms();
-    } catch (error) {
-      toast.error("Erro ao criar turma");
+      setNewClassroomSubject("PROGRAMMING");
+      toast.success("Turma criada com sucesso!");
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Erro ao criar turma");
     }
   };
 
@@ -396,6 +411,13 @@ export default function Dashboard() {
                         : "bg-gradient-to-r from-muted/20 dark:from-white/5 to-transparent",
                     )}
                   >
+                    <div className="p-3 bg-primary/10 text-primary rounded-lg">
+                      {c.subject === "CHEMISTRY" ? (
+                        <Beaker size={24} />
+                      ) : (
+                        <Code size={24} />
+                      )}
+                    </div>
                     {isOwner ? (
                       <span className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium text-primary-dark dark:text-primary border border-primary/20 dark:border-primary/10">
                         <Crown size={14} />{" "}
@@ -554,13 +576,14 @@ export default function Dashboard() {
       </main>
 
       {/* MODAL: CRIAR TURMA */}
+      {/* Modal Criar Turma */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-lg bg-surface border border-border rounded-xl shadow-2xl p-6 sm:p-8 animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center mb-4 sm:mb-6">
-              <h3 className="text-xl sm:text-2xl font-bold text-foreground">
-                Criar Nova Turma
-              </h3>
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-surface border border-border rounded-2xl sm:rounded-3xl p-6 sm:p-8 w-full max-w-md sm:max-w-lg shadow-2xl relative">
+            <div className="flex justify-between items-center mb-6 sm:mb-8">
+              <h2 className="text-xl sm:text-2xl font-bold text-foreground">
+                Nova Turma
+              </h2>
               <button
                 onClick={() => setShowCreateModal(false)}
                 className="text-muted hover:text-foreground transition-colors"
@@ -568,35 +591,69 @@ export default function Dashboard() {
                 <X size={24} />
               </button>
             </div>
-            <p className="text-sm sm:text-base text-muted mb-6 sm:mb-8">
-              Defina um nome para sua turma. O código de acesso será gerado
-              automaticamente.
-            </p>
 
-            <div className="space-y-6 sm:space-y-8">
-              <Input
-                label="Nome da Turma"
-                value={newClassName}
-                onChange={(e) => setNewClassName(e.target.value)}
-                placeholder="Ex: Introdução a Python 2026"
-                autoFocus
-                className="h-11 sm:h-12 text-base"
-              />
-              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4">
-                <Button
-                  variant="ghost"
-                  onClick={() => setShowCreateModal(false)}
-                  className="h-11 sm:h-12 text-sm sm:text-base w-full sm:w-auto"
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={handleCreateClassroom}
-                  className="h-11 sm:h-12 text-sm sm:text-base w-full sm:w-auto"
-                >
-                  Criar Turma
-                </Button>
+            <div className="space-y-5 mb-8">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Nome da Turma
+                </label>
+                <Input
+                  value={newClassName}
+                  onChange={(e) => setNewClassName(e.target.value)}
+                  placeholder="Ex: Algoritmos ou Química Orgânica"
+                  autoFocus
+                />
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Disciplina do Ambiente
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Botão de Programação */}
+                  <button
+                    onClick={() => setNewClassroomSubject("PROGRAMMING")}
+                    className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${
+                      newClassroomSubject === "PROGRAMMING"
+                        ? "border-primary bg-primary/10 text-primary shadow-sm"
+                        : "border-border bg-surface text-muted hover:border-muted hover:text-foreground"
+                    }`}
+                  >
+                    <Code size={28} className="mb-2" />
+                    <span className="font-semibold text-sm">Programação</span>
+                  </button>
+
+                  {/* Botão de Química */}
+                  <button
+                    onClick={() => setNewClassroomSubject("CHEMISTRY")}
+                    className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${
+                      newClassroomSubject === "CHEMISTRY"
+                        ? "border-primary bg-primary/10 text-primary shadow-sm"
+                        : "border-border bg-surface text-muted hover:border-muted hover:text-foreground"
+                    }`}
+                  >
+                    <Beaker size={28} className="mb-2" />
+                    <span className="font-semibold text-sm">Química</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 👇 BOTÕES DE AÇÃO RESTAURADOS AQUI 👇 */}
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4">
+              <Button
+                variant="ghost"
+                onClick={() => setShowCreateModal(false)}
+                className="h-11 sm:h-12 text-sm sm:text-base w-full sm:w-auto"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCreateClassroom}
+                className="h-11 sm:h-12 text-sm sm:text-base w-full sm:w-auto"
+              >
+                Criar Turma
+              </Button>
             </div>
           </div>
         </div>

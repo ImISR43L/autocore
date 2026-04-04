@@ -29,4 +29,8 @@ export default defineConfig({
       },
     },
   },
+
+  optimizeDeps: {
+    exclude: ["@rdkit/rdkit"],
+  },
 });

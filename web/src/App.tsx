@@ -11,15 +11,17 @@ import CreateProblem from "./pages/CreateProblem";
 import EditProblem from "./pages/EditProblem";
 import { SettingsModal } from "./components/SettingsModal";
 
+// 1. Importe o componente principal da sua nova feature
+// (Ajuste o caminho conforme a estrutura que você definiu)
+import { MoleculeWorkspace } from "./features/molecule-env";
+
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
-
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-
       setLoading(false);
     });
 
@@ -27,7 +29,6 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-
       setLoading(false);
     });
 
@@ -47,6 +48,10 @@ function App() {
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/home" element={<Home />} />
+
+        {/* 2. Adicione a rota de desenvolvimento para as moléculas */}
+        <Route path="/molecules" element={<MoleculeWorkspace />} />
+
         <Route
           path="/dashboard"
           element={

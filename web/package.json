@@ -31,7 +31,12 @@
     "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@rdkit/rdkit": "^2025.3.4-1.0.0",
+    "honeycomb-grid": "^4.1.5",
+    "konva": "^10.2.3",
+    "react-konva": "^19.2.3",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

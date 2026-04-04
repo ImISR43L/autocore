@@ -13,6 +13,11 @@ import { User } from '../../users/entities/user.entity';
 import { Problem } from '../../problems/entities/problem.entity';
 import { Announcement } from '../../announcements/entities/announcement.entity';
 
+export enum SubjectType {
+  PROGRAMMING = 'PROGRAMMING',
+  CHEMISTRY = 'CHEMISTRY',
+}
+
 @Entity()
 export class Classroom {
   @PrimaryGeneratedColumn('uuid')
@@ -23,6 +28,13 @@ export class Classroom {
 
   @Column({ unique: true })
   code: string;
+
+  @Column({
+    type: 'enum',
+    enum: SubjectType,
+    default: SubjectType.PROGRAMMING,
+  })
+  subject: SubjectType;
 
   @CreateDateColumn()
   createdAt: Date;

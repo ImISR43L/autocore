@@ -54,6 +54,8 @@ import {
   Users,
   Archive,
   EyeOff,
+  Code,
+  Beaker,
 } from "lucide-react";
 import {
   Panel,
@@ -73,10 +75,11 @@ import { Select } from "../components/ui/Select";
 import { Card } from "../components/ui/Card";
 import { cn } from "../lib/utils";
 
+import { MoleculeWorkspace } from "../features/molecule-env";
+
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
 
-// --- INTERFACES ---
 interface AnnouncementLink {
   url: string;
   title: string;
@@ -133,6 +136,7 @@ interface Classroom {
   id: number;
   name: string;
   code: string;
+  subject?: "PROGRAMMING" | "CHEMISTRY";
   owner: { id: string; email: string; name?: string } | null;
   students: { id: string; email: string; name?: string }[];
   problems: Problem[];
@@ -1455,63 +1459,68 @@ export default function ClassroomView() {
     return name.includes(term) || email.includes(term);
   });
 
-  const editorContent = (
-    <div className="flex flex-col h-full bg-surface">
-      <div className="flex-none flex bg-surface border-b border-border overflow-x-auto no-scrollbar">
-        {files.map((file, idx) => (
-          <div
-            key={idx}
-            onClick={() => setActiveFileIndex(idx)}
-            className={cn(
-              "px-5 py-3 text-sm cursor-pointer flex items-center gap-3 border-r border-border border-t-2 select-none min-w-fit",
-              activeFileIndex === idx
-                ? "bg-background text-foreground border-t-primary"
-                : "bg-surface text-muted border-t-transparent hover:bg-surface-hover",
-            )}
-          >
-            <FileCode size={16} />
-            {file.name}
-            {files.length > 1 && (
-              <Trash
-                size={14}
-                className="hover:text-destructive ml-2"
-                onClick={(e) => handleRemoveFile(idx, e)}
-              />
-            )}
+  const editorContent =
+    classroom?.subject === "CHEMISTRY" ? (
+      <div className="w-full h-full relative overflow-hidden bg-background">
+        <MoleculeWorkspace />
+      </div>
+    ) : (
+      <div className="flex flex-col h-full bg-surface">
+        <div className="flex-none flex bg-surface border-b border-border overflow-x-auto no-scrollbar">
+          {files.map((file, idx) => (
+            <div
+              key={idx}
+              onClick={() => setActiveFileIndex(idx)}
+              className={cn(
+                "px-5 py-3 text-sm cursor-pointer flex items-center gap-3 border-r border-border border-t-2 select-none min-w-fit",
+                activeFileIndex === idx
+                  ? "bg-background text-foreground border-t-primary"
+                  : "bg-surface text-muted border-t-transparent hover:bg-surface-hover",
+              )}
+            >
+              <FileCode size={16} />
+              {file.name}
+              {files.length > 1 && (
+                <Trash
+                  size={14}
+                  className="hover:text-destructive ml-2"
+                  onClick={(e) => handleRemoveFile(idx, e)}
+                />
+              )}
+            </div>
+          ))}
+          <div className="flex items-center px-3 min-w-[100px]">
+            <input
+              className="bg-transparent border-none text-sm text-foreground w-full focus:outline-none placeholder:text-muted/50"
+              placeholder="+ Novo..."
+              value={newFileName}
+              onChange={(e) => setNewFileName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddFile()}
+            />
           </div>
-        ))}
-        <div className="flex items-center px-3 min-w-[100px]">
-          <input
-            className="bg-transparent border-none text-sm text-foreground w-full focus:outline-none placeholder:text-muted/50"
-            placeholder="+ Novo..."
-            value={newFileName}
-            onChange={(e) => setNewFileName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAddFile()}
+        </div>
+
+        <div className="flex-1 relative">
+          <Editor
+            key={`${languageId}-${displayProblem?.id}-${activeFileIndex}`}
+            height="100%"
+            theme={monacoTheme}
+            language={LANGUAGE_MAP[languageId] || "plaintext"}
+            value={files[activeFileIndex]?.content || ""}
+            onChange={handleCodeChange}
+            onMount={handleEditorDidMount}
+            options={{
+              minimap: { enabled: false },
+              automaticLayout: true,
+              fontSize: 16,
+              scrollBeyondLastLine: false,
+              padding: { top: 16 },
+              accessibilitySupport: screenReaderMode ? "on" : "auto",
+            }}
           />
         </div>
       </div>
-
-      <div className="flex-1 relative">
-        <Editor
-          key={`${languageId}-${displayProblem?.id}-${activeFileIndex}`}
-          height="100%"
-          theme={monacoTheme}
-          language={LANGUAGE_MAP[languageId] || "plaintext"}
-          value={files[activeFileIndex]?.content || ""}
-          onChange={handleCodeChange}
-          onMount={handleEditorDidMount}
-          options={{
-            minimap: { enabled: false },
-            automaticLayout: true,
-            fontSize: 16,
-            scrollBeyondLastLine: false,
-            padding: { top: 16 },
-            accessibilitySupport: screenReaderMode ? "on" : "auto",
-          }}
-        />
-      </div>
-    </div>
-  );
+    );
 
   const problemDetailsContent = (
     <div className="h-full overflow-y-auto bg-background p-6 md:p-8">
@@ -2439,7 +2448,10 @@ export default function ClassroomView() {
                     className="h-11 px-5 text-base"
                     onClick={() => navigate(`/class/${id}/create-problem`)}
                   >
-                    <Plus size={20} className="mr-2" /> Novo
+                    <Plus size={20} className="mr-2" />
+                    {classroom?.subject === "CHEMISTRY"
+                      ? "Novo Exercício de Química"
+                      : "Novo Exercício de Programação"}
                   </Button>
                 )}
 
@@ -2626,7 +2638,7 @@ export default function ClassroomView() {
                       {isOwner && (
                         <>
                           <button
-                            disabled={classroom.isArchived} // <-- Trava
+                            disabled={classroom.isArchived}
                             onClick={() =>
                               !classroom.isArchived &&
                               navigate(`/class/${id}/create-problem`)
@@ -2637,7 +2649,10 @@ export default function ClassroomView() {
                                 "opacity-50 cursor-not-allowed",
                             )}
                           >
-                            <Plus size={16} /> Novo Problema
+                            <Plus size={16} />{" "}
+                            {classroom?.subject === "CHEMISTRY"
+                              ? "Novo Exerc. de Química"
+                              : "Novo Problema"}
                           </button>
                           {selectedProblemId && (
                             <>
