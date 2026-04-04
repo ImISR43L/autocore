@@ -14,7 +14,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ProblemType } from '../entities/problem.entity';
-import { SubjectType } from '../../classrooms/entities/classroom.entity';
+import { SubjectType } from '../../common/enums/subject-type.enum';
 
 class SolutionFileDto {
   @IsString()

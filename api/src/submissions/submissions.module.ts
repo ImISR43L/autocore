@@ -11,6 +11,7 @@ import { getSecret } from '../common/utils/secrets.util';
 import { ProblemsModule } from '../problems/problems.module';
 import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
+import { ChemistryModule } from '../chemistry/chemistry.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { UsersModule } from '../users/users.module';
     ProblemsModule,
     AuthModule,
     UsersModule,
+    ChemistryModule,
   ],
   controllers: [SubmissionsController],
   providers: [SubmissionsService, SubmissionsProcessor, SubmissionsGateway],

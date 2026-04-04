@@ -8,12 +8,10 @@ import {
   Index,
   Unique,
 } from 'typeorm';
-import {
-  Classroom,
-  SubjectType,
-} from '../../classrooms/entities/classroom.entity';
+import { Classroom } from '../../classrooms/entities/classroom.entity';
 import { TestCase } from './test-case.entity';
 import { Submission } from '../../submissions/entities/submission.entity';
+import { SubjectType } from '../../common/enums/subject-type.enum';
 
 export enum ProblemType {
   EXERCISE = 'EXERCISE',

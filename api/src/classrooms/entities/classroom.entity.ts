@@ -12,11 +12,7 @@ import {
 import { User } from '../../users/entities/user.entity';
 import { Problem } from '../../problems/entities/problem.entity';
 import { Announcement } from '../../announcements/entities/announcement.entity';
-
-export enum SubjectType {
-  PROGRAMMING = 'PROGRAMMING',
-  CHEMISTRY = 'CHEMISTRY',
-}
+import { SubjectType } from '../../common/enums/subject-type.enum';
 
 @Entity()
 export class Classroom {

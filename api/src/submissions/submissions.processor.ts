@@ -10,6 +10,8 @@ import axios from 'axios';
 import { SubmissionsGateway } from './submissions.gateway';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
+import { SubjectType } from '../common/enums/subject-type.enum';
+import { ChemistryService } from '../chemistry/chemistry.service';
 
 interface LanguageConfig {
   fileName: string;
@@ -40,6 +42,7 @@ export class SubmissionsProcessor {
     private problemsRepository: Repository<Problem>,
     private submissionsGateway: SubmissionsGateway,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private chemistryService: ChemistryService,
   ) {}
 
   private cleanLog(text: string | undefined, languageId?: number): string {
@@ -155,6 +158,48 @@ export class SubmissionsProcessor {
       }
 
       const fullProblem = submission.problem;
+
+      if (fullProblem.subject === SubjectType.CHEMISTRY) {
+        // Extrai o SMILES dependendo de como o React envia os dados (string simples ou array de ficheiros)
+        let studentSmiles = '';
+        if (Array.isArray(files) && files.length > 0) {
+          studentSmiles = files[0].content || '';
+        } else if (typeof files === 'string') {
+          studentSmiles = files;
+        }
+
+        const expectedSmiles =
+          fullProblem.validationConfig?.expectedSmiles || '';
+
+        // Chama o motor químico (RDKit)
+        const result = this.chemistryService.validateSubmission(
+          studentSmiles,
+          expectedSmiles,
+        );
+
+        // Atualiza os dados da submissão com o veredicto
+        submission.status = result.status;
+        submission.grade = result.score;
+
+        // @ts-ignore
+        submission.output = result.feedback;
+        // @ts-ignore
+        submission.executionTime = 0; // Motor local resolve quase instantaneamente
+        // @ts-ignore
+        submission.memoryUsage = 0;
+
+        await this.submissionsRepository.save(submission);
+
+        // Notifica o frontend via WebSocket que a correção terminou
+        if (submission.user?.id) {
+          this.submissionsGateway.server
+            .to(`user-${submission.user.id}`)
+            .emit('submission-finished', submission);
+        }
+
+        return; // O return impede que o código continue para o Go-Judge!
+      }
+
       const langConfig = this.getLanguageConfig(language);
       if (!langConfig) {
         this.logger.error(`[DEBUG] Linguagem ${language} não suportada.`);

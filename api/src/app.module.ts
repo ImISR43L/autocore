@@ -15,6 +15,7 @@ import { ProblemsModule } from './problems/problems.module';
 import { SubmissionsModule } from './submissions/submissions.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { HealthModule } from './health/health.module';
+import { ChemistryModule } from './chemistry/chemistry.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import * as redisStore from 'cache-manager-redis-store';
 import { getSecret } from './common/utils/secrets.util';
@@ -72,6 +73,7 @@ import { getSecret } from './common/utils/secrets.util';
     ReportsModule,
     AnnouncementsModule,
     HealthModule,
+    ChemistryModule,
   ],
   controllers: [AppController],
   providers: [

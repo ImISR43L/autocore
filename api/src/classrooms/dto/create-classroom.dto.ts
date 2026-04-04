@@ -1,5 +1,5 @@
 import { IsNotEmpty, IsString, MinLength, IsEnum } from 'class-validator';
-import { SubjectType } from '../entities/classroom.entity';
+import { SubjectType } from '../../common/enums/subject-type.enum';
 
 export class CreateClassroomDto {
   @IsString({ message: 'O nome da turma deve ser uma string.' })

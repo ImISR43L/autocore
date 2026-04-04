@@ -11,9 +11,7 @@ import { Repository } from 'typeorm';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
 import { Submission } from './entities/submission.entity';
-import { Problem, ProblemType } from '../problems/entities/problem.entity';
-// Removido: import { WrapperGenerator } ...
-
+import { Problem } from '../problems/entities/problem.entity';
 interface LanguageConfig {
   fileName: string;
   runCommand: string[];
