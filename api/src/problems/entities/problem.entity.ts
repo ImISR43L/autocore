@@ -8,7 +8,10 @@ import {
   Index,
   Unique,
 } from 'typeorm';
-import { Classroom } from '../../classrooms/entities/classroom.entity';
+import {
+  Classroom,
+  SubjectType,
+} from '../../classrooms/entities/classroom.entity';
 import { TestCase } from './test-case.entity';
 import { Submission } from '../../submissions/entities/submission.entity';
 
@@ -55,6 +58,13 @@ export class Problem {
 
   @Column({
     type: 'enum',
+    enum: SubjectType,
+    default: SubjectType.PROGRAMMING,
+  })
+  subject: SubjectType;
+
+  @Column({
+    type: 'enum',
     enum: ['EASY', 'MEDIUM', 'HARD'],
     default: 'EASY',
   })
@@ -85,6 +95,9 @@ export class Problem {
   @Column({ type: 'jsonb', default: [] })
   solutionCode: { name: string; content: string }[];
 
+  @Column({ type: 'jsonb', nullable: true })
+  validationConfig: Record<string, any>;
+
   @Column({ default: 'string' })
   returnType: string;
 
@@ -100,7 +113,6 @@ export class Problem {
   @Column({ type: 'int', nullable: true })
   memoryLimit: number;
 
-  // REINSERIDO: Data de início (Agendamento da Prova)
   @Column({ type: 'timestamp', nullable: true })
   startDate: Date;
 
@@ -121,7 +133,6 @@ export class Problem {
   @OneToMany(() => Submission, (submission) => submission.problem)
   submissions: Submission[];
 
-  // REINSERIDO: Auto-relacionamento para Sub-questões
   @ManyToOne(() => Problem, (problem) => problem.children, {
     onDelete: 'CASCADE',
     nullable: true,

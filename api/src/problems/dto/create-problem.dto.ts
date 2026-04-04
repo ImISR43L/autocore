@@ -10,9 +10,11 @@ import {
   Min,
   IsUUID,
   IsBoolean,
+  IsObject,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ProblemType } from '../entities/problem.entity';
+import { SubjectType } from '../../classrooms/entities/classroom.entity';
 
 class SolutionFileDto {
   @IsString()
@@ -22,7 +24,6 @@ class SolutionFileDto {
   content: string;
 }
 
-// 1. Nova estrutura para arquivos (substitui o antigo StarterCodeDto)
 export class ProblemFileDto {
   @IsString()
   @IsNotEmpty()
@@ -54,7 +55,6 @@ class TestCaseDto {
   isHidden?: boolean;
 }
 
-// DTO para Sub-questões (usado dentro de uma Prova)
 export class CreateQuestionDto {
   @IsString()
   @IsNotEmpty()
@@ -84,19 +84,21 @@ export class CreateQuestionDto {
   @Type(() => TestCaseDto)
   testCases?: TestCaseDto[];
 
-  // Atualizado para usar ProblemFileDto
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ProblemFileDto)
   starterCode?: ProblemFileDto[];
 
-  // Atualizado para usar ProblemFileDto
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ProblemFileDto)
   solutionCode?: ProblemFileDto[];
+
+  @IsOptional()
+  @IsObject()
+  validationConfig?: Record<string, any>;
 }
 
 export class CreateProblemDto {
@@ -111,6 +113,10 @@ export class CreateProblemDto {
   @IsString()
   @IsNotEmpty()
   slug: string;
+
+  @IsOptional()
+  @IsEnum(SubjectType)
+  subject?: SubjectType;
 
   @IsEnum(['EASY', 'MEDIUM', 'HARD'])
   @IsOptional()
@@ -130,19 +136,16 @@ export class CreateProblemDto {
   @IsOptional()
   tags?: string[];
 
-  // 2. Mudança: Aceitar UUID
   @IsNotEmpty()
   @IsUUID()
   classroomId: string;
 
-  // 3. Mudança: Usar ProblemFileDto
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ProblemFileDto)
   starterCode?: ProblemFileDto[];
 
-  // 3. Mudança: Usar ProblemFileDto
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
@@ -159,7 +162,6 @@ export class CreateProblemDto {
   @IsEnum(ProblemType)
   type?: ProblemType;
 
-  // 4. Mudança: Permitir 0 (infinito)
   @IsOptional()
   @IsInt()
   @Min(0)
@@ -173,7 +175,6 @@ export class CreateProblemDto {
   @IsInt()
   memoryLimit?: number;
 
-  // 5. Mudança: Validação de Data ISO8601 (aceita null se sanitizado)
   @IsOptional()
   @IsISO8601()
   startDate?: string | null;
@@ -189,6 +190,10 @@ export class CreateProblemDto {
   @IsOptional()
   @IsString()
   returnType?: string;
+
+  @IsOptional()
+  @IsObject()
+  validationConfig?: Record<string, any>;
 
   @IsOptional()
   @IsArray()
