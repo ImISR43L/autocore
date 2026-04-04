@@ -2,8 +2,12 @@ import { useEffect, useState } from "react";
 import { useForm, useWatch, FormProvider } from "react-hook-form";
 import { useParams, useNavigate } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { problemSchema } from "../../schemas/problem.schema";
+import {
+  programmingExerciseSchema,
+  programmingExamSchema,
+} from "../../schemas/problem.schema";
 import type { ProblemFormValues } from "../../schemas/problem.schema";
+import { z } from "zod";
 import Stepper from "../Stepper";
 import { ExerciseConfig } from "./steps/ExerciseConfig";
 import { ExamConfig } from "./steps/ExamConfig";
@@ -22,14 +26,15 @@ import { useFormPersist } from "../../hooks/useFormPersist";
 import { ExamQuestions } from "./steps/ExamQuestions";
 import { ExamReview } from "./steps/ExamReview";
 
-import { MoleculeWorkspace } from "../../features/molecule-env";
-import { useMoleculeStore } from "../../features/molecule-env/store/useMoleculeStore";
-
 // UI Components
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { cn } from "../../lib/utils";
-import { toast } from "sonner";
+
+const programmingSchema = z.union([
+  programmingExerciseSchema,
+  programmingExamSchema,
+]);
 
 interface ProblemWizardProps {
   initialValues?: Partial<ProblemFormValues>;
@@ -70,12 +75,11 @@ const generateSlug = (text: string) => {
     .replace(/--+/g, "-");
 };
 
-export function ProblemWizard({
+export function ProgrammingWizard({
   initialValues,
   onSubmit,
   classroomSubject = "PROGRAMMING",
 }: ProblemWizardProps) {
-  console.log("[ProblemWizard] Received initialValues:", initialValues);
   const params = useParams();
   const classroomId = params.id || params.classroomId || "";
   const navigate = useNavigate();
@@ -84,6 +88,7 @@ export function ProblemWizard({
   const defaults = {
     type: "EXERCISE",
     title: "",
+    subject: "PROGRAMMING",
     description: "",
     slug: "",
     classroomId: classroomId,
@@ -101,7 +106,7 @@ export function ProblemWizard({
   };
 
   const methods = useForm<ProblemFormValues>({
-    resolver: zodResolver(problemSchema) as any,
+    resolver: zodResolver(programmingSchema) as any,
     defaultValues: (initialValues || defaults) as any,
     mode: "onChange",
   });
@@ -131,30 +136,7 @@ export function ProblemWizard({
     if (classroomId && data.classroomId !== classroomId) {
       data.classroomId = classroomId;
     }
-
     (data as any).subject = classroomSubject;
-
-    if (classroomSubject === "CHEMISTRY") {
-      try {
-        const expectedSmiles = useMoleculeStore
-          .getState()
-          .exportCurrentMolecule("smiles");
-        if (!expectedSmiles) {
-          toast.error("Por favor, desenhe uma molécula válida no gabarito.");
-          return;
-        }
-
-        // Injeta o SMILES no JSONB que preparamos no backend!
-        (data as any).validationConfig = {
-          expectedSmiles: expectedSmiles,
-        };
-      } catch (e) {
-        console.error("Erro ao exportar SMILES", e);
-        toast.error("Falha ao processar o gabarito químico.");
-        return;
-      }
-    }
-
     await onSubmit(data);
     clearDraft();
   };
@@ -494,25 +476,6 @@ export function ProblemWizard({
               </ScrollableStepContent>
             </Stepper.Step>
           )}
-
-          {/* PASSO 3 (EXERCÍCIO): GABARITO (SÓ QUÍMICA)*/}
-          {problemType === "EXERCISE" && classroomSubject === "CHEMISTRY" && (
-            <Stepper.Step label="Gabarito" validationFields={[]}>
-              <ScrollableStepContent isWide={true}>
-                <div className="h-full min-h-[600px] flex flex-col relative rounded-xl overflow-hidden border border-border">
-                  <div className="absolute inset-0">
-                    <MoleculeWorkspace />
-                  </div>
-                </div>
-                <div className="mt-4 p-4 bg-primary/10 border border-primary/20 rounded-lg text-sm text-foreground">
-                  <strong>Instrução:</strong> Desenhe acima a molécula exata que
-                  o aluno precisará replicar para acertar o exercício. A
-                  conversão e validação estrutural será automática.
-                </div>
-              </ScrollableStepContent>
-            </Stepper.Step>
-          )}
-
           <Stepper.Controls />
         </Stepper>
       </FormProvider>

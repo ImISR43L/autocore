@@ -1,7 +1,6 @@
 import { z } from "zod";
 
-// --- Blocos Fundamentais (Building Blocks) ---
-
+// --- 1. Blocos Fundamentais (Building Blocks) ---
 const parameterSchema = z.object({
   name: z
     .string()
@@ -10,9 +9,6 @@ const parameterSchema = z.object({
       /^[a-zA-Z_][a-zA-Z0-9_]*$/,
       "Nome inválido (use apenas letras, números e _)",
     ),
-  // CORREÇÃO CRÍTICA AQUI:
-  // Removemos o { errorMap: ... } que estava causando o crash "(intermediate value) is null".
-  // Usamos errorMap ou params padrões suportados.
   type: z
     .enum([
       "int",
@@ -42,9 +38,9 @@ export const testCaseSchema = z.object({
   isHidden: z.boolean().default(false),
 });
 
-// --- Schemas por Etapa (Progressive Disclosure) ---
-
-export const basicInfoSchema = z.object({
+// --- 2. Schema Base Compartilhado (Shared Base Schema) ---
+// Contém APENAS o que existe em todas as disciplinas (Título, Descrição, Datas, etc.)
+export const baseProblemSchema = z.object({
   title: z.string().min(3, "Título deve ter pelo menos 3 caracteres"),
   slug: z
     .string()
@@ -55,11 +51,9 @@ export const basicInfoSchema = z.object({
     ),
   description: z.string().min(10, "Descrição muito curta"),
   type: z.enum(["EXERCISE", "EXAM"]),
+  subject: z.enum(["PROGRAMMING", "CHEMISTRY"]).default("PROGRAMMING"),
   classroomId: z.string().min(1, "A vinculação a uma turma é obrigatória"),
-  // --- CONFIGURAÇÕES COMUNS (Movidas para cá para abranger EXERCISE e EXAM) ---
   maxAttempts: z.coerce.number().int().min(0).optional(),
-  timeLimit: z.coerce.number().int().min(1).optional(),
-  memoryLimit: z.coerce.number().int().min(1).optional(),
   startDate: z
     .string()
     .refine((val) => val === "" || !isNaN(Date.parse(val)), {
@@ -76,7 +70,12 @@ export const basicInfoSchema = z.object({
     .or(z.literal("")),
 });
 
-export const exerciseDetailsSchema = z.object({
+// --- 3. Schemas Específicos por Disciplina (Domain-Specific Schemas) ---
+
+// 3.1 Detalhes Exclusivos de Programação
+export const programmingDetailsSchema = z.object({
+  timeLimit: z.coerce.number().int().min(1).optional(),
+  memoryLimit: z.coerce.number().int().min(1).optional(),
   parameters: z.array(parameterSchema).default([]),
   returnType: z.string().default("void"),
   starterCode: z
@@ -86,97 +85,111 @@ export const exerciseDetailsSchema = z.object({
   testCases: z.array(testCaseSchema).default([]),
 });
 
-const questionSchema = z.object({
-  title: z.string().min(1),
-  description: z.string(),
-  slug: z.string(),
-  parameters: z.array(parameterSchema),
-  returnType: z.string(),
-  starterCode: z.array(fileEntrySchema),
-  testCases: z.array(testCaseSchema),
-});
-
-export const examQuestionsSchema = z.object({
-  questions: z
-    .array(questionSchema)
-    .min(1, "A prova deve ter pelo menos uma questão")
+// 3.2 Detalhes Exclusivos de Química
+export const chemistryDetailsSchema = z.object({
+  validationConfig: z
+    .object({
+      expectedSmiles: z.string().min(1, "O gabarito não pode estar vazio"),
+    })
     .optional(),
 });
 
-const nestedQuestionSchema = z
+// --- 4. Schemas de Prova (Exams) ---
+// Mantemos a prova focada em programação para já
+const programmingQuestionSchema = z
   .object({
     title: z.string().min(1, "Título da questão é obrigatório"),
     description: z.string().min(1, "Descrição é obrigatória"),
     slug: z.string().min(1, "Slug é obrigatório"),
   })
-  .merge(exerciseDetailsSchema); // Herda parameters, starterCode, testCases...
+  .merge(programmingDetailsSchema);
 
-// Configurações da Prova (Datas/Limites)
-export const examSettingsSchema = z.object({
-  questions: z.array(nestedQuestionSchema).default([]),
+export const programmingExamSettingsSchema = z.object({
+  questions: z
+    .array(programmingQuestionSchema)
+    .min(1, "A prova deve ter pelo menos uma questão")
+    .default([]),
 });
 
-// --- Schema Unificado (Discriminated Union) ---
-export const problemSchema = z
-  .discriminatedUnion("type", [
-    basicInfoSchema
-      .extend({ type: z.literal("EXERCISE") })
-      .merge(exerciseDetailsSchema),
-    basicInfoSchema
-      .extend({ type: z.literal("EXAM") })
-      .merge(examSettingsSchema),
-  ])
-  .superRefine((data, ctx) => {
-    // 1. Validação de datas movida para cá para funcionar nos dois tipos
-    if (
-      data.startDate &&
-      data.deadline &&
-      data.startDate !== "" &&
-      data.deadline !== ""
-    ) {
-      if (new Date(data.startDate) >= new Date(data.deadline)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "A data de entrega deve ser posterior à data de início",
-          path: ["deadline"],
-        });
-      }
-    }
-
-    // 2. Validação de Casos de Teste
-    const checkTestCases = (
-      parameters: any[],
-      returnType: string,
-      testCases: any[],
-      pathPrefix: (string | number)[],
-    ) => {
-      const hasParameters = parameters && parameters.length > 0;
-      const hasReturn =
-        returnType && returnType !== "void" && returnType.trim() !== "";
-      const hasNoTests = !testCases || testCases.length === 0;
-
-      if (hasParameters && hasReturn && hasNoTests) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message:
-            "Obrigatório: Adicione pelo menos 1 caso de teste pois há parâmetros e retorno definidos.",
-          path: [...pathPrefix, "testCases"],
-        });
-      }
-    };
-
-    if (data.type === "EXERCISE") {
-      checkTestCases(data.parameters, data.returnType, data.testCases, []);
-    } else if (data.type === "EXAM") {
-      data.questions.forEach((question, index) => {
-        checkTestCases(
-          question.parameters,
-          question.returnType,
-          question.testCases,
-          ["questions", index],
-        );
+// --- 5. Funções de Validação Customizadas (Super Refines) ---
+const refineDates = (data: any, ctx: z.RefinementCtx) => {
+  if (
+    data.startDate &&
+    data.deadline &&
+    data.startDate !== "" &&
+    data.deadline !== ""
+  ) {
+    if (new Date(data.startDate) >= new Date(data.deadline)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A data de entrega deve ser posterior à data de início",
+        path: ["deadline"],
       });
     }
+  }
+};
+
+const refineProgrammingTests = (
+  data: any,
+  ctx: z.RefinementCtx,
+  pathPrefix: (string | number)[] = [],
+) => {
+  const hasParameters = data.parameters && data.parameters.length > 0;
+  const hasReturn =
+    data.returnType &&
+    data.returnType !== "void" &&
+    data.returnType.trim() !== "";
+  const hasNoTests = !data.testCases || data.testCases.length === 0;
+
+  if (hasParameters && hasReturn && hasNoTests) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "Obrigatório: Adicione pelo menos 1 caso de teste pois há parâmetros e retorno definidos.",
+      path: [...pathPrefix, "testCases"],
+    });
+  }
+};
+
+// --- 6. Schemas Finais exportados para os Wizards ---
+
+export const programmingExerciseSchema = baseProblemSchema
+  .extend({ type: z.literal("EXERCISE"), subject: z.literal("PROGRAMMING") })
+  .merge(programmingDetailsSchema)
+  .superRefine((data, ctx) => {
+    refineDates(data, ctx);
+    refineProgrammingTests(data, ctx);
   });
 
+export const chemistryExerciseSchema = baseProblemSchema
+  .extend({ type: z.literal("EXERCISE"), subject: z.literal("CHEMISTRY") })
+  .merge(chemistryDetailsSchema)
+  .superRefine((data, ctx) => {
+    refineDates(data, ctx);
+  });
+
+export const programmingExamSchema = baseProblemSchema
+  .extend({ type: z.literal("EXAM"), subject: z.literal("PROGRAMMING") })
+  .merge(programmingExamSettingsSchema)
+  .superRefine((data, ctx) => {
+    refineDates(data, ctx);
+    data.questions.forEach((q, idx) =>
+      refineProgrammingTests(q, ctx, ["questions", idx]),
+    );
+  });
+
+// --- 7. Schema Global (União para tipagem do formulário geral) ---
+export const problemSchema = z.union([
+  programmingExerciseSchema,
+  programmingExamSchema,
+  chemistryExerciseSchema,
+]);
+
+// Tipos Inferidos exportados
 export type ProblemFormValues = z.infer<typeof problemSchema>;
+export type ProgrammingExerciseFormValues = z.infer<
+  typeof programmingExerciseSchema
+>;
+export type ChemistryExerciseFormValues = z.infer<
+  typeof chemistryExerciseSchema
+>;

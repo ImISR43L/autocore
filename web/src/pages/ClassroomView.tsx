@@ -1230,9 +1230,9 @@ export default function ClassroomView() {
     }
 
     try {
-      // 👇 NOVA LÓGICA: Intercepta os dados se for Química 👇
       let payloadFiles = files;
-      let payloadLanguageId = languageId;
+      // Define como undefined inicialmente para podermos omitir se for química
+      let payloadLanguageId: number | undefined = languageId;
 
       if (classroom?.subject === "CHEMISTRY") {
         const studentSmiles = useMoleculeStore
@@ -1244,28 +1244,31 @@ export default function ClassroomView() {
           setLoading(false);
           loadingRef.current = false;
           setVerdict(null);
-          return; // Aborta o envio se não houver molécula
+          return;
         }
 
-        // Empacota o SMILES no formato que o NestJS já espera
         payloadFiles = [{ name: "submission.smi", content: studentSmiles }];
-        payloadLanguageId = 71; // ID arbitrário (Python), o backend vai ignorar porque subject é CHEMISTRY
+        payloadLanguageId = undefined;
       }
 
-      // 2. Envia para a API (que deposita na fila e retorna imediatamente)
-      await api.post(`/submissions`, {
-        files: payloadFiles, // Usa a variável que criámos
-        language_id: payloadLanguageId, // Usa a variável que criámos
+      // Monta o payload dinâmico
+      const payload: any = {
+        files: payloadFiles,
         problem_id: displayProblem.id,
-      });
+      };
 
-      // 3. Libera a interface IMEDIATAMENTE após a API responder.
+      // Só anexa o language_id se ele existir (ou seja, se for programação)
+      if (payloadLanguageId !== undefined) {
+        payload.language_id = payloadLanguageId;
+      }
+
+      await api.post(`/submissions`, payload);
+
       setLoading(false);
       loadingRef.current = false;
       setVerdict("Na Fila...");
       toast.info("Gabarito enviado! Aguardando o motor químico...");
 
-      // 4. Fallback de atualização
       setTimeout(() => {
         if (displayProblemRef.current) {
           fetchSubmissions(displayProblemRef.current.id);

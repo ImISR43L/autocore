@@ -25,8 +25,8 @@ export class Submission {
   @Column({ type: 'jsonb' })
   files: FileEntry[];
 
-  @Column()
-  language_id: number;
+  @Column({ type: 'int', nullable: true })
+  languageId: number;
 
   @Column()
   @Index()

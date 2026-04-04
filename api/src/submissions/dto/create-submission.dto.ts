@@ -5,6 +5,7 @@ import {
   IsArray,
   ValidateNested,
   IsUUID,
+  IsOptional,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -23,8 +24,9 @@ export class CreateSubmissionDto {
   @Type(() => FileDto)
   files: FileDto[]; // ALTERAÇÃO: Recebe lista de arquivos
 
+  @IsOptional()
   @IsInt()
-  language_id: number;
+  language_id?: number;
 
   @IsUUID()
   @IsNotEmpty()
