@@ -130,7 +130,12 @@ interface Problem {
   children?: Problem[];
   parent?: { id: string };
   starterCode?: FileEntry[];
-  allowedLanguages?: string[]; // <-- Novo Campo
+  allowedLanguages?: string[];
+  validationConfig?: {
+    expectedMode?: string;
+    expectedSmiles?: string;
+    rawState?: any;
+  };
 }
 
 interface Classroom {
@@ -1231,8 +1236,8 @@ export default function ClassroomView() {
 
     try {
       let payloadFiles = files;
-      // Define como undefined inicialmente para podermos omitir se for química
-      let payloadLanguageId: number | undefined = languageId;
+      // CORREÇÃO: Garantimos que o ID nunca seja nulo usando 71 como padrão
+      let payloadLanguageId: number | undefined = languageId || 71;
 
       if (classroom?.subject === "CHEMISTRY") {
         const studentSmiles = useMoleculeStore
@@ -1248,7 +1253,6 @@ export default function ClassroomView() {
         }
 
         payloadFiles = [{ name: "submission.smi", content: studentSmiles }];
-        payloadLanguageId = undefined;
       }
 
       // Monta o payload dinâmico
@@ -1484,10 +1488,29 @@ export default function ClassroomView() {
     return name.includes(term) || email.includes(term);
   });
 
+  let safeValidationConfig = displayProblem?.validationConfig as any;
+  if (typeof safeValidationConfig === "string") {
+    try {
+      safeValidationConfig = JSON.parse(safeValidationConfig);
+    } catch (e) {}
+  }
+
+  let parsedRawState = safeValidationConfig?.rawState;
+  if (typeof parsedRawState === "string") {
+    try {
+      parsedRawState = JSON.parse(parsedRawState);
+    } catch (e) {}
+  }
+
   const editorContent =
     classroom?.subject === "CHEMISTRY" ? (
       <div className="w-full h-full relative overflow-hidden bg-background">
-        <MoleculeWorkspace />
+        <MoleculeWorkspace
+          key={`student-ide-${displayProblem?.id || "empty"}`}
+          initialSmiles={isOwner ? safeValidationConfig?.expectedSmiles : ""}
+          initialMode={safeValidationConfig?.expectedMode}
+          initialRawState={isOwner ? parsedRawState : undefined}
+        />
       </div>
     ) : (
       <div className="flex flex-col h-full bg-surface">
@@ -3239,8 +3262,12 @@ export default function ClassroomView() {
               <div className="flex-1 lg:border-r border-border flex flex-col min-h-[300px]">
                 <div className="bg-surface p-3 border-b border-border text-sm text-muted flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <FileCode size={18} />
-                    Visualizador de Código
+                    {classroom?.subject === "CHEMISTRY" ? (
+                      <Beaker size={18} />
+                    ) : (
+                      <FileCode size={18} />
+                    )}
+                    Visualizador de Resolução
                   </div>
 
                   {/* Navegação de arquivos na inspeção */}
@@ -3264,27 +3291,48 @@ export default function ClassroomView() {
                   )}
                 </div>
 
-                <div className="flex-1 relative">
-                  <Editor
-                    height="100%"
-                    width="100%"
-                    language="python"
-                    theme={monacoTheme}
-                    value={
-                      (isOwner &&
-                        activeSubmission?.files[inspectFileIndex]?.content) ||
-                      selectedSubmission?.files[inspectFileIndex]?.content ||
-                      "// Código não disponível"
-                    }
-                    options={{
-                      readOnly: true,
-                      minimap: { enabled: false },
-                      fontSize: 16,
-                      scrollBeyondLastLine: false,
-                      automaticLayout: true,
-                      accessibilitySupport: screenReaderMode ? "on" : "auto",
-                    }}
-                  />
+                <div className="flex-1 relative bg-background">
+                  {classroom?.subject === "CHEMISTRY" ? (
+                    <MoleculeWorkspace
+                      key={
+                        activeSubmission?.id ||
+                        selectedSubmission?.id ||
+                        "viewer"
+                      }
+                      initialSmiles={
+                        (isOwner &&
+                          activeSubmission?.files[inspectFileIndex]?.content) ||
+                        (!isOwner &&
+                          selectedSubmission?.files[inspectFileIndex]
+                            ?.content) ||
+                        ""
+                      }
+                      initialMode={
+                        displayProblem?.validationConfig?.expectedMode as any
+                      }
+                    />
+                  ) : (
+                    <Editor
+                      height="100%"
+                      width="100%"
+                      language="python"
+                      theme={monacoTheme}
+                      value={
+                        (isOwner &&
+                          activeSubmission?.files[inspectFileIndex]?.content) ||
+                        selectedSubmission?.files[inspectFileIndex]?.content ||
+                        "// Código não disponível"
+                      }
+                      options={{
+                        readOnly: true,
+                        minimap: { enabled: false },
+                        fontSize: 16,
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                        accessibilitySupport: screenReaderMode ? "on" : "auto",
+                      }}
+                    />
+                  )}
                 </div>
               </div>
 

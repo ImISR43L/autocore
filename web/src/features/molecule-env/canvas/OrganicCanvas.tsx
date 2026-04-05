@@ -142,7 +142,6 @@ export const OrganicCanvas: React.FC = () => {
       width={width}
       height={height}
       style={{
-        marginLeft: "220px",
         cursor: "crosshair",
       }}
       onMouseDown={handleMouseDown}

@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
-import { ProblemEditor } from "../components/problem/ProblemEditor";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "../components/ui/Button";
+
+// Importa os nossos novos Editores Especializados
+import { ProgrammingEditor } from "../components/problem/ProgrammingEditor";
+import { ChemistryEditor } from "../components/problem/ChemistryEditor";
 
 export default function EditProblem() {
   const params = useParams();
   const navigate = useNavigate();
 
-  // Suporte a rotas aninhadas ou diretas
   const problemId = params.problemId || params.id;
 
   const [problem, setProblem] = useState<any>(null);
@@ -30,8 +32,6 @@ export default function EditProblem() {
       try {
         const res = await api.get(`/problems/${problemId}`);
 
-        console.log("[EditProblem] Raw API Response:", res.data);
-
         if (res.data.classroom?.isArchived) {
           toast.warning(
             "Turma arquivada. O modo de leitura não permite edições.",
@@ -46,8 +46,18 @@ export default function EditProblem() {
           return new Date(date.getTime() - offset).toISOString().slice(0, 16);
         };
 
+        let parsedValidationConfig = res.data.validationConfig;
+        if (typeof parsedValidationConfig === "string") {
+          try {
+            parsedValidationConfig = JSON.parse(parsedValidationConfig);
+          } catch (e) {
+            console.error("Erro ao fazer parse do validationConfig", e);
+          }
+        }
+
         const formatted = {
           ...res.data,
+          validationConfig: parsedValidationConfig,
           classroomId: res.data.classroomId || res.data.classroom?.id || "",
           parameters: res.data.parameters || [],
           testCases: res.data.testCases || [],
@@ -61,7 +71,6 @@ export default function EditProblem() {
             : undefined,
         };
 
-        console.log("[EditProblem] Formatted Problem to set:", formatted);
         setProblem(formatted);
       } catch (error) {
         console.error(error);
@@ -77,20 +86,16 @@ export default function EditProblem() {
   const handleUpdate = async (rawData: any) => {
     if (!problemId) return;
 
-    // 1. Sanitização e Limpeza
     const payload = { ...rawData };
 
-    // Remove questions se for EXERCISE para evitar erro de validação no backend
     if (payload.type === "EXERCISE") {
       delete payload.questions;
     }
 
-    // Remove propriedade 'id' dos testCases do problema
     if (Array.isArray(payload.testCases)) {
       payload.testCases = payload.testCases.map(({ id, ...rest }: any) => rest);
     }
 
-    // Remove propriedade 'id' dos testCases dentro de cada questão (caso seja EXAM)
     if (Array.isArray(payload.questions)) {
       payload.questions = payload.questions.map((question: any) => ({
         ...question,
@@ -99,17 +104,20 @@ export default function EditProblem() {
           : question.testCases,
       }));
     }
-    // 2. Conversão de Datas para ISO 8601
-    try {
-      payload.startDate = payload.startDate
-        ? new Date(payload.startDate).toISOString()
-        : null;
-      payload.deadline = payload.deadline
-        ? new Date(payload.deadline).toISOString()
-        : null;
-    } catch (e) {
-      toast.error("Data inválida.");
-      return;
+
+    // Tratamento estrito de datas para evitar erro 400 no NestJS
+    if (!payload.startDate) delete payload.startDate;
+    else {
+      try {
+        payload.startDate = new Date(payload.startDate).toISOString();
+      } catch (e) {}
+    }
+
+    if (!payload.deadline) delete payload.deadline;
+    else {
+      try {
+        payload.deadline = new Date(payload.deadline).toISOString();
+      } catch (e) {}
     }
 
     try {
@@ -197,12 +205,21 @@ export default function EditProblem() {
 
       <div className="flex-1 min-h-0 p-4 md:p-6 pt-2">
         <div className="h-full bg-surface border border-border rounded-xl shadow-2xl overflow-hidden">
-          <ProblemEditor
-            initialValues={problem}
-            onSubmit={handleUpdate}
-            mode="EDIT"
-            onDirtyChange={setIsFormDirty}
-          />
+          {problem?.subject === "CHEMISTRY" ? (
+            <ChemistryEditor
+              initialValues={problem}
+              onSubmit={handleUpdate}
+              mode="EDIT"
+              onDirtyChange={setIsFormDirty}
+            />
+          ) : (
+            <ProgrammingEditor
+              initialValues={problem}
+              onSubmit={handleUpdate}
+              mode="EDIT"
+              onDirtyChange={setIsFormDirty}
+            />
+          )}
         </div>
       </div>
     </div>

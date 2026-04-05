@@ -3,7 +3,6 @@ import { Stage, Layer } from "react-konva";
 import { GridLayer } from "./GridLayer";
 import { AtomNode } from "./AtomNode";
 import { BondLine } from "./BondLine";
-import { ElementPalette } from "../components/ElementPalette";
 import { useMoleculeStore } from "../store/useMoleculeStore";
 import { gridMath } from "../utils/grid";
 import { Atom } from "../types/molecule";
@@ -66,14 +65,12 @@ export const MoleculeCanvas: React.FC = () => {
 
   return (
     <>
-      <ElementPalette />
       <Stage
         ref={stageRef}
         width={dimensions.width}
         height={dimensions.height}
         style={{
           cursor: activeElement ? "crosshair" : "grab",
-          marginLeft: "220px",
         }}
         onClick={handleStageClick}
       >

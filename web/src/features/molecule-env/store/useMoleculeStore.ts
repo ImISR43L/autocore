@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import { Atom, Bond, BondOrder, StereoType } from "../types/molecule";
-import { isChemistryValid, exportMolecule } from "../engine/validation";
+import {
+  isChemistryValid,
+  exportMolecule,
+  importMoleculeFromSmiles,
+} from "../engine/validation";
 
 export type BuilderMode = "INORGANIC" | "ORGANIC";
 
@@ -51,6 +55,13 @@ interface MoleculeState {
     clickY: number,
   ) => void;
   exportCurrentMolecule: (format?: "molblock" | "smiles") => string | null;
+  loadMoleculeFromSmiles: (smiles: string, targetMode?: BuilderMode) => void;
+  clear: () => void;
+  loadMoleculeFromState: (rawState: {
+    atoms: Record<string, Atom>;
+    bonds: Bond[];
+    mode: BuilderMode;
+  }) => void;
 }
 
 const isOccupied = (atoms: Record<string, Atom>, q: number, r: number) => {
@@ -683,5 +694,54 @@ export const useMoleculeStore = create<MoleculeState>((set, get) => ({
 
     // 3. Chama o motor de exportação
     return exportMolecule(filteredAtoms, filteredBonds, format);
+  },
+
+  loadMoleculeFromSmiles: (smiles, targetMode = "ORGANIC") => {
+    const importedData = importMoleculeFromSmiles(smiles);
+
+    if (importedData) {
+      const finalAtoms = { ...importedData.atoms };
+
+      // Se for inorgânico, removemos as coordenadas float para que o
+      // InorganicCanvas reconheça que deve usar a grade (q, r)
+      if (targetMode === "INORGANIC") {
+        for (const key in finalAtoms) {
+          finalAtoms[key].x = undefined; // Forçamos undefined em vez de usar `delete`
+          finalAtoms[key].y = undefined;
+        }
+      }
+
+      set({
+        atoms: finalAtoms,
+        bonds: importedData.bonds,
+        mode: targetMode, // Setta o estado para INORGANIC (grade) ou ORGANIC
+        selectedAtomId: null,
+        activePaletteElement: null,
+      });
+    } else {
+      console.warn(
+        "Não foi possível renderizar a molécula a partir do SMILES fornecido.",
+      );
+    }
+  },
+
+  clear: () =>
+    set({
+      atoms: {},
+      bonds: [],
+      selectedAtomId: null,
+      activePaletteElement: null,
+      dragPositions: {},
+    }),
+
+  loadMoleculeFromState: (rawState) => {
+    set({
+      atoms: rawState.atoms || {},
+      bonds: rawState.bonds || [],
+      mode: rawState.mode || "ORGANIC",
+      selectedAtomId: null,
+      activePaletteElement: null,
+      dragPositions: {}, // Limpa os arrastos
+    });
   },
 }));

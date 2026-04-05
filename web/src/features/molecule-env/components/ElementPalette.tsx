@@ -53,6 +53,7 @@ export const ElementPalette: React.FC = () => {
     return (
       <button
         key={id}
+        type="button"
         onClick={() => setActiveElement(id)}
         title={title}
         className={`w-[50px] h-[50px] rounded-lg flex-shrink-0 flex justify-center items-center font-bold transition-all duration-200 ${fontSize} ${
@@ -74,6 +75,7 @@ export const ElementPalette: React.FC = () => {
 
     return (
       <button
+        type="button"
         key={symbol}
         onClick={() => setActiveElement(symbol)}
         title={`${fullName} (${symbol})`}
@@ -97,9 +99,7 @@ export const ElementPalette: React.FC = () => {
   };
 
   return (
-    <div className="absolute left-0 top-0 w-[220px] h-screen bg-surface flex flex-col items-center py-5 px-2.5 border-r border-border z-[100] overflow-y-auto overflow-x-hidden shadow-xl">
-      {/* SEÇÃO COMUM A AMBOS OS MODOS */}
-      {/* SEÇÃO COMUM A AMBOS OS MODOS */}
+    <div className="absolute left-0 top-0 w-[220px] h-full bg-surface flex flex-col items-center py-5 px-2.5 border-r border-border z-[100] overflow-y-auto overflow-x-hidden shadow-xl">
       <h3 className="text-muted font-bold text-[11px] tracking-wider uppercase mb-3 w-full text-center">
         Ações
       </h3>

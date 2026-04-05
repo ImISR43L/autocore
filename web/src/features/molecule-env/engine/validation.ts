@@ -1,6 +1,6 @@
 // src/engine/validation.ts
 import { getRDKit } from "./rdkit";
-import { Atom, Bond } from "../types/molecule";
+import { Atom, Bond, StereoType } from "../types/molecule";
 
 /**
  * Converte o estado atual do Grafo para um formato MolBlock V2000 estrito.
@@ -180,6 +180,91 @@ export const exportMolecule = (
     return smiles;
   } catch (error) {
     console.error("Erro ao exportar a molécula:", error);
+    return null;
+  }
+};
+
+export const importMoleculeFromSmiles = (
+  smiles: string,
+): { atoms: Record<string, Atom>; bonds: Bond[] } | null => {
+  if (!smiles) return null;
+
+  try {
+    const RDKit = getRDKit();
+    const mol = RDKit.get_mol(smiles);
+    if (!mol) return null;
+
+    if (mol.set_new_coords) {
+      mol.set_new_coords();
+    }
+
+    const molBlock = mol.get_molblock();
+    mol.delete();
+
+    if (!molBlock) return null;
+
+    const lines = molBlock.split(/\r?\n/);
+    if (lines.length < 4) return null;
+
+    const countsLine = lines[3];
+    const numAtoms = parseInt(countsLine.substring(0, 3).trim(), 10);
+    const numBonds = parseInt(countsLine.substring(3, 6).trim(), 10);
+
+    const newAtoms: Record<string, Atom> = {};
+    const newBonds: Bond[] = [];
+    const timestamp = Date.now();
+
+    for (let i = 0; i < numAtoms; i++) {
+      const line = lines[4 + i];
+      if (!line) continue;
+
+      const xStr = line.substring(0, 10).trim();
+      const yStr = line.substring(10, 20).trim();
+      const symbol = line.substring(31, 34).trim();
+
+      const x = parseFloat(xStr) * 50 + 400;
+      const y = -parseFloat(yStr) * 50 + 300;
+
+      const size = 25;
+
+      const q = Math.round(((Math.sqrt(3) / 3) * x - (1 / 3) * y) / size);
+      const r = Math.round(((2 / 3) * y) / size);
+
+      const id = `atom_${timestamp}_loaded_${i}`;
+      newAtoms[id] = {
+        id,
+        element: symbol || "C",
+        charge: 0,
+        gridPosition: { q, r },
+        x,
+        y,
+      };
+    }
+
+    const bondStartIndex = 4 + numAtoms;
+    for (let i = 0; i < numBonds; i++) {
+      const line = lines[bondStartIndex + i];
+      if (!line) continue;
+
+      const atom1Idx = parseInt(line.substring(0, 3).trim(), 10) - 1;
+      const atom2Idx = parseInt(line.substring(3, 6).trim(), 10) - 1;
+      const bondOrder = parseInt(line.substring(6, 9).trim(), 10);
+
+      const sourceId = `atom_${timestamp}_loaded_${atom1Idx}`;
+      const targetId = `atom_${timestamp}_loaded_${atom2Idx}`;
+
+      newBonds.push({
+        id: `bond_${timestamp}_loaded_${i}`,
+        sourceId,
+        targetId,
+        order: bondOrder >= 1 && bondOrder <= 3 ? bondOrder : 1,
+        stereo: StereoType.NONE,
+      });
+    }
+
+    return { atoms: newAtoms, bonds: newBonds };
+  } catch (error) {
+    console.error("Erro ao importar molécula do SMILES:", error);
     return null;
   }
 };

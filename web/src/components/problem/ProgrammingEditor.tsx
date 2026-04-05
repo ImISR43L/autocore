@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { problemSchema } from "../../schemas/problem.schema";
-import type { ProblemFormValues } from "../../schemas/problem.schema";
+import { z } from "zod";
+import {
+  programmingExerciseSchema,
+  programmingExamSchema,
+} from "../../schemas/problem.schema";
 import {
   Save,
   Layout,
@@ -14,37 +17,40 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-// Reutilizando os componentes existentes
 import { ScaffoldingConfig } from "./steps/ScaffoldingConfig";
 import { ValidationConfig } from "./steps/ValidationConfig";
 import { MarkdownInput } from "../inputs/MarkdownInput";
 
-// UI Components do Design System
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { cn } from "../../lib/utils";
 
-interface ProblemEditorProps {
-  initialValues: ProblemFormValues;
-  onSubmit: (data: ProblemFormValues) => Promise<void>;
+const programmingSchema = z.union([
+  programmingExerciseSchema,
+  programmingExamSchema,
+]);
+
+interface ProgrammingEditorProps {
+  initialValues: any;
+  onSubmit: (data: any) => Promise<void>;
   mode: "CREATE" | "EDIT";
-  // Novo prop para comunicação com o pai
   onDirtyChange?: (isDirty: boolean) => void;
 }
 
 type TabType = "general" | "code" | "validation" | "settings";
 
-export function ProblemEditor({
+export function ProgrammingEditor({
   initialValues,
   onSubmit,
   mode,
   onDirtyChange,
-}: ProblemEditorProps) {
+}: ProgrammingEditorProps) {
   const [activeTab, setActiveTab] = useState<TabType>("general");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const methods = useForm<ProblemFormValues>({
-    resolver: zodResolver(problemSchema) as any,
+  // Inicializa o formulário estritamente com os Schemas de Programação
+  const methods = useForm({
+    resolver: zodResolver(programmingSchema) as any,
     defaultValues: initialValues,
     mode: "onChange",
   });
@@ -55,16 +61,17 @@ export function ProblemEditor({
     formState: { errors, isDirty },
   } = methods;
 
-  // Sincroniza o estado "dirty" com o componente pai (EditProblem)
   useEffect(() => {
     if (onDirtyChange) {
       onDirtyChange(isDirty);
     }
   }, [isDirty, onDirtyChange]);
 
-  const onFormSubmit = async (data: ProblemFormValues) => {
+  const onFormSubmit = async (data: any) => {
     setIsSubmitting(true);
     try {
+      // Carimba como Programação para segurança do Backend
+      data.subject = "PROGRAMMING";
       await onSubmit(data);
     } finally {
       setIsSubmitting(false);
@@ -78,7 +85,6 @@ export function ProblemEditor({
     );
   };
 
-  // Botão de Navegação Interna (Abas) - Responsivo
   const NavButton = ({
     tab,
     icon,
@@ -110,9 +116,8 @@ export function ProblemEditor({
           onSubmit={methods.handleSubmit(onFormSubmit, onInvalid)}
           className="h-full flex flex-col"
         >
-          {/* --- HEADER / NAVIGATION --- */}
+          {/* HEADER / NAVIGATION */}
           <div className="flex-none border-b border-border bg-surface px-4 py-3 md:px-6 md:py-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm z-10">
-            {/* Navegação de Abas (Agora ocupa largura total no mobile) */}
             <div className="w-full md:w-auto overflow-x-auto no-scrollbar">
               <div className="flex bg-background/50 rounded-lg p-1 border border-border min-w-fit">
                 <NavButton
@@ -149,7 +154,7 @@ export function ProblemEditor({
             </Button>
           </div>
 
-          {/* --- CONTENT AREA --- */}
+          {/* CONTENT AREA */}
           <div className="flex-1 overflow-y-auto p-4 md:p-8 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
             <div className="max-w-7xl mx-auto min-h-full pb-10">
               {/* ABA GERAL */}
@@ -163,14 +168,14 @@ export function ProblemEditor({
                   <Input
                     label="Título da Atividade"
                     placeholder="Ex: Soma de Vetores"
-                    error={errors.title?.message}
+                    error={errors.title?.message as string}
                     {...register("title")}
                     className="h-11 md:h-12 text-base bg-surface border-border focus:border-primary"
                   />
                   <Input
                     label="Slug (URL Amigável)"
                     placeholder="soma-de-vetores"
-                    error={errors.slug?.message}
+                    error={errors.slug?.message as string}
                     {...register("slug")}
                     className="h-11 md:h-12 text-base bg-surface border-border font-mono text-muted focus:text-foreground"
                   />
@@ -185,7 +190,7 @@ export function ProblemEditor({
                       label=""
                       register={register("description")}
                       watchValue={watch("description")}
-                      error={errors.description?.message}
+                      error={errors.description?.message as string}
                       placeholder="# Descreva o problema detalhadamente aqui..."
                     />
                   </div>

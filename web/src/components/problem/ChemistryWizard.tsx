@@ -51,15 +51,30 @@ export function ChemistryWizard({
     }
 
     try {
-      const expectedSmiles = useMoleculeStore
-        .getState()
-        .exportCurrentMolecule("smiles");
+      const state = useMoleculeStore.getState();
+      const expectedSmiles = state.exportCurrentMolecule("smiles");
+      const expectedMode = state.mode;
+
+      // 1. CAPTURE O ESTADO
+      const rawState = {
+        atoms: state.atoms,
+        bonds: state.bonds,
+        mode: state.mode,
+      };
+
       if (!expectedSmiles) {
         toast.error("Por favor, desenhe uma molécula válida no gabarito.");
         return;
       }
 
-      data.validationConfig = { expectedSmiles };
+      // 2. ADICIONE O JSON.stringify AQUI!
+      data.validationConfig = {
+        expectedSmiles,
+        expectedMode,
+        rawState: JSON.stringify(rawState), // A mágica acontece aqui
+      };
+
+      // 3. Envie para a prop onSubmit
       await onSubmit(data);
       clearDraft();
     } catch (e) {
