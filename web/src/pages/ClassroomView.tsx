@@ -902,41 +902,54 @@ export default function ClassroomView() {
   }, [activeTab, isOwner, id, fetchStats]);
 
   useEffect(() => {
-    if (
-      !currentProblem ||
-      currentProblem.type !== "EXAM" ||
-      !currentProblem.timeLimit ||
-      !currentProblem.startedAt
-    ) {
+    // Se não for prova, limpa os estados e sai
+    if (!currentProblem || currentProblem.type !== "EXAM") {
       setTimeLeft(null);
-      setExamStatus(
-        currentProblem && !currentProblem.startedAt ? "WAITING" : "RUNNING",
-      );
+      setExamStatus("WAITING");
       return;
     }
+
     const interval = setInterval(() => {
       const now = new Date().getTime();
-      const start = new Date(currentProblem.startedAt!).getTime();
-      const diff = start + currentProblem.timeLimit! * 60 * 1000 - now;
-      if (diff <= 0) {
+      const start = currentProblem.startDate
+        ? new Date(currentProblem.startDate).getTime()
+        : 0;
+      const end = currentProblem.deadline
+        ? new Date(currentProblem.deadline).getTime()
+        : Infinity;
+
+      // A prova inicia se a data atual passou da startDate OU se o professor clicou em Iniciar manualmente (startedAt)
+      const isStarted = (start > 0 && now >= start) || currentProblem.startedAt;
+      const isFinished = now > end;
+
+      if (!isStarted && !isFinished) {
+        setExamStatus("WAITING");
+        setTimeLeft("Aguardando");
+      } else if (isStarted && !isFinished) {
+        setExamStatus("RUNNING");
+        if (end !== Infinity) {
+          // O tempo restante é a diferença entre o PRAZO FINAL e o MOMENTO ATUAL
+          const diff = end - now;
+          const h = Math.floor(diff / 36e5)
+            .toString()
+            .padStart(2, "0");
+          const m = Math.floor((diff % 36e5) / 6e4)
+            .toString()
+            .padStart(2, "0");
+          const s = Math.floor((diff % 6e4) / 1e3)
+            .toString()
+            .padStart(2, "0");
+          setTimeLeft(`${h}:${m}:${s}`);
+        } else {
+          setTimeLeft("Sem limite");
+        }
+      } else {
         setExamStatus("FINISHED");
         setTimeLeft("00:00:00");
         clearInterval(interval);
-      } else {
-        setExamStatus("RUNNING");
-        // Divisão direta por 36e5 garante que horas > 24 sejam mostradas adequadamente
-        const h = Math.floor(diff / 36e5)
-          .toString()
-          .padStart(2, "0");
-        const m = Math.floor((diff % 36e5) / 6e4)
-          .toString()
-          .padStart(2, "0");
-        const s = Math.floor((diff % 6e4) / 1e3)
-          .toString()
-          .padStart(2, "0");
-        setTimeLeft(`${h}:${m}:${s}`);
       }
     }, 1000);
+
     return () => clearInterval(interval);
   }, [currentProblem]);
 

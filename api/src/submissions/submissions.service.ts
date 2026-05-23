@@ -130,7 +130,11 @@ export class SubmissionsService {
       54: 'cpp',
     };
 
-    const submittedLangString = languageMap[createSubmissionDto.language_id];
+    // CORREÇÃO 1: Trata o undefined para o TS não reclamar do index type
+    const submittedLangString =
+      createSubmissionDto.language_id != null
+        ? languageMap[createSubmissionDto.language_id]
+        : undefined;
 
     if (
       problem.allowedLanguages &&
@@ -155,10 +159,10 @@ export class SubmissionsService {
       }
     }
 
-    // Criação da Entidade
+    // CORREÇÃO 2: Alterado de language_id para languageId para bater com a entidade
     const submission = this.submissionsRepository.create({
       files: createSubmissionDto.files,
-      language_id: createSubmissionDto.language_id,
+      languageId: createSubmissionDto.language_id,
       problem,
       user: { id: userId },
       status: 'Pending',
@@ -169,10 +173,11 @@ export class SubmissionsService {
 
     // Envio para Fila
     try {
-      const job = await this.submissionsQueue.add('grade', {
+      await this.submissionsQueue.add('grade', {
         submissionId: savedSubmission.id,
         files: savedSubmission.files,
-        language: savedSubmission.language_id,
+        // CORREÇÃO 3: Lendo de languageId ao invés de language_id
+        language: savedSubmission.languageId,
         testCases: problem.testCases,
         timeLimit: problem.timeLimit,
         memoryLimit: problem.memoryLimit,

@@ -1,15 +1,15 @@
-// src/canvas/OrganicBondLine.tsx
 import React from "react";
 import { Line, Group } from "react-konva";
-import { BondOrder, StereoType } from "../types/molecule";
 
 interface OrganicBondLineProps {
   id: string;
   s: { x: number; y: number };
   t: { x: number; y: number };
-  order: BondOrder;
-  stereo: StereoType;
+  order: number | string; // Permite string vinda do JSON
+  stereo?: string | number; // Permite string vinda do JSON
   strokeColor: string;
+  strokeWidth?: number; // Adicionado!
+  dash?: number[]; // Adicionado!
   onMouseDown?: (e: any) => void;
   onMouseEnter?: (e: any) => void;
   onMouseLeave?: (e: any) => void;
@@ -22,7 +22,9 @@ export const OrganicBondLine: React.FC<OrganicBondLineProps> = ({
   order,
   stereo,
   strokeColor,
-  ...events // <-- CORREÇÃO 1: Adicionei o 'id' aqui!
+  strokeWidth = 3, // Valor por defeito
+  dash,
+  ...events
 }) => {
   // 1. Cálculos Geométricos Base
   const dx = t.x - s.x;
@@ -31,18 +33,17 @@ export const OrganicBondLine: React.FC<OrganicBondLineProps> = ({
 
   if (len === 0) return null;
 
-  // Vetor unitário
   const ux = dx / len;
   const uy = dy / len;
-
-  // Vetor normal (perpendicular)
   const nx = -uy;
   const ny = ux;
 
-  // 2. Renderização de Estereoquímica (Geometria Realista)
+  // 2. Proteção de Tipagem (Converte tudo para formato seguro)
+  const stereoStr = String(stereo || "").toLowerCase();
+  const orderNum = Number(order || 1);
 
-  if (stereo === StereoType.WEDGE) {
-    // WEDGE (Cunha): Triângulo preenchido
+  // 3. Renderização de Estereoquímica
+  if (stereoStr === "wedge" || stereoStr === "1") {
     const endTaper = 5;
     return (
       <Group {...events} listening={true} hitStrokeWidth={15}>
@@ -61,13 +62,10 @@ export const OrganicBondLine: React.FC<OrganicBondLineProps> = ({
         />
       </Group>
     );
-  } else if (stereo === StereoType.DASH) {
-    // DASH (Traço): Série de barras paralelas e perpendiculares
+  } else if (stereoStr === "dash" || stereoStr === "2") {
     const numDashes = 8;
     const startTaper = 1;
     const endTaper = 5;
-
-    // <-- CORREÇÃO 2: Substituí JSX.Element[] por React.ReactNode[]
     const dashes: React.ReactNode[] = [];
 
     for (let i = 0; i < numDashes; i++) {
@@ -78,7 +76,7 @@ export const OrganicBondLine: React.FC<OrganicBondLineProps> = ({
 
       dashes.push(
         <Line
-          key={`${id}_dash_${i}`} // O 'id' agora existe para ser usado na key!
+          key={`${id}_dash_${i}`}
           points={[
             centerX + nx * currentTaper,
             centerY + ny * currentTaper,
@@ -105,8 +103,8 @@ export const OrganicBondLine: React.FC<OrganicBondLineProps> = ({
     );
   }
 
-  // B. Ordem da Ligação (Dupla, Tripla)
-  if (order === 2) {
+  // 4. Ordem da Ligação (Dupla, Tripla)
+  if (orderNum === 2) {
     const offset = 3;
     return (
       <Group {...events} listening={true}>
@@ -138,7 +136,7 @@ export const OrganicBondLine: React.FC<OrganicBondLineProps> = ({
         />
       </Group>
     );
-  } else if (order === 3) {
+  } else if (orderNum === 3) {
     const offset = 4;
     return (
       <Group {...events} listening={true}>
@@ -177,12 +175,13 @@ export const OrganicBondLine: React.FC<OrganicBondLineProps> = ({
     );
   }
 
-  // C. Padrão: Ligação Simples
+  // 5. Padrão: Ligação Simples
   return (
     <Line
       points={[s.x, s.y, t.x, t.y]}
       stroke={strokeColor}
-      strokeWidth={3}
+      strokeWidth={strokeWidth}
+      dash={dash}
       lineCap="round"
       hitStrokeWidth={15}
       {...events}

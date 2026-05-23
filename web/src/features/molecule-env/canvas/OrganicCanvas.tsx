@@ -196,7 +196,9 @@ export const OrganicCanvas: React.FC = () => {
               t={{ x: t.x!, y: t.y! }}
               order={bond.order}
               stereo={bond.stereo}
-              strokeColor={strokeColor}
+              strokeColor={strokeColor || "#888888"}
+              strokeWidth={strokeWidth}
+              dash={dash}
               onMouseDown={(e) => {
                 e.cancelBubble = true;
                 if (

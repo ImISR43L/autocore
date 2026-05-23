@@ -1,14 +1,23 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePreferences } from "../contexts/PreferencesContext";
-import { Settings, X, AlertTriangle } from "lucide-react";
+// 1. Ícones do Lucide atualizados
+import { Settings, X, AlertTriangle, Lock, KeyRound } from "lucide-react";
 import { api } from "../lib/api";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 
+// 2. Componentes de UI importados
+import { Button } from "./ui/Button";
+import { Input } from "./ui/Input";
+
 export function SettingsModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const navigate = useNavigate();
   const {
     theme,
@@ -45,6 +54,42 @@ export function SettingsModal() {
       );
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (password.length < 6) {
+      toast.error("A senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast.error("As senhas não coincidem.");
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      // Atualiza diretamente a senha do usuário autenticado na sessão atual
+      const { error } = await supabase.auth.updateUser({
+        password: password,
+      });
+
+      if (error) throw error;
+
+      toast.success("Senha atualizada com sucesso!");
+
+      // Limpa e fecha o formulário
+      setPassword("");
+      setConfirmPassword("");
+      setShowPasswordForm(false);
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "Erro ao atualizar a senha.");
+    } finally {
+      setIsUpdatingPassword(false);
     }
   };
 
@@ -144,23 +189,89 @@ export function SettingsModal() {
             </select>
           </div>
 
-          <div className="pt-6 mt-6 border-t border-border">
-            <h3 className="text-sm font-bold text-red-500 mb-2 flex items-center gap-2">
-              <AlertTriangle size={16} />
-              Zona de Risco
+          <div className="border-t border-border pt-6 mt-6">
+            <h3 className="text-lg font-bold text-foreground flex items-center gap-2 mb-4">
+              <Lock size={20} className="text-muted" />
+              Segurança e Autenticação
             </h3>
-            <p className="text-xs text-muted mb-4">
-              A exclusão da conta é permanente. Todos os seus dados pessoais,
-              submissões e histórico serão apagados.
-            </p>
-            <button
-              onClick={handleDeleteAccount}
-              disabled={isDeleting}
-              className="w-full py-2.5 px-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20 transition-colors rounded-md text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isDeleting ? "Processando..." : "Excluir Minha Conta Permanente"}
-            </button>
+
+            {!showPasswordForm ? (
+              <Button
+                variant="outline"
+                onClick={() => setShowPasswordForm(true)}
+                className="w-full md:w-auto flex items-center gap-2 border-border hover:bg-surface-hover"
+              >
+                <KeyRound size={16} />
+                Alterar Senha
+              </Button>
+            ) : (
+              <form
+                onSubmit={handleUpdatePassword}
+                className="space-y-4 bg-background p-4 rounded-lg border border-border animate-in fade-in slide-in-from-top-2"
+              >
+                <h4 className="text-sm font-semibold text-foreground">
+                  Definir Nova Senha
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input
+                    label="Nova Senha"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="bg-surface"
+                  />
+                  <Input
+                    label="Confirmar Senha"
+                    type="password"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    className="bg-surface"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <Button type="submit" isLoading={isUpdatingPassword}>
+                    Salvar Nova Senha
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setShowPasswordForm(false);
+                      setPassword("");
+                      setConfirmPassword("");
+                    }}
+                    disabled={isUpdatingPassword}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </form>
+            )}
           </div>
+        </div>
+
+        <div className="pt-6 mt-6 border-t border-border">
+          <h3 className="text-sm font-bold text-red-500 mb-2 flex items-center gap-2">
+            <AlertTriangle size={16} />
+            Zona de Risco
+          </h3>
+          <p className="text-xs text-muted mb-4">
+            A exclusão da conta é permanente. Todos os seus dados pessoais,
+            submissões e histórico serão apagados.
+          </p>
+          <button
+            onClick={handleDeleteAccount}
+            disabled={isDeleting}
+            className="w-full py-2.5 px-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20 transition-colors rounded-md text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isDeleting ? "Processando..." : "Excluir Minha Conta Permanente"}
+          </button>
         </div>
       </div>
     </div>

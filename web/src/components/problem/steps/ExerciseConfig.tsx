@@ -192,37 +192,6 @@ export function ExerciseConfig({ basePath = "" }: ExerciseConfigProps) {
               />
             </div>
           </Card>
-
-          <Card className="p-6 flex flex-col gap-5">
-            <div className="flex items-center gap-3 text-foreground border-b border-border pb-3">
-              <div className="p-2 bg-primary/10 rounded-md text-primary">
-                <CalendarClock size={18} />
-              </div>
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider block text-muted">
-                  Prazos
-                </span>
-                <span className="text-sm font-semibold text-foreground">
-                  Agendamento
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <Input
-                type="datetime-local"
-                label="Disponível em"
-                {...register(getName("startDate"))}
-                className="bg-background"
-              />
-              <Input
-                type="datetime-local"
-                label="Data de Entrega"
-                {...register(getName("deadline"))}
-                className="bg-background"
-              />
-            </div>
-          </Card>
         </div>
       </div>
     </div>

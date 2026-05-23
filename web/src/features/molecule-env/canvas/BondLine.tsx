@@ -1,6 +1,6 @@
 import React from "react";
 import { Line, Group } from "react-konva";
-import { Bond, BondOrder } from "../types/molecule";
+import { Bond } from "../types/molecule";
 import { CustomHex } from "../utils/grid";
 import { useMoleculeStore } from "../store/useMoleculeStore";
 import { useCanvasTheme } from "../hooks/useCanvasTheme";
@@ -18,24 +18,47 @@ export const BondLine: React.FC<{ bond: Bond }> = ({ bond }) => {
 
   if (!sourceAtom || !targetAtom) return null;
 
+  // 👇 CORREÇÃO 1: Conversão Numérica Explícita.
+  // Garante que o CustomHex nunca receba strings vindas do JSON da Submissão.
   const sHex = new CustomHex({
-    q: sourceAtom.gridPosition.q,
-    r: sourceAtom.gridPosition.r,
+    q: Number(sourceAtom.gridPosition?.q || 0),
+    r: Number(sourceAtom.gridPosition?.r || 0),
   });
   const tHex = new CustomHex({
-    q: targetAtom.gridPosition.q,
-    r: targetAtom.gridPosition.r,
+    q: Number(targetAtom.gridPosition?.q || 0),
+    r: Number(targetAtom.gridPosition?.r || 0),
   });
 
-  const s = dragPositions[sourceAtom.id] || { x: sHex.x, y: sHex.y };
-  const t = dragPositions[targetAtom.id] || { x: tHex.x, y: tHex.y };
+  // Proteção extra com navegação segura (?.) e fallback de 0
+  const s = dragPositions?.[sourceAtom.id] || {
+    x: sHex.x || 0,
+    y: sHex.y || 0,
+  };
+  const t = dragPositions?.[targetAtom.id] || {
+    x: tHex.x || 0,
+    y: tHex.y || 0,
+  };
 
   const dx = t.x - s.x;
   const dy = t.y - s.y;
   const dist = Math.sqrt(dx * dx + dy * dy);
-  const nx = -dy / dist;
-  const ny = dx / dist;
+
+  // 👇 CORREÇÃO 2: Prevenção de Divisão por Zero (que geraria NaN e esconderia a linha)
+  const nx = dist === 0 ? 0 : -dy / dist;
+  const ny = dist === 0 ? 0 : dx / dist;
   const gap = 6;
+
+  const orderNum = Number(bond.order) || 1;
+
+  // 👇 CORREÇÃO 3: Blindagem de Cor CSS do Modal.
+  // Se o Modal forçar a geração de um hsl() ou var() quebrado, substituímos pelo cinza metálico clássico
+  let strokeColor = theme?.mutedForeground || "#a1a1aa";
+  if (
+    strokeColor.replace(/\s/g, "") === "hsl()" ||
+    strokeColor.startsWith("var(")
+  ) {
+    strokeColor = "#a1a1aa";
+  }
 
   const renderLine = (offset: number, key: string) => (
     <Line
@@ -46,7 +69,7 @@ export const BondLine: React.FC<{ bond: Bond }> = ({ bond }) => {
         t.x + nx * offset,
         t.y + ny * offset,
       ]}
-      stroke={theme.mutedForeground}
+      stroke={strokeColor}
       strokeWidth={4}
       lineCap="round"
       perfectDrawEnabled={false}
@@ -75,14 +98,14 @@ export const BondLine: React.FC<{ bond: Bond }> = ({ bond }) => {
         stroke="transparent"
         strokeWidth={15}
       />
-      {bond.order === BondOrder.SINGLE && renderLine(0, "single")}
-      {bond.order === BondOrder.DOUBLE && (
+      {orderNum === 1 && renderLine(0, "single")}
+      {orderNum === 2 && (
         <>
           {renderLine(gap / 2, "d1")}
           {renderLine(-gap / 2, "d2")}
         </>
       )}
-      {bond.order === BondOrder.TRIPLE && (
+      {orderNum === 3 && (
         <>
           {renderLine(0, "t1")}
           {renderLine(gap, "t2")}

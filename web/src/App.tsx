@@ -14,6 +14,8 @@ import { SettingsModal } from "./components/SettingsModal";
 // 1. Importe o componente principal da sua nova feature
 // (Ajuste o caminho conforme a estrutura que você definiu)
 import { MoleculeWorkspace } from "./features/molecule-env";
+import { ForgotPassword } from "./pages/ForgotPassword";
+import { ResetPassword } from "./pages/ResetPassword";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -84,6 +86,8 @@ function App() {
             </PrivateRoute>
           }
         />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
       </Routes>
     </BrowserRouter>
   );

@@ -137,6 +137,32 @@ export function ProgrammingWizard({
       data.classroomId = classroomId;
     }
     (data as any).subject = classroomSubject;
+
+    // Higienização dos dados da prova (etapa anterior)
+    if (data.type === "EXAM" && data.questions) {
+      data.questions = data.questions.map((q: any) => {
+        const {
+          maxAttempts,
+          startDate,
+          deadline,
+          timeLimit, // <-- Adicionado
+          memoryLimit, // <-- Adicionado
+          ...cleanQuestion
+        } = q;
+        return cleanQuestion;
+      }) as any;
+    }
+
+    // 👇 ADICIONE ESTE BLOCO ABAIXO PARA CORRIGIR O FUSO HORÁRIO 👇
+    if (data.startDate && data.startDate !== "") {
+      // O construtor do Date lê a string local do input e o .toISOString() converte para o UTC correto
+      data.startDate = new Date(data.startDate).toISOString();
+    }
+    if (data.deadline && data.deadline !== "") {
+      data.deadline = new Date(data.deadline).toISOString();
+    }
+    // -------------------------------------------------------------
+
     await onSubmit(data);
     clearDraft();
   };
