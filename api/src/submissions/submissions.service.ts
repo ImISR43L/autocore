@@ -166,7 +166,8 @@ export class SubmissionsService {
       problem,
       user: { id: userId },
       status: 'Pending',
-      isDelivery: existingCount === 0, // A primeira tentativa é automaticamente a entrega
+      isDelivery: existingCount === 0,
+      activityLogs: createSubmissionDto.activityLogs,
     });
 
     const savedSubmission = await this.submissionsRepository.save(submission);
@@ -191,12 +192,24 @@ export class SubmissionsService {
     return savedSubmission;
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, requestingUserId: string) {
     const submission = await this.submissionsRepository.findOne({
       where: { id },
-      relations: ['problem', 'user'],
+      relations: [
+        'problem',
+        'problem.classroom',
+        'problem.classroom.owner',
+        'user',
+      ],
     });
     if (!submission) throw new NotFoundException('Submissão não encontrada');
+
+    const isOwner =
+      submission.problem?.classroom?.owner?.id === requestingUserId;
+    if (!isOwner) {
+      const { activityLogs, ...rest } = submission;
+      return rest;
+    }
     return submission;
   }
 
@@ -268,12 +281,12 @@ export class SubmissionsService {
         order: { createdAt: 'DESC' },
       });
     } else {
-      // O aluno vê todo o seu próprio histórico (rascunhos e entregas)
-      return this.submissionsRepository.find({
+      const subs = await this.submissionsRepository.find({
         where: { problem: { id: problemId }, user: { id: userId } },
         relations: ['user', 'problem'],
         order: { createdAt: 'DESC' },
       });
+      return subs.map(({ activityLogs, ...rest }) => rest);
     }
   }
 

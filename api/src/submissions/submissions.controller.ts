@@ -37,12 +37,6 @@ export class SubmissionsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Get(':id')
-  async findOne(@Param('id') id: string) {
-    return this.submissionsService.findOne(id);
-  }
-
-  @UseGuards(JwtAuthGuard)
   @Get('stats')
   getStats(@Request() req: RequestWithUser) {
     return this.submissionsService.getTeacherStats(req.user.userId);
@@ -86,5 +80,10 @@ export class SubmissionsController {
   @Get()
   findAll() {
     return this.submissionsService.findAll();
+  }
+
+  @Get(':id')
+  async findOne(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.submissionsService.findOne(id, req.user.userId);
   }
 }

@@ -54,8 +54,9 @@ import {
   Users,
   Archive,
   EyeOff,
-  Code,
   Beaker,
+  ClipboardPaste,
+  AlertTriangle,
 } from "lucide-react";
 import {
   Panel,
@@ -175,6 +176,7 @@ interface Submission {
   problemId?: string;
   problem?: { id: string };
   isDelivery?: boolean;
+  activityLogs?: ActivityLog[];
 }
 
 interface StatData {
@@ -187,6 +189,12 @@ interface ProblemStat {
   name: string;
   value: number;
   fill: string;
+}
+
+export interface ActivityLog {
+  action: "COPY" | "PASTE" | "BLUR" | "FOCUS";
+  timestamp: string;
+  details?: string;
 }
 
 const LANGUAGES = [
@@ -334,6 +342,8 @@ export default function ClassroomView() {
     !document.documentElement.classList.contains("dark"),
   );
 
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+
   useEffect(() => {
     const observer = new MutationObserver(() => {
       setIsLightMode(!document.documentElement.classList.contains("dark"));
@@ -416,6 +426,25 @@ export default function ClassroomView() {
   }, [colorblindMode, isLightMode, highContrast]);
 
   const [myUserId, setMyUserId] = useState<string | null>(null);
+
+  const handleClipboardEvent = (
+    action: "COPY" | "PASTE",
+    e: React.ClipboardEvent,
+  ) => {
+    const textLength = e.clipboardData.getData("text").length;
+
+    // Ignora colagens muito pequenas (ex: copiando o nome de uma variável)
+    if (action === "PASTE" && textLength < 15) return;
+
+    setActivityLogs((prev) => [
+      ...prev,
+      {
+        action,
+        timestamp: new Date().toISOString(),
+        details: `${action === "PASTE" ? "Colou" : "Copiou"} ${textLength} caracteres.`,
+      },
+    ]);
+  };
 
   // Salva a aba ativa no cache sempre que ela mudar
   useEffect(() => {
@@ -1055,22 +1084,24 @@ export default function ClassroomView() {
 
         for (let i = 0; i < problemsToFetch.length; i++) {
           const p = problemsToFetch[i];
-          if (targetProblemId === String(p.id)) {
-            loadedSubs[p.id] = targetSubmission;
-            foundIndex = i;
-            continue;
-          }
           try {
             const res = await api.get(`/submissions/problem/${p.id}`);
             const userSub = res.data.find(
               (s: Submission) => s.user.id === targetSubmission.user.id,
             );
-            if (userSub) loadedSubs[p.id] = userSub;
+            if (userSub) {
+              loadedSubs[p.id] = userSub;
+              if (targetProblemId === String(p.id)) foundIndex = i;
+            }
           } catch (e) {
             console.error(e);
+            // fallback: se o fetch falhar para o problema clicado, usa o que já temos
+            if (targetProblemId === String(p.id)) {
+              loadedSubs[p.id] = targetSubmission;
+              foundIndex = i;
+            }
           }
         }
-
         setStudentSubmissions(loadedSubs);
         setActiveInspectionIndex(foundIndex);
 
@@ -1272,6 +1303,7 @@ export default function ClassroomView() {
       const payload: any = {
         files: payloadFiles,
         problem_id: displayProblem.id,
+        activityLogs: activityLogs,
       };
 
       // Só anexa o language_id se ele existir (ou seja, se for programação)
@@ -1280,6 +1312,7 @@ export default function ClassroomView() {
       }
 
       await api.post(`/submissions`, payload);
+      setActivityLogs([]);
 
       setLoading(false);
       loadingRef.current = false;
@@ -1326,19 +1359,53 @@ export default function ClassroomView() {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
+    // ✅ CORREÇÃO 1: Detecta PASTE via API nativa do Monaco
+    // editor.onDidPaste dispara após o conteúdo ser inserido, com o range exato do texto colado
+    editor.onDidPaste((e) => {
+      const pastedText = editor.getModel()?.getValueInRange(e.range) ?? "";
+      if (pastedText.length < 15) return; // ignora colagens muito pequenas
+      setActivityLogs((prev) => [
+        ...prev,
+        {
+          action: "PASTE" as const,
+          timestamp: new Date().toISOString(),
+          details: `Colou ${pastedText.length} caracteres.`,
+        },
+      ]);
+    });
+
+    // ✅ CORREÇÃO 2: Detecta COPY via listener DOM no nó interno do Monaco
+    // getDomNode() retorna o elemento raiz do editor, onde os eventos do teclado/clipboard realmente vivem
+    const domNode = editor.getDomNode();
+    if (domNode) {
+      domNode.addEventListener("copy", () => {
+        const selection = editor.getSelection();
+        if (!selection || selection.isEmpty()) return;
+        const selectedText =
+          editor.getModel()?.getValueInRange(selection) ?? "";
+        if (selectedText.length === 0) return;
+        setActivityLogs((prev) => [
+          ...prev,
+          {
+            action: "COPY" as const,
+            timestamp: new Date().toISOString(),
+            details: `Copiou ${selectedText.length} caracteres.`,
+          },
+        ]);
+      });
+    }
+
+    // Código existente que já estava aqui
     editor.addAction({
       id: "submit-code-action",
       label: "Enviar Solução",
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
       run: () => {
-        console.log("Atalho Monaco acionado!");
         if (isOwnerRef.current) {
           toast.error("Ação não permitida para professores.");
           return;
         }
-        if (submitSolutionRef.current) {
-          submitSolutionRef.current();
-        }
+        if (submitSolutionRef.current) submitSolutionRef.current();
       },
     });
 
@@ -3268,6 +3335,52 @@ export default function ClassroomView() {
               >
                 Fechar
               </Button>
+
+              {isOwner && (
+                <div className="mt-6 border-t border-border pt-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2 mb-4 text-foreground">
+                    <AlertTriangle className="w-5 h-5 text-amber-500" />
+                    Logs de Atividade Suspeita
+                  </h3>
+
+                  {!activeSubmission?.activityLogs?.length ? (
+                    <p className="text-sm text-muted">
+                      Nenhuma atividade anormal detectada.
+                    </p>
+                  ) : (
+                    <ul className="space-y-3 max-h-60 overflow-y-auto pr-2">
+                      {activeSubmission.activityLogs.map(
+                        (log: ActivityLog, index: number) => (
+                          <li
+                            key={index}
+                            className="flex items-start gap-3 bg-surface p-3 rounded-md border border-border"
+                          >
+                            {log.action === "PASTE" ? (
+                              <ClipboardPaste className="w-4 h-4 text-red-500 mt-1" />
+                            ) : (
+                              <Copy className="w-4 h-4 text-blue-500 mt-1" />
+                            )}
+                            <div>
+                              <p className="text-sm font-medium text-foreground">
+                                Ação:{" "}
+                                {log.action === "PASTE"
+                                  ? "Colagem externa"
+                                  : "Cópia de código"}
+                              </p>
+                              <p className="text-xs text-muted mt-0.5">
+                                {log.details}
+                              </p>
+                              <p className="text-xs text-muted/70 mt-1">
+                                {new Date(log.timestamp).toLocaleTimeString()}
+                              </p>
+                            </div>
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex-1 flex flex-col lg:flex-row min-h-0">

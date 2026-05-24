@@ -14,6 +14,12 @@ export interface FileEntry {
   content: string;
 }
 
+export interface ActivityLog {
+  action: 'COPY' | 'PASTE' | 'BLUR' | 'FOCUS';
+  timestamp: string;
+  details?: string;
+}
+
 @Entity()
 @Index(['problem', 'user'])
 @Index(['problem', 'status'])
@@ -71,4 +77,11 @@ export class Submission {
     onDelete: 'CASCADE',
   })
   user: User;
+
+  @Column({
+    type: 'jsonb',
+    nullable: true,
+    default: [],
+  })
+  activityLogs: ActivityLog[];
 }

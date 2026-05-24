@@ -31,4 +31,12 @@ export class CreateSubmissionDto {
   @IsUUID()
   @IsNotEmpty()
   problem_id: string;
+
+  @IsOptional()
+  @IsArray()
+  activityLogs?: Array<{
+    action: 'COPY' | 'PASTE' | 'BLUR' | 'FOCUS';
+    timestamp: string;
+    details?: string;
+  }>;
 }
