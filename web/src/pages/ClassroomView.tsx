@@ -344,6 +344,34 @@ export default function ClassroomView() {
 
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
 
+  // Sub-aba dentro de "Atividades": exercícios vs provas
+  const [problemTypeTab, setProblemTypeTab] = useState<"exercises" | "exams">(
+    "exercises",
+  );
+
+  // Splash da prova: aluno confirmou que leu as regras?
+  // Resetar sempre que trocar de problema
+  const [examAcknowledged, setExamAcknowledged] = useState(false);
+  useEffect(() => {
+    setExamAcknowledged(false);
+  }, [selectedProblemId]);
+
+  // Dicionário de arquivos por questão (chave = child problem ID)
+  // Substitui o estado `files` para provas com múltiplas questões
+  const [examFilesMap, setExamFilesMap] = useState<Record<string, FileEntry[]>>(
+    {},
+  );
+
+  // Questões já entregues (travadas) — Set de child problem IDs
+  const [deliveredQuestions, setDeliveredQuestions] = useState<Set<string>>(
+    new Set(),
+  );
+  // Resetar ao trocar de prova
+  useEffect(() => {
+    setDeliveredQuestions(new Set());
+    setExamFilesMap({});
+  }, [selectedProblemId]);
+
   useEffect(() => {
     const observer = new MutationObserver(() => {
       setIsLightMode(!document.documentElement.classList.contains("dark"));
@@ -426,25 +454,6 @@ export default function ClassroomView() {
   }, [colorblindMode, isLightMode, highContrast]);
 
   const [myUserId, setMyUserId] = useState<string | null>(null);
-
-  const handleClipboardEvent = (
-    action: "COPY" | "PASTE",
-    e: React.ClipboardEvent,
-  ) => {
-    const textLength = e.clipboardData.getData("text").length;
-
-    // Ignora colagens muito pequenas (ex: copiando o nome de uma variável)
-    if (action === "PASTE" && textLength < 15) return;
-
-    setActivityLogs((prev) => [
-      ...prev,
-      {
-        action,
-        timestamp: new Date().toISOString(),
-        details: `${action === "PASTE" ? "Colou" : "Copiou"} ${textLength} caracteres.`,
-      },
-    ]);
-  };
 
   // Salva a aba ativa no cache sempre que ela mudar
   useEffect(() => {
@@ -1279,7 +1288,7 @@ export default function ClassroomView() {
     }
 
     try {
-      let payloadFiles = files;
+      let payloadFiles = isExam ? activeQuestionFiles : files;
       // CORREÇÃO: Garantimos que o ID nunca seja nulo usando 71 como padrão
       let payloadLanguageId: number | undefined = languageId || 71;
 
@@ -1521,12 +1530,21 @@ export default function ClassroomView() {
     );
   }, [submissions, myUserId]);
 
-  const myDeliverySubmission = useMemo(() => {
-    if (!submissions || submissions.length === 0) return null;
-    return (
-      submissions.find((s) => s.user?.id === myUserId && s.isDelivery) || null
-    );
-  }, [submissions, myUserId]);
+  const saveCurrentQuestionFiles = useCallback(() => {
+    if (!displayProblem) return;
+    setExamFilesMap((prev) => ({ ...prev, [displayProblem.id]: files }));
+  }, [displayProblem, files]);
+
+  const handleQuestionChange = useCallback(
+    (index: number) => {
+      saveCurrentQuestionFiles();
+      setActiveChildIndex(index);
+      setActiveFileIndex(0);
+      setVerdict(null);
+      setSubmissionError(null);
+    },
+    [saveCurrentQuestionFiles],
+  );
 
   if (!classroom)
     return (
@@ -1582,6 +1600,68 @@ export default function ClassroomView() {
     } catch (e) {}
   }
 
+  // Separação dos problemas por tipo (logo após dropdownOptions)
+  const exerciseOptions = dropdownOptions.filter((p) => p.type !== "EXAM");
+  const examOptions = dropdownOptions.filter((p) => p.type === "EXAM");
+
+  // Arquivos da questão ativa no modo prova
+  // Em exercícios, continua usando `files`; em provas, usa o mapa
+  const activeQuestionFiles: FileEntry[] =
+    isExam && displayProblem
+      ? (examFilesMap[displayProblem.id] ??
+        displayProblem.starterCode ?? [
+          { name: "main.py", content: "def solve():\n    pass" },
+        ])
+      : files;
+
+  // A questão atual está travada?
+  const isCurrentQuestionDelivered =
+    isExam && displayProblem
+      ? deliveredQuestions.has(displayProblem.id)
+      : false;
+
+  // Todas as questões foram entregues?
+  const allQuestionsDelivered =
+    isExam && currentProblem?.children?.length
+      ? currentProblem.children.every((c) => deliveredQuestions.has(c.id))
+      : false;
+
+  // Entrega individual de uma questão
+  const handleDeliverQuestion = async (childId: string) => {
+    // Busca a última submissão desta questão pelo aluno
+    const sub = submissions.find(
+      (s) => s.user?.id === myUserId && s.problem?.id === childId,
+    );
+    if (!sub) {
+      toast.error(
+        "Envie pelo menos uma solução antes de entregar esta questão.",
+      );
+      return;
+    }
+    try {
+      await api.patch(`/submissions/${sub.id}/deliver`);
+      setDeliveredQuestions((prev) => new Set(prev).add(childId));
+      toast.success("Questão entregue e travada!");
+    } catch {
+      toast.error("Erro ao entregar questão.");
+    }
+  };
+
+  // Entrega final da prova (empacota tudo)
+  const handleFinalizeExam = async () => {
+    if (!currentProblem?.children) return;
+    const undelivered = currentProblem.children.filter(
+      (c) => !deliveredQuestions.has(c.id),
+    );
+    if (undelivered.length > 0) {
+      toast.error(
+        `Entregue todas as questões antes de finalizar. Faltam: ${undelivered.map((c) => c.title).join(", ")}`,
+      );
+      return;
+    }
+    toast.success("Prova finalizada! Todas as questões foram entregues.");
+  };
+
   const editorContent =
     classroom?.subject === "CHEMISTRY" ? (
       <div className="w-full h-full relative overflow-hidden bg-background">
@@ -1634,8 +1714,26 @@ export default function ClassroomView() {
             height="100%"
             theme={monacoTheme}
             language={LANGUAGE_MAP[languageId] || "plaintext"}
-            value={files[activeFileIndex]?.content || ""}
-            onChange={handleCodeChange}
+            value={activeQuestionFiles[activeFileIndex]?.content || ""}
+            onChange={(value) => {
+              const val = value || "";
+              validateCode(val, languageId);
+              if (isExam && displayProblem) {
+                // Atualiza o mapa de arquivos do exame
+                setExamFilesMap((prev) => {
+                  const current =
+                    prev[displayProblem.id] ?? activeQuestionFiles;
+                  const updated = [...current];
+                  updated[activeFileIndex] = {
+                    ...updated[activeFileIndex],
+                    content: val,
+                  };
+                  return { ...prev, [displayProblem.id]: updated };
+                });
+              } else {
+                handleCodeChange(value);
+              }
+            }}
             onMount={handleEditorDidMount}
             options={{
               minimap: { enabled: false },
@@ -1646,6 +1744,19 @@ export default function ClassroomView() {
               accessibilitySupport: screenReaderMode ? "on" : "auto",
             }}
           />
+          {isCurrentQuestionDelivered && (
+            <div className="absolute inset-0 bg-background/70 backdrop-blur-sm z-10 flex items-center justify-center">
+              <div className="text-center space-y-3">
+                <CheckCircle size={40} className="mx-auto text-emerald-500" />
+                <p className="text-lg font-bold text-foreground">
+                  Questão Entregue
+                </p>
+                <p className="text-sm text-muted">
+                  Esta questão foi travada e não pode mais ser editada.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -2490,18 +2601,59 @@ export default function ClassroomView() {
             {/* Toolbar da IDE */}
             <div className="flex-none flex items-center justify-between p-4 border-b border-border bg-surface gap-4">
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <Select
-                  value={selectedProblemId || ""}
-                  onChange={(e) => setSelectedProblemId(e.target.value)}
-                  className="w-full sm:w-72 h-11 text-base"
-                >
-                  <option value="">Selecione um exercício...</option>
-                  {dropdownOptions.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.title}
+                <div className="flex items-center gap-2">
+                  {/* Pills para alternar tipo */}
+                  <div className="flex bg-background rounded-lg border border-border p-0.5 gap-0.5">
+                    <button
+                      onClick={() => setProblemTypeTab("exercises")}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all",
+                        problemTypeTab === "exercises"
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted hover:text-foreground",
+                      )}
+                    >
+                      <BookOpen size={14} /> Exercícios
+                    </button>
+                    <button
+                      onClick={() => setProblemTypeTab("exams")}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all",
+                        problemTypeTab === "exams"
+                          ? "bg-amber-500 text-white shadow-sm"
+                          : "text-muted hover:text-foreground",
+                      )}
+                    >
+                      <GraduationCap size={14} /> Provas
+                      {examOptions.length > 0 && (
+                        <span className="ml-1 bg-white/20 text-xs px-1.5 py-0.5 rounded-full">
+                          {examOptions.length}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Dropdown filtrado */}
+                  <Select
+                    value={selectedProblemId || ""}
+                    onChange={(e) => setSelectedProblemId(e.target.value)}
+                    className="w-60 h-11 text-base"
+                  >
+                    <option value="">
+                      {problemTypeTab === "exercises"
+                        ? "Selecione um exercício..."
+                        : "Selecione uma prova..."}
                     </option>
-                  ))}
-                </Select>
+                    {(problemTypeTab === "exercises"
+                      ? exerciseOptions
+                      : examOptions
+                    ).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
 
                 {/* Status do Exame */}
                 {isExam && currentProblem?.timeLimit && (
@@ -2706,14 +2858,50 @@ export default function ClassroomView() {
                 </Select>
 
                 {/* BOTÃO DE ENVIAR E ESTADO DE ENTREGA: Apenas para Alunos */}
-                {!isOwner && hasTeacher && (
-                  <div className="flex items-center gap-3">
-                    {myDeliverySubmission && (
-                      <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-500/10 text-emerald-500 text-xs font-bold uppercase tracking-wider border border-emerald-500/20">
-                        <CheckCircle size={14} /> Oficial:{" "}
-                        {myDeliverySubmission.status}
-                      </div>
-                    )}
+                {!isOwner &&
+                  hasTeacher &&
+                  (isExam ? (
+                    <div className="flex items-center gap-2">
+                      {/* Testar: submete mas não trava */}
+                      <Button
+                        onClick={submitSolution}
+                        disabled={
+                          loading || isCurrentQuestionDelivered || isBlocked
+                        }
+                        isLoading={loading}
+                        variant="secondary"
+                        className="h-11 px-5 text-base whitespace-nowrap"
+                      >
+                        {loading ? "Testando..." : "Testar Código"}
+                      </Button>
+
+                      {/* Entregar Questão: trava esta questão */}
+                      <Button
+                        onClick={() =>
+                          displayProblem &&
+                          handleDeliverQuestion(displayProblem.id)
+                        }
+                        disabled={
+                          isCurrentQuestionDelivered || isBlocked || loading
+                        }
+                        className={cn(
+                          "h-11 px-5 text-base font-semibold whitespace-nowrap",
+                          isCurrentQuestionDelivered
+                            ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 cursor-default"
+                            : "bg-amber-500 hover:bg-amber-400 text-white",
+                        )}
+                      >
+                        {isCurrentQuestionDelivered ? (
+                          <>
+                            <CheckCircle size={16} className="mr-2" /> Entregue
+                          </>
+                        ) : (
+                          "Entregar Questão"
+                        )}
+                      </Button>
+                    </div>
+                  ) : (
+                    /* Botão original de exercícios */
                     <Button
                       onClick={submitSolution}
                       disabled={loading || !selectedProblemId || isBlocked}
@@ -2721,16 +2909,9 @@ export default function ClassroomView() {
                       className="h-11 px-8 text-base font-semibold whitespace-nowrap min-w-[140px]"
                     >
                       {!loading &&
-                        (isBlocked
-                          ? isDeadlinePassed
-                            ? "Prazo Encerrado"
-                            : hasLimit && attemptsLeft <= 0
-                              ? "Limite Excedido"
-                              : "Bloqueado"
-                          : "Enviar Rascunho")}
+                        (isBlocked ? "Bloqueado" : "Enviar Rascunho")}
                     </Button>
-                  </div>
-                )}
+                  ))}
               </div>
 
               {/* Toolbar Mobile (Hamburguer + Submit Conditional) */}
@@ -2911,101 +3092,238 @@ export default function ClassroomView() {
               </div>
             </div>
 
-            {/* ÁREA PRINCIPAL DA IDE */}
-            <div className="flex-1 min-h-0 relative">
-              {/* DESKTOP LAYOUT (Resizable Panels) - Visible only on large screens */}
-              <div className="hidden lg:block h-full w-full">
-                <PanelGroup direction="horizontal">
-                  <Panel defaultSize={60} minSize={30}>
-                    {editorContent}
-                  </Panel>
-                  <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 focus-visible:bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-surface transition-colors cursor-col-resize" />
-                  <Panel defaultSize={40} minSize={20}>
-                    {isOwner ? (
-                      // Se for professor, ocupa todo o painel direito com detalhes, sem console
-                      <div className="h-full flex flex-col">
-                        {problemDetailsContent}
-                      </div>
-                    ) : (
-                      // Se for aluno, divide entre Detalhes e Console
-                      <>
-                        <div className="h-[60%] flex flex-col border-b border-border">
+            {isExam &&
+              !isOwner &&
+              examAcknowledged &&
+              currentProblem?.children &&
+              currentProblem.children.length > 1 && (
+                <div className="flex-none flex items-center gap-2 px-4 py-2 bg-surface border-b border-border overflow-x-auto no-scrollbar">
+                  <span className="text-xs text-muted font-semibold uppercase tracking-wider whitespace-nowrap mr-2">
+                    Questões:
+                  </span>
+                  {currentProblem.children.map((child, idx) => {
+                    const isDelivered = deliveredQuestions.has(child.id);
+                    const isActive = activeChildIndex === idx;
+                    return (
+                      <button
+                        key={child.id}
+                        onClick={() =>
+                          !isDelivered && handleQuestionChange(idx)
+                        }
+                        title={child.title}
+                        className={cn(
+                          "w-9 h-9 rounded-lg text-sm font-bold border-2 transition-all flex-none flex items-center justify-center",
+                          isDelivered
+                            ? "bg-emerald-500/10 border-emerald-500 text-emerald-500 cursor-default"
+                            : isActive
+                              ? "bg-primary border-primary text-primary-foreground scale-110 shadow-lg"
+                              : "bg-surface border-border text-muted hover:border-primary/50 hover:text-foreground",
+                        )}
+                      >
+                        {isDelivered ? <CheckCircle size={16} /> : idx + 1}
+                      </button>
+                    );
+                  })}
+
+                  {/* Botão Finalizar Prova */}
+                  <button
+                    onClick={handleFinalizeExam}
+                    disabled={!allQuestionsDelivered}
+                    className={cn(
+                      "ml-auto flex items-center gap-2 px-4 h-9 rounded-lg text-sm font-bold border-2 transition-all whitespace-nowrap",
+                      allQuestionsDelivered
+                        ? "bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-400"
+                        : "border-border text-muted cursor-not-allowed opacity-50",
+                    )}
+                  >
+                    <CheckCircle size={16} />
+                    Finalizar Prova
+                  </button>
+                </div>
+              )}
+
+            {/* ===== ÁREA PRINCIPAL — splash OU IDE ===== */}
+            {isExam && !isOwner && !examAcknowledged ? (
+              /* ---------- SPLASH DA PROVA ---------- */
+              <div className="flex-1 flex items-center justify-center p-8 bg-background">
+                <div className="max-w-lg w-full bg-surface border border-amber-500/30 rounded-2xl p-8 shadow-2xl space-y-6 animate-in fade-in zoom-in-95">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-amber-500/10 rounded-xl">
+                      <GraduationCap size={28} className="text-amber-500" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-foreground">
+                        {currentProblem?.title}
+                      </h2>
+                      <p className="text-sm text-amber-500 font-medium">
+                        Avaliação Formal
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="bg-background border border-border rounded-lg p-3 space-y-1">
+                      <span className="text-muted uppercase text-xs font-bold tracking-wider flex items-center gap-1.5">
+                        <Clock size={12} /> Prazo
+                      </span>
+                      <p className="text-foreground font-medium">
+                        {currentProblem?.deadline
+                          ? new Date(currentProblem.deadline).toLocaleString(
+                              "pt-BR",
+                            )
+                          : "Sem prazo"}
+                      </p>
+                    </div>
+                    <div className="bg-background border border-border rounded-lg p-3 space-y-1">
+                      <span className="text-muted uppercase text-xs font-bold tracking-wider flex items-center gap-1.5">
+                        <FileCode size={12} /> Questões
+                      </span>
+                      <p className="text-foreground font-medium">
+                        {currentProblem?.children?.length ?? 1} questão(ões)
+                      </p>
+                    </div>
+                    {currentProblem?.maxAttempts &&
+                      currentProblem.maxAttempts > 0 && (
+                        <div className="bg-background border border-border rounded-lg p-3 space-y-1">
+                          <span className="text-muted uppercase text-xs font-bold tracking-wider">
+                            Tentativas
+                          </span>
+                          <p className="text-foreground font-medium">
+                            {currentProblem.maxAttempts} por questão
+                          </p>
+                        </div>
+                      )}
+                  </div>
+
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 text-sm space-y-2">
+                    <p className="font-semibold text-amber-400 flex items-center gap-2">
+                      <AlertTriangle size={14} /> Atenção
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 text-amber-300/80">
+                      <li>Suas ações (copiar/colar) serão registradas.</li>
+                      <li>
+                        Ao entregar uma questão, ela fica travada para edição.
+                      </li>
+                      <li>Você pode testar o código antes de entregar.</li>
+                    </ul>
+                  </div>
+
+                  {examStatus === "WAITING" ? (
+                    <div className="text-center py-4 text-muted text-sm">
+                      <Clock
+                        size={20}
+                        className="mx-auto mb-2 text-amber-500"
+                      />
+                      Esta prova ainda não foi iniciada pelo professor.
+                    </div>
+                  ) : examStatus === "FINISHED" ? (
+                    <div className="text-center py-4 text-red-400 text-sm">
+                      <XCircle size={20} className="mx-auto mb-2" />O prazo
+                      desta prova encerrou.
+                    </div>
+                  ) : (
+                    <Button
+                      onClick={() => setExamAcknowledged(true)}
+                      className="w-full h-12 text-base font-bold bg-amber-500 hover:bg-amber-400 text-white"
+                    >
+                      Estou ciente e quero iniciar a prova
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* ---------- IDE NORMAL (PanelGroup existente) ---------- */
+              <div className="flex-1 min-h-0 relative">
+                {/* DESKTOP LAYOUT */}
+                <div className="hidden lg:block h-full w-full">
+                  <PanelGroup direction="horizontal">
+                    <Panel defaultSize={60} minSize={30}>
+                      {editorContent}
+                    </Panel>
+                    <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 focus-visible:bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-surface transition-colors cursor-col-resize" />
+                    <Panel defaultSize={40} minSize={20}>
+                      {isOwner ? (
+                        <div className="h-full flex flex-col">
                           {problemDetailsContent}
                         </div>
-                        <div className="h-[40%] flex flex-col">
-                          {consoleContent}
-                        </div>
-                      </>
-                    )}
-                  </Panel>
-                </PanelGroup>
-              </div>
-
-              {/* MOBILE LAYOUT (Tabs) - Visible only on small screens */}
-              <div className="lg:hidden h-full flex flex-col">
-                <div className="flex-1 min-h-0">
-                  {mobileIdeTab === "problem" && problemDetailsContent}
-                  {mobileIdeTab === "editor" && editorContent}
-                  {mobileIdeTab === "console" && !isOwner && consoleContent}
+                      ) : (
+                        <>
+                          <div className="h-[60%] flex flex-col border-b border-border">
+                            {problemDetailsContent}
+                          </div>
+                          <div className="h-[40%] flex flex-col">
+                            {consoleContent}
+                          </div>
+                        </>
+                      )}
+                    </Panel>
+                  </PanelGroup>
                 </div>
 
-                {/* Mobile IDE Navigation Bar */}
-                <div className="flex-none h-14 bg-surface border-t border-border flex items-center justify-around px-2">
-                  <button
-                    onClick={() => setMobileIdeTab("problem")}
-                    className={cn(
-                      "flex flex-col items-center justify-center w-full h-full text-xs font-medium transition-colors",
-                      mobileIdeTab === "problem"
-                        ? "text-primary"
-                        : "text-muted hover:text-foreground",
-                    )}
-                  >
-                    <BookOpen size={20} className="mb-1" />
-                    Problema
-                  </button>
-                  <button
-                    onClick={() => setMobileIdeTab("editor")}
-                    className={cn(
-                      "flex flex-col items-center justify-center w-full h-full text-xs font-medium transition-colors",
-                      mobileIdeTab === "editor"
-                        ? "text-primary"
-                        : "text-muted hover:text-foreground",
-                    )}
-                  >
-                    <Code2 size={20} className="mb-1" />
-                    Editor
-                  </button>
+                {/* MOBILE LAYOUT */}
+                <div className="lg:hidden h-full flex flex-col">
+                  <div className="flex-1 min-h-0">
+                    {mobileIdeTab === "problem" && problemDetailsContent}
+                    {mobileIdeTab === "editor" && editorContent}
+                    {mobileIdeTab === "console" && !isOwner && consoleContent}
+                  </div>
 
-                  {/* Botão Console: Oculto para Professor */}
-                  {!isOwner && (
+                  <div className="flex-none h-14 bg-surface border-t border-border flex items-center justify-around px-2">
                     <button
-                      onClick={() => setMobileIdeTab("console")}
+                      onClick={() => setMobileIdeTab("problem")}
                       className={cn(
                         "flex flex-col items-center justify-center w-full h-full text-xs font-medium transition-colors",
-                        mobileIdeTab === "console"
+                        mobileIdeTab === "problem"
                           ? "text-primary"
                           : "text-muted hover:text-foreground",
                       )}
                     >
-                      <div className="relative">
-                        <Terminal size={20} className="mb-1" />
-                        {verdict && (
-                          <span
-                            className={cn(
-                              "absolute -top-1 -right-1 w-2 h-2 rounded-full",
-                              verdict === "Accepted"
-                                ? "bg-emerald-500"
-                                : "bg-red-500",
-                            )}
-                          />
-                        )}
-                      </div>
-                      Console
+                      <BookOpen size={20} className="mb-1" />
+                      Problema
                     </button>
-                  )}
+                    <button
+                      onClick={() => setMobileIdeTab("editor")}
+                      className={cn(
+                        "flex flex-col items-center justify-center w-full h-full text-xs font-medium transition-colors",
+                        mobileIdeTab === "editor"
+                          ? "text-primary"
+                          : "text-muted hover:text-foreground",
+                      )}
+                    >
+                      <Code2 size={20} className="mb-1" />
+                      Editor
+                    </button>
+
+                    {!isOwner && (
+                      <button
+                        onClick={() => setMobileIdeTab("console")}
+                        className={cn(
+                          "flex flex-col items-center justify-center w-full h-full text-xs font-medium transition-colors",
+                          mobileIdeTab === "console"
+                            ? "text-primary"
+                            : "text-muted hover:text-foreground",
+                        )}
+                      >
+                        <div className="relative">
+                          <Terminal size={20} className="mb-1" />
+                          {verdict && (
+                            <span
+                              className={cn(
+                                "absolute -top-1 -right-1 w-2 h-2 rounded-full",
+                                verdict === "Accepted"
+                                  ? "bg-emerald-500"
+                                  : "bg-red-500",
+                              )}
+                            />
+                          )}
+                        </div>
+                        Console
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
