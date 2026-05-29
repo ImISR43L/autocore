@@ -51,7 +51,7 @@ export const baseProblemSchema = z.object({
     ),
   description: z.string().min(10, "Descrição muito curta"),
   type: z.enum(["EXERCISE", "EXAM"]),
-  subject: z.enum(["PROGRAMMING", "CHEMISTRY"]).default("PROGRAMMING"),
+  subject: z.enum(["PROGRAMMING", "CHEMISTRY", "HTML"]).default("PROGRAMMING"),
   classroomId: z.string().min(1, "A vinculação a uma turma é obrigatória"),
   maxAttempts: z.coerce.number().int().min(0).optional(),
   startDate: z
@@ -92,6 +92,47 @@ export const chemistryDetailsSchema = z.object({
       expectedSmiles: z.string().min(1, "O gabarito não pode estar vazio"),
     })
     .optional(),
+});
+
+// 3.3 Detalhes Exclusivos de HTML
+export const htmlRuleSchema = z.object({
+  selector: z.string().min(1, "Seletor CSS é obrigatório"),
+  description: z.string().min(1, "Descrição da regra é obrigatória"),
+  attribute: z.string().optional(),
+  expectedValue: z.string().optional(),
+  textContains: z.string().optional(),
+  mustExist: z.boolean().default(true),
+});
+
+export const htmlDetailsSchema = z.object({
+  validationConfig: z
+    .object({
+      rules: z
+        .array(htmlRuleSchema)
+        .min(1, "Adicione pelo menos uma regra de validação"),
+    })
+    .optional(),
+});
+
+// 3.4 Questão de Prova HTML
+const htmlQuestionSchema = z.object({
+  title: z.string().min(1, "Título da questão é obrigatório"),
+  description: z.string().min(1, "Descrição é obrigatória"),
+  slug: z.string().min(1, "Slug é obrigatório"),
+  validationConfig: z
+    .object({
+      rules: z
+        .array(htmlRuleSchema)
+        .min(1, "Adicione pelo menos uma regra de validação"),
+    })
+    .optional(),
+});
+
+export const htmlExamSettingsSchema = z.object({
+  questions: z
+    .array(htmlQuestionSchema)
+    .min(1, "A prova deve ter pelo menos uma questão")
+    .default([]),
 });
 
 // --- 4. Schemas de Prova (Exams) ---
@@ -178,11 +219,27 @@ export const programmingExamSchema = baseProblemSchema
     );
   });
 
+export const htmlExerciseSchema = baseProblemSchema
+  .extend({ type: z.literal("EXERCISE"), subject: z.literal("HTML") })
+  .merge(htmlDetailsSchema)
+  .superRefine((data, ctx) => {
+    refineDates(data, ctx);
+  });
+
+export const htmlExamSchema = baseProblemSchema
+  .extend({ type: z.literal("EXAM"), subject: z.literal("HTML") })
+  .merge(htmlExamSettingsSchema)
+  .superRefine((data, ctx) => {
+    refineDates(data, ctx);
+  });
+
 // --- 7. Schema Global (União para tipagem do formulário geral) ---
 export const problemSchema = z.union([
   programmingExerciseSchema,
   programmingExamSchema,
   chemistryExerciseSchema,
+  htmlExerciseSchema,
+  htmlExamSchema,
 ]);
 
 // Tipos Inferidos exportados
@@ -193,3 +250,6 @@ export type ProgrammingExerciseFormValues = z.infer<
 export type ChemistryExerciseFormValues = z.infer<
   typeof chemistryExerciseSchema
 >;
+export type HtmlExerciseFormValues = z.infer<typeof htmlExerciseSchema>;
+export type HtmlExamFormValues = z.infer<typeof htmlExamSchema>;
+export type HtmlRule = z.infer<typeof htmlRuleSchema>;

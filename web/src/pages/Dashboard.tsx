@@ -20,6 +20,7 @@ import {
   Trash2,
   Code,
   Beaker,
+  Globe,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -46,7 +47,7 @@ interface Classroom {
   id: string;
   name: string;
   code: string;
-  subject?: "PROGRAMMING" | "CHEMISTRY";
+  subject?: "PROGRAMMING" | "CHEMISTRY" | "HTML";
   owner: {
     id: string;
     email: string;
@@ -70,7 +71,7 @@ export default function Dashboard() {
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [newClassName, setNewClassName] = useState("");
   const [newClassroomSubject, setNewClassroomSubject] = useState<
-    "PROGRAMMING" | "CHEMISTRY"
+    "PROGRAMMING" | "CHEMISTRY" | "HTML"
   >("PROGRAMMING");
   const [joinCode, setJoinCode] = useState("");
 
@@ -414,6 +415,8 @@ export default function Dashboard() {
                     <div className="p-3 bg-primary/10 text-primary rounded-lg">
                       {c.subject === "CHEMISTRY" ? (
                         <Beaker size={24} />
+                      ) : c.subject === "HTML" ? (
+                        <Globe size={24} />
                       ) : (
                         <Code size={24} />
                       )}
@@ -609,7 +612,7 @@ export default function Dashboard() {
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Disciplina do Ambiente
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   {/* Botão de Programação */}
                   <button
                     onClick={() => setNewClassroomSubject("PROGRAMMING")}
@@ -634,6 +637,19 @@ export default function Dashboard() {
                   >
                     <Beaker size={28} className="mb-2" />
                     <span className="font-semibold text-sm">Química</span>
+                  </button>
+
+                  {/* Botão de HTML */}
+                  <button
+                    onClick={() => setNewClassroomSubject("HTML")}
+                    className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${
+                      newClassroomSubject === "HTML"
+                        ? "border-primary bg-primary/10 text-primary shadow-sm"
+                        : "border-border bg-surface text-muted hover:border-muted hover:text-foreground"
+                    }`}
+                  >
+                    <Globe size={28} className="mb-2" />
+                    <span className="font-semibold text-sm">HTML / Web</span>
                   </button>
                 </div>
               </div>

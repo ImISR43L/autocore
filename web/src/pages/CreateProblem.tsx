@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { toast } from "sonner";
 import { ProgrammingWizard } from "../components/problem/ProgrammingWizard";
 import { ChemistryWizard } from "../components/problem/ChemistryWizard";
+import { HtmlWizard } from "../components/problem/HtmlWizard";
 
 export default function CreateProblem() {
   const navigate = useNavigate();
@@ -11,7 +12,7 @@ export default function CreateProblem() {
   const hasCheckedRef = useRef(false);
 
   const [classroomSubject, setClassroomSubject] = useState<
-    "PROGRAMMING" | "CHEMISTRY"
+    "PROGRAMMING" | "CHEMISTRY" | "HTML"
   >("PROGRAMMING");
   const [isLoading, setIsLoading] = useState(true);
 
@@ -88,7 +89,9 @@ export default function CreateProblem() {
           <p className="text-muted text-sm mt-1">
             {classroomSubject === "CHEMISTRY"
               ? "Crie um exercício visual focado em estruturas químicas."
-              : "Crie um exercício prático de algoritmos ou uma prova avaliativa."}
+              : classroomSubject === "HTML"
+                ? "Crie um exercício de desenvolvimento web com validação de HTML."
+                : "Crie um exercício prático de algoritmos ou uma prova avaliativa."}
           </p>
         </header>
       </div>
@@ -102,6 +105,8 @@ export default function CreateProblem() {
           </div>
         ) : classroomSubject === "CHEMISTRY" ? (
           <ChemistryWizard onSubmit={handleCreate} />
+        ) : classroomSubject === "HTML" ? (
+          <HtmlWizard onSubmit={handleCreate} />
         ) : (
           <ProgrammingWizard onSubmit={handleCreate} />
         )}

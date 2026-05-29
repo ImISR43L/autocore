@@ -143,7 +143,7 @@ interface Classroom {
   id: number;
   name: string;
   code: string;
-  subject?: "PROGRAMMING" | "CHEMISTRY";
+  subject?: "PROGRAMMING" | "CHEMISTRY" | "HTML";
   owner: { id: string; email: string; name?: string } | null;
   students: { id: string; email: string; name?: string }[];
   problems: Problem[];
@@ -1308,6 +1308,18 @@ export default function ClassroomView() {
         payloadFiles = [{ name: "submission.smi", content: studentSmiles }];
       }
 
+      if (classroom?.subject === "HTML") {
+        if (!htmlCode.trim()) {
+          toast.error("O editor está vazio! Escreva seu HTML antes de enviar.");
+          setLoading(false);
+          loadingRef.current = false;
+          setVerdict(null);
+          return;
+        }
+        payloadFiles = [{ name: "index.html", content: htmlCode }];
+        payloadLanguageId = undefined; // HTML não usa language_id
+      }
+
       // Monta o payload dinâmico
       const payload: any = {
         files: payloadFiles,
@@ -1546,14 +1558,11 @@ export default function ClassroomView() {
     [saveCurrentQuestionFiles],
   );
 
-  if (!classroom)
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-background text-muted">
-        <RefreshCw className="animate-spin mr-2" /> Carregando turma...
-      </div>
-    );
+  const [htmlCode, setHtmlCode] = useState<string>("");
 
+  // Estado do editor HTML ao vivo
   const isExam = currentProblem?.type === "EXAM";
+  const isHtml = classroom?.subject === "HTML";
   const hasLimit =
     currentProblem?.maxAttempts != null && currentProblem.maxAttempts > 0;
   const maxAttempts = hasLimit ? currentProblem!.maxAttempts! : Infinity;
@@ -1563,6 +1572,13 @@ export default function ClassroomView() {
   const attemptsLeft = hasLimit
     ? Math.max(0, maxAttempts - myAttemptsCount)
     : Infinity;
+
+  if (!classroom)
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-background text-muted">
+        <RefreshCw className="animate-spin mr-2" /> Carregando turma...
+      </div>
+    );
 
   const isBlocked =
     (!isOwner && hasLimit && attemptsLeft <= 0) ||
@@ -1602,7 +1618,12 @@ export default function ClassroomView() {
 
   // Separação dos problemas por tipo (logo após dropdownOptions)
   const exerciseOptions = dropdownOptions.filter((p) => p.type !== "EXAM");
-  const examOptions = dropdownOptions.filter((p) => p.type === "EXAM");
+  const examOptions = dropdownOptions.filter((p) => {
+    if (p.type !== "EXAM") return false;
+    if (isOwner) return true;
+    // Aluno só vê a prova se ela já foi iniciada (startedAt existe)
+    return !!p.startedAt;
+  });
 
   // Arquivos da questão ativa no modo prova
   // Em exercícios, continua usando `files`; em provas, usa o mapa
@@ -1671,6 +1692,44 @@ export default function ClassroomView() {
           initialMode={safeValidationConfig?.expectedMode}
           initialRawState={isOwner ? parsedRawState : undefined}
         />
+      </div>
+    ) : classroom?.subject === "HTML" ? (
+      <div className="flex flex-col h-full bg-background">
+        {/* Barra de abas do editor HTML */}
+        <div className="flex-none flex items-center gap-1 px-3 py-2 bg-surface border-b border-border">
+          <span className="text-xs font-mono text-muted px-2 py-1 bg-background rounded border border-border">
+            index.html
+          </span>
+          {isOwner && (
+            <span className="ml-2 text-xs text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded">
+              Gabarito do professor
+            </span>
+          )}
+        </div>
+
+        {/* Editor Monaco em modo HTML */}
+        <div className="flex-1 relative">
+          <Editor
+            key={`html-${displayProblem?.id}`}
+            height="100%"
+            theme={monacoTheme}
+            language="html"
+            value={
+              isOwner ? (safeValidationConfig?.referenceHtml ?? "") : htmlCode
+            }
+            onChange={(value) => {
+              if (!isOwner) setHtmlCode(value ?? "");
+            }}
+            options={{
+              minimap: { enabled: false },
+              automaticLayout: true,
+              fontSize: 16,
+              scrollBeyondLastLine: false,
+              padding: { top: 16 },
+              readOnly: isOwner,
+            }}
+          />
+        </div>
       </div>
     ) : (
       <div className="flex flex-col h-full bg-surface">
@@ -1924,7 +1983,47 @@ export default function ClassroomView() {
     }
   };
 
-  const consoleContent = (
+  const consoleContent = isHtml ? (
+    // Para HTML: painel direito é um preview ao vivo
+    <div className="h-full flex flex-col bg-background">
+      <div className="flex-none flex items-center justify-between px-4 py-2 border-b border-border bg-surface">
+        <span className="text-xs font-semibold text-muted uppercase tracking-wider">
+          Preview ao vivo
+        </span>
+        {verdict && (
+          <span
+            className={cn(
+              "text-xs font-bold px-2 py-0.5 rounded-full border",
+              verdict === "Accepted"
+                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                : "bg-red-500/10 text-red-400 border-red-500/20",
+            )}
+          >
+            {verdict}
+          </span>
+        )}
+      </div>
+      <iframe
+        srcDoc={
+          isOwner
+            ? (safeValidationConfig?.referenceHtml ?? "")
+            : htmlCode ||
+              "<p style='color:#888;font-family:sans-serif;padding:2rem;text-align:center'>Escreva seu HTML no editor ao lado para ver o preview aqui.</p>"
+        }
+        className="flex-1 w-full bg-white"
+        sandbox="allow-same-origin"
+        title="Preview HTML do aluno"
+      />
+      {/* Resultado após submissão */}
+      {verdict && verdict !== "Processando..." && submissionError && (
+        <div className="flex-none border-t border-border bg-surface p-3 max-h-40 overflow-y-auto">
+          <pre className="text-xs font-mono text-foreground whitespace-pre-wrap">
+            {submissionError}
+          </pre>
+        </div>
+      )}
+    </div>
+  ) : (
     <div className="h-full overflow-y-auto bg-background p-4 sm:p-6 flex flex-col">
       {verdict ? (
         <div
@@ -2731,7 +2830,9 @@ export default function ClassroomView() {
                     <Plus size={20} className="mr-2" />
                     {classroom?.subject === "CHEMISTRY"
                       ? "Novo Exercício de Química"
-                      : "Novo Exercício de Programação"}
+                      : classroom?.subject === "HTML"
+                        ? "Novo Exercício de HTML"
+                        : "Novo Exercício de Programação"}
                   </Button>
                 )}
 
@@ -3093,8 +3194,7 @@ export default function ClassroomView() {
             </div>
 
             {isExam &&
-              !isOwner &&
-              examAcknowledged &&
+              (isOwner || examAcknowledged) &&
               currentProblem?.children &&
               currentProblem.children.length > 1 && (
                 <div className="flex-none flex items-center gap-2 px-4 py-2 bg-surface border-b border-border overflow-x-auto no-scrollbar">
@@ -3126,24 +3226,29 @@ export default function ClassroomView() {
                   })}
 
                   {/* Botão Finalizar Prova */}
-                  <button
-                    onClick={handleFinalizeExam}
-                    disabled={!allQuestionsDelivered}
-                    className={cn(
-                      "ml-auto flex items-center gap-2 px-4 h-9 rounded-lg text-sm font-bold border-2 transition-all whitespace-nowrap",
-                      allQuestionsDelivered
-                        ? "bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-400"
-                        : "border-border text-muted cursor-not-allowed opacity-50",
-                    )}
-                  >
-                    <CheckCircle size={16} />
-                    Finalizar Prova
-                  </button>
+                  {!isOwner && (
+                    <button
+                      onClick={handleFinalizeExam}
+                      disabled={!allQuestionsDelivered}
+                      className={cn(
+                        "ml-auto flex items-center gap-2 px-4 h-9 rounded-lg text-sm font-bold border-2 transition-all whitespace-nowrap",
+                        allQuestionsDelivered
+                          ? "bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-400"
+                          : "border-border text-muted cursor-not-allowed opacity-50",
+                      )}
+                    >
+                      <CheckCircle size={16} />
+                      Finalizar Prova
+                    </button>
+                  )}
                 </div>
               )}
 
             {/* ===== ÁREA PRINCIPAL — splash OU IDE ===== */}
-            {isExam && !isOwner && !examAcknowledged ? (
+            {isExam &&
+            !isOwner &&
+            !examAcknowledged &&
+            examStatus === "RUNNING" ? (
               /* ---------- SPLASH DA PROVA ---------- */
               <div className="flex-1 flex items-center justify-center p-8 bg-background">
                 <div className="max-w-lg w-full bg-surface border border-amber-500/30 rounded-2xl p-8 shadow-2xl space-y-6 animate-in fade-in zoom-in-95">
@@ -3208,27 +3313,12 @@ export default function ClassroomView() {
                     </ul>
                   </div>
 
-                  {examStatus === "WAITING" ? (
-                    <div className="text-center py-4 text-muted text-sm">
-                      <Clock
-                        size={20}
-                        className="mx-auto mb-2 text-amber-500"
-                      />
-                      Esta prova ainda não foi iniciada pelo professor.
-                    </div>
-                  ) : examStatus === "FINISHED" ? (
-                    <div className="text-center py-4 text-red-400 text-sm">
-                      <XCircle size={20} className="mx-auto mb-2" />O prazo
-                      desta prova encerrou.
-                    </div>
-                  ) : (
-                    <Button
-                      onClick={() => setExamAcknowledged(true)}
-                      className="w-full h-12 text-base font-bold bg-amber-500 hover:bg-amber-400 text-white"
-                    >
-                      Estou ciente e quero iniciar a prova
-                    </Button>
-                  )}
+                  <Button
+                    onClick={() => setExamAcknowledged(true)}
+                    className="w-full h-12 text-base font-bold bg-amber-500 hover:bg-amber-400 text-white"
+                  >
+                    Estou ciente e quero iniciar a prova
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -3699,6 +3789,41 @@ export default function ClassroomView() {
                   )}
                 </div>
               )}
+
+              {isOwner &&
+                currentProblem?.children &&
+                currentProblem.children.length > 1 && (
+                  <div className="flex items-center gap-2 px-4 md:px-6 py-3 border-b border-border bg-surface/50 overflow-x-auto no-scrollbar">
+                    <span className="text-xs text-muted font-semibold uppercase tracking-wider whitespace-nowrap mr-2">
+                      Questão:
+                    </span>
+                    {currentProblem.children.map((child, idx) => (
+                      <button
+                        key={child.id}
+                        onClick={() => {
+                          setActiveInspectionIndex(idx);
+                          const sub = studentSubmissions[child.id];
+                          if (sub) {
+                            setGradingGrade(sub.grade ?? "");
+                            setGradingComment(sub.teacherComment ?? "");
+                          } else {
+                            setGradingGrade("");
+                            setGradingComment("");
+                          }
+                        }}
+                        title={child.title}
+                        className={cn(
+                          "w-9 h-9 rounded-lg text-sm font-bold border-2 transition-all flex-none flex items-center justify-center",
+                          activeInspectionIndex === idx
+                            ? "bg-primary border-primary text-primary-foreground scale-110 shadow-lg"
+                            : "bg-surface border-border text-muted hover:border-primary/50 hover:text-foreground",
+                        )}
+                      >
+                        {idx + 1}
+                      </button>
+                    ))}
+                  </div>
+                )}
             </div>
 
             <div className="flex-1 flex flex-col lg:flex-row min-h-0">

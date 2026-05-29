@@ -163,6 +163,7 @@ export class ProblemsService {
       children = questions.map((q) =>
         this.problemsRepository.create({
           ...q,
+          slug: `${createProblemDto.slug}--${q.slug}`, // ex: "prova-1--q1"
           type: ProblemType.EXERCISE,
           classroom: classroom,
           parameters: q.parameters as unknown as ParameterDefinition[],
@@ -314,6 +315,7 @@ export class ProblemsService {
       classroomId: _classroomId,
       deadline,
       startDate,
+      slug,
       ...dataToUpdate
     } = updateProblemDto;
 
@@ -348,6 +350,7 @@ export class ProblemsService {
           type: problem.type,
           classroom: problem.classroom,
           parameters: childParams,
+          slug: `${updateProblemDto.slug ?? problem.slug}--${q.slug}`,
           starterCode: q.starterCode as any,
           solutionCode: q.solutionCode as any,
           testCases: childTestCases,
@@ -489,7 +492,9 @@ export class ProblemsService {
             : '0MB',
         };
       } catch (error) {
-        this.logger.error(`[DryRun] Erro no caso ${index}: ${error.message}`);
+        this.logger.error(
+          `[DryRun] Erro no caso ${index}: ${error instanceof Error ? error.message : String(error)}`,
+        );
         return {
           id: index,
           status: 'INTERNAL_ERROR',

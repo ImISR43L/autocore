@@ -12,6 +12,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { SubjectType } from '../common/enums/subject-type.enum';
 import { ChemistryService } from '../chemistry/chemistry.service';
+import { HtmlValidatorService } from '../html/html-validator.service';
 
 interface LanguageConfig {
   fileName: string;
@@ -43,6 +44,7 @@ export class SubmissionsProcessor {
     private submissionsGateway: SubmissionsGateway,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private chemistryService: ChemistryService,
+    private htmlValidatorService: HtmlValidatorService,
   ) {}
 
   private cleanLog(text: string | undefined, languageId?: number): string {
@@ -198,6 +200,38 @@ export class SubmissionsProcessor {
         }
 
         return; // O return impede que o código continue para o Go-Judge!
+      }
+
+      if (fullProblem.subject === SubjectType.HTML) {
+        let studentHtml = '';
+        if (Array.isArray(files) && files.length > 0) {
+          studentHtml = files[0].content || '';
+        } else if (typeof files === 'string') {
+          studentHtml = files;
+        }
+
+        const config = fullProblem.validationConfig as any;
+
+        const result = this.htmlValidatorService.validateSubmission(
+          studentHtml,
+          config,
+        );
+
+        submission.status = result.status;
+        submission.grade = result.score;
+        submission.output = result.feedback ?? null;
+        submission.executionTime = 0;
+        submission.memoryUsage = 0;
+
+        await this.submissionsRepository.save(submission);
+
+        if (submission.user?.id) {
+          this.submissionsGateway.server
+            .to(`user-${submission.user.id}`)
+            .emit('submission-finished', submission);
+        }
+
+        return;
       }
 
       const langConfig = this.getLanguageConfig(language);

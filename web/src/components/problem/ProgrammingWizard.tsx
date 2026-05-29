@@ -30,6 +30,7 @@ import { ExamReview } from "./steps/ExamReview";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { cn } from "../../lib/utils";
+import { toast } from "sonner";
 
 const programmingSchema = z.union([
   programmingExerciseSchema,
@@ -105,6 +106,20 @@ export function ProgrammingWizard({
     deadline: "",
   };
 
+  const FIELD_LABELS: Record<string, string> = {
+    title: "Título",
+    slug: "Slug (URL interna)",
+    description: "Enunciado",
+    returnType: "Tipo de retorno",
+    testCases: "Casos de teste",
+    starterCode: "Código base",
+    parameters: "Parâmetros de entrada",
+    startDate: "Data de início",
+    deadline: "Prazo final",
+    timeLimit: "Tempo limite",
+    memoryLimit: "Limite de memória",
+  };
+
   const methods = useForm<ProblemFormValues>({
     resolver: zodResolver(programmingSchema) as any,
     defaultValues: (initialValues || defaults) as any,
@@ -153,7 +168,6 @@ export function ProgrammingWizard({
       }) as any;
     }
 
-    // 👇 ADICIONE ESTE BLOCO ABAIXO PARA CORRIGIR O FUSO HORÁRIO 👇
     if (data.startDate && data.startDate !== "") {
       // O construtor do Date lê a string local do input e o .toISOString() converte para o UTC correto
       data.startDate = new Date(data.startDate).toISOString();
@@ -161,7 +175,6 @@ export function ProgrammingWizard({
     if (data.deadline && data.deadline !== "") {
       data.deadline = new Date(data.deadline).toISOString();
     }
-    // -------------------------------------------------------------
 
     await onSubmit(data);
     clearDraft();
@@ -201,6 +214,31 @@ export function ProgrammingWizard({
         shouldDirty: true,
       });
     }
+  };
+
+  const handleStepInvalid = (errors: any, stepLabel: string) => {
+    // Erro no step de Questões — detalhamento por questão
+    if (stepLabel === "Questões" && Array.isArray(errors?.questions)) {
+      const msgs: string[] = [];
+
+      errors.questions.forEach((qErr: any, idx: number) => {
+        if (!qErr) return;
+        const badFields = Object.keys(qErr)
+          .map((f) => FIELD_LABELS[f] ?? f)
+          .join(", ");
+        msgs.push(`Questão ${idx + 1}: verifique ${badFields}`);
+      });
+
+      if (msgs.length > 0) {
+        msgs.forEach((msg) => toast.error(msg, { duration: 6000 }));
+        return;
+      }
+    }
+
+    // Fallback genérico para outros steps
+    toast.error(
+      `Passo "${stepLabel}": preencha todos os campos obrigatórios antes de continuar.`,
+    );
   };
 
   const step2ValidationFields =
@@ -251,6 +289,7 @@ export function ProgrammingWizard({
         <Stepper<ProblemFormValues>
           methods={methods as any}
           onComplete={handleFinalSubmit}
+          onStepInvalid={handleStepInvalid}
         >
           {/* HEADER DO WIZARD */}
           <div className="flex-none border-b border-border bg-surface p-3 sm:p-4 flex items-center justify-between gap-3 z-20 relative shadow-sm">

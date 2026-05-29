@@ -8,6 +8,7 @@ import { Button } from "../components/ui/Button";
 // Importa os nossos novos Editores Especializados
 import { ProgrammingEditor } from "../components/problem/ProgrammingEditor";
 import { ChemistryEditor } from "../components/problem/ChemistryEditor";
+import { HtmlEditor } from "../components/problem/HtmlEditor";
 
 export default function EditProblem() {
   const params = useParams();
@@ -207,6 +208,13 @@ export default function EditProblem() {
         <div className="h-full bg-surface border border-border rounded-xl shadow-2xl overflow-hidden">
           {problem?.subject === "CHEMISTRY" ? (
             <ChemistryEditor
+              initialValues={problem}
+              onSubmit={handleUpdate}
+              mode="EDIT"
+              onDirtyChange={setIsFormDirty}
+            />
+          ) : problem?.subject === "HTML" ? (
+            <HtmlEditor
               initialValues={problem}
               onSubmit={handleUpdate}
               mode="EDIT"

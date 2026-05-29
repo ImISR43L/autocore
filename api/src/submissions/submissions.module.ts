@@ -12,6 +12,7 @@ import { ProblemsModule } from '../problems/problems.module';
 import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
 import { ChemistryModule } from '../chemistry/chemistry.module';
+import { HtmlModule } from 'src/html/html.module';
 
 @Module({
   imports: [
@@ -36,6 +37,8 @@ import { ChemistryModule } from '../chemistry/chemistry.module';
     AuthModule,
     UsersModule,
     ChemistryModule,
+
+    HtmlModule,
   ],
   controllers: [SubmissionsController],
   providers: [SubmissionsService, SubmissionsProcessor, SubmissionsGateway],

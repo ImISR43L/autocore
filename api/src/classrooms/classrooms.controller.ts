@@ -58,7 +58,6 @@ export class ClassroomsController {
     return this.classroomsService.findOne(id, req.user.userId);
   }
 
-  // NOVAS ROTAS DE AÇÃO
   @Patch(':id/archive')
   archive(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.classroomsService.archive(id, req.user.userId);

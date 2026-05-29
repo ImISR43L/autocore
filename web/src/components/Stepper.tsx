@@ -47,6 +47,7 @@ interface StepperProps<T extends FieldValues> {
   children: ReactNode;
   onComplete: (data: T) => Promise<void> | void;
   initialStep?: number;
+  onStepInvalid?: (errors: FieldErrors<T>, stepLabel: string) => void; // ✅ novo
 }
 
 interface StepProps<T extends FieldValues> {
@@ -63,6 +64,7 @@ export function Stepper<T extends FieldValues>({
   children,
   onComplete,
   initialStep = 0,
+  onStepInvalid,
 }: StepperProps<T>) {
   const [activeStepIndex, setActiveStepIndex] = useState(initialStep);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -112,7 +114,11 @@ export function Stepper<T extends FieldValues>({
       isValid = await methods.trigger(currentStepDef.validationFields as any);
     }
 
-    if (!isValid) return;
+    if (!isValid) {
+      // ✅ Notifica o pai com os erros atuais e o label do step
+      onStepInvalid?.(methods.formState.errors, currentStepDef?.label ?? "");
+      return;
+    }
 
     if (activeStepIndex < orderedSteps.length - 1) {
       setActiveStepIndex((prev) => prev + 1);

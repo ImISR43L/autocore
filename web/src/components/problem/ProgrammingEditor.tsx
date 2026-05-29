@@ -79,10 +79,32 @@ export function ProgrammingEditor({
   };
 
   const onInvalid = (errors: any) => {
-    console.error("[Erro de Validação Zod]:", errors);
-    toast.error(
-      "Erro de validação. Verifique campos obrigatórios ou com erro nas outras abas.",
-    );
+    const questionErrors = errors?.questions;
+    if (Array.isArray(questionErrors)) {
+      const firstErrIndex = questionErrors.findIndex(Boolean);
+      if (firstErrIndex !== -1) {
+        const qErr = questionErrors[firstErrIndex];
+        const fieldName = qErr?.title
+          ? "título"
+          : qErr?.slug
+            ? "slug"
+            : qErr?.description
+              ? "enunciado"
+              : qErr?.testCases
+                ? "casos de teste"
+                : qErr?.starterCode
+                  ? "código base"
+                  : qErr?.returnType
+                    ? "tipo de retorno"
+                    : "campo desconhecido";
+        toast.error(
+          `Questão ${firstErrIndex + 1}: verifique o campo "${fieldName}".`,
+          { duration: 5000 },
+        );
+        return;
+      }
+    }
+    toast.error("Preencha todos os campos obrigatórios antes de continuar.");
   };
 
   const NavButton = ({
