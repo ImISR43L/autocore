@@ -957,8 +957,14 @@ export default function ClassroomView() {
         : Infinity;
 
       // A prova inicia se a data atual passou da startDate OU se o professor clicou em Iniciar manualmente (startedAt)
-      const isStarted = (start > 0 && now >= start) || currentProblem.startedAt;
-      const isFinished = now > end;
+      const hasStartDate = !!currentProblem.startDate;
+      const isStarted =
+        currentProblem.startedAt != null || // professor clicou em Iniciar
+        (hasStartDate && now >= start); // data automática chegou
+
+      // Sem deadline = nunca termina
+      const hasDeadline = !!currentProblem.deadline;
+      const isFinished = hasDeadline && now > end;
 
       if (!isStarted && !isFinished) {
         setExamStatus("WAITING");
@@ -979,7 +985,7 @@ export default function ClassroomView() {
             .padStart(2, "0");
           setTimeLeft(`${h}:${m}:${s}`);
         } else {
-          setTimeLeft("Sem limite");
+          setTimeLeft(null);
         }
       } else {
         setExamStatus("FINISHED");
@@ -1856,7 +1862,25 @@ export default function ClassroomView() {
             </div>
           )}
 
-          <div className="prose prose-invert prose-base max-w-none mb-10">
+          <div
+            className="prose prose-base max-w-none mb-10 dark:prose-invert"
+            style={
+              {
+                "--tw-prose-body": "#374151",
+                "--tw-prose-headings": "#111827",
+                "--tw-prose-lead": "#4b5563",
+                "--tw-prose-links": "#111827",
+                "--tw-prose-bold": "#111827",
+                "--tw-prose-counters": "#6b7280",
+                "--tw-prose-bullets": "#d1d5db",
+                "--tw-prose-hr": "#e5e7eb",
+                "--tw-prose-quotes": "#111827",
+                "--tw-prose-quote-borders": "#e5e7eb",
+                "--tw-prose-captions": "#6b7280",
+                "--tw-prose-code": "#111827",
+              } as React.CSSProperties
+            }
+          >
             <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
               {displayProblem.description}
             </ReactMarkdown>
@@ -2755,7 +2779,7 @@ export default function ClassroomView() {
                 </div>
 
                 {/* Status do Exame */}
-                {isExam && currentProblem?.timeLimit && (
+                {isExam && (
                   <div
                     className={cn(
                       "px-4 py-2 rounded text-sm font-bold flex items-center gap-2 h-11 whitespace-nowrap",
@@ -2772,7 +2796,7 @@ export default function ClassroomView() {
                         ? "Aguardando"
                         : examStatus === "FINISHED"
                           ? "Encerrado"
-                          : timeLeft}
+                          : (timeLeft ?? "Sem prazo")}
                     </span>
                     {isOwner && examStatus === "WAITING" && (
                       <Button

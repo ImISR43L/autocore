@@ -210,7 +210,27 @@ export class SubmissionsProcessor {
           studentHtml = files;
         }
 
+        // Para provas: fullProblem é sempre o filho (child), que tem suas próprias rules.
+        // Para exercícios: fullProblem é o problema direto, que também tem rules.
+        // Em ambos os casos, validationConfig.rules deve existir.
         const config = fullProblem.validationConfig as any;
+
+        // Guarda de segurança: se o config vier vazio (submissão indevida ao pai da prova)
+        if (!config?.rules?.length) {
+          submission.status = 'Internal Error';
+          submission.output =
+            'Configuração de validação ausente. ' +
+            'Certifique-se de submeter para uma questão específica da prova, não para a prova em si.';
+          submission.executionTime = 0;
+          submission.memoryUsage = 0;
+          await this.submissionsRepository.save(submission);
+          if (submission.user?.id) {
+            this.submissionsGateway.server
+              .to(`user-${submission.user.id}`)
+              .emit('submission-finished', submission);
+          }
+          return;
+        }
 
         const result = this.htmlValidatorService.validateSubmission(
           studentHtml,
@@ -233,7 +253,6 @@ export class SubmissionsProcessor {
 
         return;
       }
-
       const langConfig = this.getLanguageConfig(language);
       if (!langConfig) {
         this.logger.error(`[DEBUG] Linguagem ${language} não suportada.`);
