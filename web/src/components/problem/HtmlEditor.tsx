@@ -100,11 +100,28 @@ export function HtmlEditor({
 
   const referenceHtml = watch("validationConfig.referenceHtml" as any) ?? "";
 
+  // Remove "expectedValue" quando vazio, em qualquer nível do payload: um
+  // input de texto não preenchido sempre retorna "" (nunca undefined), mas
+  // "" significa "sem valor esperado" (checagem só de presença), não "deve
+  // ser literalmente vazio".
+  const stripEmptyExpectedValue = (node: any): any => {
+    if (Array.isArray(node)) return node.map(stripEmptyExpectedValue);
+    if (node && typeof node === "object") {
+      const result: any = {};
+      for (const [key, value] of Object.entries(node)) {
+        if (key === "expectedValue" && value === "") continue;
+        result[key] = stripEmptyExpectedValue(value);
+      }
+      return result;
+    }
+    return node;
+  };
+
   const onFormSubmit = async (data: any) => {
     setIsSubmitting(true);
     try {
       data.subject = "HTML";
-      await onSubmit(data);
+      await onSubmit(stripEmptyExpectedValue(data));
     } finally {
       setIsSubmitting(false);
     }

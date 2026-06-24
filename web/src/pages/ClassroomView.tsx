@@ -362,6 +362,11 @@ export default function ClassroomView() {
     {},
   );
 
+  // Dicionário de HTML por questão (chave = child problem ID)
+  // Substitui o estado `htmlCode` para provas de HTML com múltiplas questões,
+  // evitando que o código do aluno seja perdido ao trocar de questão.
+  const [examHtmlMap, setExamHtmlMap] = useState<Record<string, string>>({});
+
   // Questões já entregues (travadas) — Set de child problem IDs
   const [deliveredQuestions, setDeliveredQuestions] = useState<Set<string>>(
     new Set(),
@@ -370,6 +375,7 @@ export default function ClassroomView() {
   useEffect(() => {
     setDeliveredQuestions(new Set());
     setExamFilesMap({});
+    setExamHtmlMap({});
   }, [selectedProblemId]);
 
   useEffect(() => {
@@ -1315,14 +1321,14 @@ export default function ClassroomView() {
       }
 
       if (classroom?.subject === "HTML") {
-        if (!htmlCode.trim()) {
+        if (!activeQuestionHtml.trim()) {
           toast.error("O editor está vazio! Escreva seu HTML antes de enviar.");
           setLoading(false);
           loadingRef.current = false;
           setVerdict(null);
           return;
         }
-        payloadFiles = [{ name: "index.html", content: htmlCode }];
+        payloadFiles = [{ name: "index.html", content: activeQuestionHtml }];
         payloadLanguageId = undefined; // HTML não usa language_id
       }
 
@@ -1641,6 +1647,22 @@ export default function ClassroomView() {
         ])
       : files;
 
+  // HTML da questão ativa no modo prova (mesma lógica do `activeQuestionFiles`)
+  // Em exercícios, continua usando `htmlCode`; em provas, usa o mapa por questão
+  const activeQuestionHtml: string =
+    isExam && displayProblem
+      ? (examHtmlMap[displayProblem.id] ?? "")
+      : htmlCode;
+
+  // Atualiza o HTML respeitando se estamos numa prova (mapa) ou exercício avulso
+  const setActiveQuestionHtml = (value: string) => {
+    if (isExam && displayProblem) {
+      setExamHtmlMap((prev) => ({ ...prev, [displayProblem.id]: value }));
+    } else {
+      setHtmlCode(value);
+    }
+  };
+
   // A questão atual está travada?
   const isCurrentQuestionDelivered =
     isExam && displayProblem
@@ -1721,10 +1743,12 @@ export default function ClassroomView() {
             theme={monacoTheme}
             language="html"
             value={
-              isOwner ? (safeValidationConfig?.referenceHtml ?? "") : htmlCode
+              isOwner
+                ? (safeValidationConfig?.referenceHtml ?? "")
+                : activeQuestionHtml
             }
             onChange={(value) => {
-              if (!isOwner) setHtmlCode(value ?? "");
+              if (!isOwner) setActiveQuestionHtml(value ?? "");
             }}
             options={{
               minimap: { enabled: false },
@@ -1862,25 +1886,7 @@ export default function ClassroomView() {
             </div>
           )}
 
-          <div
-            className="prose prose-base max-w-none mb-10 dark:prose-invert"
-            style={
-              {
-                "--tw-prose-body": "#374151",
-                "--tw-prose-headings": "#111827",
-                "--tw-prose-lead": "#4b5563",
-                "--tw-prose-links": "#111827",
-                "--tw-prose-bold": "#111827",
-                "--tw-prose-counters": "#6b7280",
-                "--tw-prose-bullets": "#d1d5db",
-                "--tw-prose-hr": "#e5e7eb",
-                "--tw-prose-quotes": "#111827",
-                "--tw-prose-quote-borders": "#e5e7eb",
-                "--tw-prose-captions": "#6b7280",
-                "--tw-prose-code": "#111827",
-              } as React.CSSProperties
-            }
-          >
+          <div className="prose prose-base max-w-none mb-10 dark:prose-invert">
             <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
               {displayProblem.description}
             </ReactMarkdown>
@@ -2031,19 +2037,28 @@ export default function ClassroomView() {
         srcDoc={
           isOwner
             ? (safeValidationConfig?.referenceHtml ?? "")
-            : htmlCode ||
+            : activeQuestionHtml ||
               "<p style='color:#888;font-family:sans-serif;padding:2rem;text-align:center'>Escreva seu HTML no editor ao lado para ver o preview aqui.</p>"
         }
         className="flex-1 w-full bg-white"
         sandbox="allow-same-origin"
         title="Preview HTML do aluno"
       />
-      {/* Resultado após submissão */}
-      {verdict && verdict !== "Processando..." && submissionError && (
-        <div className="flex-none border-t border-border bg-surface p-3 max-h-40 overflow-y-auto">
-          <pre className="text-xs font-mono text-foreground whitespace-pre-wrap">
-            {submissionError}
-          </pre>
+      {/* Feedback de validação após submissão (checklist de regras do gabarito) */}
+      {verdict && verdict !== "Processando..." && (
+        <div className="flex-none border-t border-border max-h-60 overflow-y-auto">
+          {submissionError ? (
+            <div className="bg-surface p-3">
+              <pre className="text-xs font-mono text-red-400 whitespace-pre-wrap">
+                {submissionError}
+              </pre>
+            </div>
+          ) : (
+            <LogViewer
+              logs={lastSubmission?.output || lastSubmission?.stderr || ""}
+              status={(lastSubmission?.status as any) || "Pending"}
+            />
+          )}
         </div>
       )}
     </div>

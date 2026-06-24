@@ -76,9 +76,12 @@ export default function LogViewer({ logs, status }: LogViewerProps) {
       if (
         line.includes("Error:") ||
         line.includes("Exception") ||
-        line.includes("❌")
+        line.includes("❌") ||
+        line.trim().startsWith("✘")
       ) {
         lineClass = "log-text-error";
+      } else if (line.trim().startsWith("✔")) {
+        lineClass = "log-text-success";
       } else if (line.includes("Warning:") || line.includes("AVISO")) {
         lineClass = "log-text-warning";
       } else if (line.trim().startsWith("Linha") || line.includes('File "')) {

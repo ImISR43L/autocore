@@ -10,9 +10,6 @@ import axios from 'axios';
 import { SubmissionsGateway } from './submissions.gateway';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
-import { SubjectType } from '../common/enums/subject-type.enum';
-import { ChemistryService } from '../chemistry/chemistry.service';
-import { HtmlValidatorService } from '../html/html-validator.service';
 
 interface LanguageConfig {
   fileName: string;
@@ -43,8 +40,6 @@ export class SubmissionsProcessor {
     private problemsRepository: Repository<Problem>,
     private submissionsGateway: SubmissionsGateway,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
-    private chemistryService: ChemistryService,
-    private htmlValidatorService: HtmlValidatorService,
   ) {}
 
   private cleanLog(text: string | undefined, languageId?: number): string {
@@ -161,98 +156,6 @@ export class SubmissionsProcessor {
 
       const fullProblem = submission.problem;
 
-      if (fullProblem.subject === SubjectType.CHEMISTRY) {
-        // Extrai o SMILES dependendo de como o React envia os dados (string simples ou array de ficheiros)
-        let studentSmiles = '';
-        if (Array.isArray(files) && files.length > 0) {
-          studentSmiles = files[0].content || '';
-        } else if (typeof files === 'string') {
-          studentSmiles = files;
-        }
-
-        const expectedSmiles =
-          fullProblem.validationConfig?.expectedSmiles || '';
-
-        // Chama o motor químico (RDKit)
-        const result = this.chemistryService.validateSubmission(
-          studentSmiles,
-          expectedSmiles,
-        );
-
-        // Atualiza os dados da submissão com o veredicto
-        submission.status = result.status;
-        submission.grade = result.score;
-
-        // @ts-ignore
-        submission.output = result.feedback;
-        // @ts-ignore
-        submission.executionTime = 0; // Motor local resolve quase instantaneamente
-        // @ts-ignore
-        submission.memoryUsage = 0;
-
-        await this.submissionsRepository.save(submission);
-
-        // Notifica o frontend via WebSocket que a correção terminou
-        if (submission.user?.id) {
-          this.submissionsGateway.server
-            .to(`user-${submission.user.id}`)
-            .emit('submission-finished', submission);
-        }
-
-        return; // O return impede que o código continue para o Go-Judge!
-      }
-
-      if (fullProblem.subject === SubjectType.HTML) {
-        let studentHtml = '';
-        if (Array.isArray(files) && files.length > 0) {
-          studentHtml = files[0].content || '';
-        } else if (typeof files === 'string') {
-          studentHtml = files;
-        }
-
-        // Para provas: fullProblem é sempre o filho (child), que tem suas próprias rules.
-        // Para exercícios: fullProblem é o problema direto, que também tem rules.
-        // Em ambos os casos, validationConfig.rules deve existir.
-        const config = fullProblem.validationConfig as any;
-
-        // Guarda de segurança: se o config vier vazio (submissão indevida ao pai da prova)
-        if (!config?.rules?.length) {
-          submission.status = 'Internal Error';
-          submission.output =
-            'Configuração de validação ausente. ' +
-            'Certifique-se de submeter para uma questão específica da prova, não para a prova em si.';
-          submission.executionTime = 0;
-          submission.memoryUsage = 0;
-          await this.submissionsRepository.save(submission);
-          if (submission.user?.id) {
-            this.submissionsGateway.server
-              .to(`user-${submission.user.id}`)
-              .emit('submission-finished', submission);
-          }
-          return;
-        }
-
-        const result = this.htmlValidatorService.validateSubmission(
-          studentHtml,
-          config,
-        );
-
-        submission.status = result.status;
-        submission.grade = result.score;
-        submission.output = result.feedback ?? null;
-        submission.executionTime = 0;
-        submission.memoryUsage = 0;
-
-        await this.submissionsRepository.save(submission);
-
-        if (submission.user?.id) {
-          this.submissionsGateway.server
-            .to(`user-${submission.user.id}`)
-            .emit('submission-finished', submission);
-        }
-
-        return;
-      }
       const langConfig = this.getLanguageConfig(language);
       if (!langConfig) {
         this.logger.error(`[DEBUG] Linguagem ${language} não suportada.`);
@@ -387,10 +290,11 @@ export class SubmissionsProcessor {
           .emit('submission-finished', submission);
       }
     } catch (criticalError) {
-      this.logger.error(
-        `[DEBUG] Erro Crítico: ${criticalError.message}`,
-        criticalError.stack,
-      );
+      const err =
+        criticalError instanceof Error
+          ? criticalError
+          : new Error(String(criticalError));
+      this.logger.error(`[DEBUG] Erro Crítico: ${err.message}`, err.stack);
       throw criticalError;
     }
   }

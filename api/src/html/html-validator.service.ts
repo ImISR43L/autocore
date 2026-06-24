@@ -73,7 +73,12 @@ export class HtmlValidatorService {
         // Regra de atributo
         if (rule.attribute !== undefined) {
           const attrValue = element.getAttribute(rule.attribute);
-          if (rule.expectedValue !== undefined) {
+          // Trata string vazia como "nenhum valor esperado", pois o editor de
+          // regras salva o campo como "" quando o professor só quer checar
+          // presença (e não exige literalmente um atributo vazio, ex: href="").
+          const hasExpectedValue =
+            rule.expectedValue !== undefined && rule.expectedValue !== '';
+          if (hasExpectedValue) {
             if (attrValue === rule.expectedValue) {
               passed.push(
                 `✔ "${rule.description}": atributo "${rule.attribute}" correto.`,

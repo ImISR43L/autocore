@@ -187,6 +187,24 @@ export function HtmlWizard({ initialValues, onSubmit }: HtmlWizardProps) {
       });
   };
 
+  // Remove "expectedValue" quando vazio, em qualquer nível do payload: um
+  // input de texto não preenchido sempre retorna "" (nunca undefined), mas
+  // "" significa "sem valor esperado" (checagem só de presença), não "deve
+  // ser literalmente vazio". Cobre tanto `validationConfig.rules` (exercício)
+  // quanto `questions[].validationConfig.rules` (prova).
+  const stripEmptyExpectedValue = (node: any): any => {
+    if (Array.isArray(node)) return node.map(stripEmptyExpectedValue);
+    if (node && typeof node === "object") {
+      const result: any = {};
+      for (const [key, value] of Object.entries(node)) {
+        if (key === "expectedValue" && value === "") continue;
+        result[key] = stripEmptyExpectedValue(value);
+      }
+      return result;
+    }
+    return node;
+  };
+
   const handleFinalSubmit = async (data: any) => {
     if (classroomId && data.classroomId !== classroomId)
       data.classroomId = classroomId;
@@ -196,7 +214,7 @@ export function HtmlWizard({ initialValues, onSubmit }: HtmlWizardProps) {
     if (data.deadline && data.deadline !== "")
       data.deadline = new Date(data.deadline).toISOString();
     try {
-      await onSubmit(data);
+      await onSubmit(stripEmptyExpectedValue(data));
       clearDraft();
     } catch (e) {
       console.error(e);

@@ -12,6 +12,11 @@ import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
 import { Submission } from './entities/submission.entity';
 import { Problem } from '../problems/entities/problem.entity';
+import { SubjectType } from '../common/enums/subject-type.enum';
+import { SubmissionsGateway } from './submissions.gateway';
+import { ChemistryService } from '../chemistry/chemistry.service';
+import { HtmlValidatorService } from '../html/html-validator.service';
+import type { ValidationResult } from '../chemistry/chemistry.service';
 interface LanguageConfig {
   fileName: string;
   runCommand: string[];
@@ -26,6 +31,9 @@ export class SubmissionsService {
     @InjectRepository(Problem)
     private problemsRepository: Repository<Problem>,
     @InjectQueue('submission-queue') private submissionsQueue: Queue,
+    private submissionsGateway: SubmissionsGateway,
+    private chemistryService: ChemistryService,
+    private htmlValidatorService: HtmlValidatorService,
   ) {}
 
   async getProblemStats(problemId: string) {
@@ -172,7 +180,17 @@ export class SubmissionsService {
 
     const savedSubmission = await this.submissionsRepository.save(submission);
 
-    // Envio para Fila
+    // Roteamento: HTML e Química são validações síncronas e baratas
+    // (JSDOM / RDKit local) — não precisam da fila pesada do Go-Judge.
+    // Resolvemos na própria requisição e nunca tocamos o BullMQ para elas.
+    if (
+      problem.subject === SubjectType.HTML ||
+      problem.subject === SubjectType.CHEMISTRY
+    ) {
+      return this.resolveSynchronously(savedSubmission, problem, userId);
+    }
+
+    // Programação: segue o fluxo assíncrono via BullMQ + Go-Judge
     try {
       await this.submissionsQueue.add('grade', {
         submissionId: savedSubmission.id,
@@ -188,6 +206,67 @@ export class SubmissionsService {
       savedSubmission.output = 'Falha no sistema de filas.';
       await this.submissionsRepository.save(savedSubmission);
     }
+
+    return savedSubmission;
+  }
+
+  /**
+   * Resolve submissões síncronas (HTML/Química) sem passar pela fila do
+   * Go-Judge. Salva o resultado final e dispara o WebSocket imediatamente,
+   * tudo dentro da mesma requisição HTTP do envio.
+   */
+  private async resolveSynchronously(
+    submission: Submission,
+    problem: Problem,
+    userId: string,
+  ) {
+    try {
+      const files = submission.files;
+      const firstFileContent =
+        Array.isArray(files) && files.length > 0 ? files[0].content || '' : '';
+
+      let result: ValidationResult;
+
+      if (problem.subject === SubjectType.HTML) {
+        const config = problem.validationConfig as any;
+        if (!config?.rules?.length) {
+          result = {
+            status: 'Runtime Error',
+            score: 0,
+            feedback:
+              'Configuração de validação ausente. Certifique-se de submeter ' +
+              'para uma questão específica da prova, não para a prova em si.',
+          };
+        } else {
+          result = this.htmlValidatorService.validateSubmission(
+            firstFileContent,
+            config,
+          );
+        }
+      } else {
+        const expectedSmiles = problem.validationConfig?.expectedSmiles || '';
+        result = this.chemistryService.validateSubmission(
+          firstFileContent,
+          expectedSmiles,
+        );
+      }
+
+      submission.status = result.status;
+      submission.grade = result.score;
+      submission.output = result.feedback ?? null;
+      submission.executionTime = 0;
+      submission.memoryUsage = 0;
+    } catch (error) {
+      this.logger.error('Erro na validação síncrona:', error);
+      submission.status = 'Internal Error';
+      submission.output = 'Erro interno ao processar a submissão.';
+    }
+
+    const savedSubmission = await this.submissionsRepository.save(submission);
+
+    this.submissionsGateway.server
+      .to(`user-${userId}`)
+      .emit('submission-finished', savedSubmission);
 
     return savedSubmission;
   }
