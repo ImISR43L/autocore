@@ -344,6 +344,11 @@ export default function ClassroomView() {
 
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
 
+  // --- CONTROLE DE TELA CHEIA / BLOQUEIO ANTI-COLA (PROVAS) ---
+  const EXAM_LOCK_DURATION_SECONDS = 60; // 1 minuto de bloqueio
+  const [isExamLocked, setIsExamLocked] = useState(false);
+  const [lockCountdown, setLockCountdown] = useState(0);
+
   // Sub-aba dentro de "Atividades": exercícios vs provas
   const [problemTypeTab, setProblemTypeTab] = useState<"exercises" | "exams">(
     "exercises",
@@ -1574,6 +1579,159 @@ export default function ClassroomView() {
 
   // Estado do editor HTML ao vivo
   const isExam = currentProblem?.type === "EXAM";
+
+  // --- FUNÇÕES DE TELA CHEIA (PROVAS) ---
+  const requestExamFullscreen = useCallback(() => {
+    const el = document.documentElement as any;
+    const request =
+      el.requestFullscreen ||
+      el.webkitRequestFullscreen ||
+      el.mozRequestFullScreen ||
+      el.msRequestFullscreen;
+    if (request) {
+      try {
+        const result = request.call(el);
+        if (result?.catch) result.catch(() => {});
+      } catch {
+        // Navegador pode recusar se não houver gesto do usuário; ignoramos.
+      }
+    }
+  }, []);
+
+  const exitExamFullscreen = useCallback(() => {
+    const doc = document as any;
+    const fsElement =
+      doc.fullscreenElement ||
+      doc.webkitFullscreenElement ||
+      doc.mozFullScreenElement ||
+      doc.msFullscreenElement;
+    if (!fsElement) return;
+    const exit =
+      doc.exitFullscreen ||
+      doc.webkitExitFullscreen ||
+      doc.mozCancelFullScreen ||
+      doc.msExitFullscreen;
+    if (exit) {
+      try {
+        const result = exit.call(doc);
+        if (result?.catch) result.catch(() => {});
+      } catch {
+        // Ignora falha ao sair do modo tela cheia
+      }
+    }
+  }, []);
+
+  // Dispara o bloqueio de 1 minuto e registra a ocorrência no log de atividades
+  const triggerExamLock = useCallback((reason: string) => {
+    setActivityLogs((prev) => [
+      ...prev,
+      {
+        action: "BLUR" as const,
+        timestamp: new Date().toISOString(),
+        details: reason,
+      },
+    ]);
+    setIsExamLocked(true);
+    setLockCountdown(EXAM_LOCK_DURATION_SECONDS);
+  }, []);
+
+  // Contagem regressiva do bloqueio de 1 minuto.
+  // IMPORTANTE: não saímos do bloqueio automaticamente aqui, pois
+  // requestFullscreen() só funciona dentro de um gesto direto do usuário
+  // (clique). Se chamado sozinho num useEffect, o navegador rejeita a
+  // promise silenciosamente e a prova fica fora da tela cheia sem que
+  // nenhum novo evento de "fullscreenchange" seja disparado para
+  // detectar isso. Por isso, ao chegar a 0, apenas paramos o timer e
+  // exibimos um botão para o aluno retomar manualmente (ver handleResumeExam).
+  // Reforço de segurança: além do overlay visual, remove o foco de qualquer
+  // campo/editor e trava a edição enquanto a tela estiver bloqueada — caso
+  // contrário, o teclado ainda poderia enviar eventos (ex: colar) para o
+  // Monaco mesmo com o overlay cobrindo a tela visualmente.
+  useEffect(() => {
+    if (isExamLocked) {
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      try {
+        editorRef.current?.updateOptions?.({ readOnly: true });
+      } catch {
+        // Editor pode não estar montado ainda; ignora.
+      }
+    } else if (!isOwner) {
+      try {
+        editorRef.current?.updateOptions?.({ readOnly: false });
+      } catch {
+        // Ignora
+      }
+    }
+  }, [isExamLocked, isOwner]);
+
+  useEffect(() => {
+    if (!isExamLocked) return;
+    if (lockCountdown <= 0) return;
+    const timer = setTimeout(() => setLockCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [isExamLocked, lockCountdown]);
+
+  // Chamado pelo clique do aluno no botão "Voltar à prova".
+  // Como está dentro de um handler de clique, é um gesto de usuário válido
+  // e o navegador permite requestFullscreen() de forma confiável aqui.
+  const handleResumeExam = useCallback(() => {
+    requestExamFullscreen();
+    setIsExamLocked(false);
+    setLockCountdown(0);
+    setActivityLogs((prev) => [
+      ...prev,
+      {
+        action: "FOCUS" as const,
+        timestamp: new Date().toISOString(),
+        details: "Aluno retomou a prova manualmente após o bloqueio.",
+      },
+    ]);
+  }, [requestExamFullscreen]);
+
+  // Detecta tentativas de Alt+Tab, troca de aba ou saída da tela cheia durante a prova
+  useEffect(() => {
+    const examIsActive =
+      isExam && !isOwner && examStatus === "RUNNING" && examAcknowledged;
+    if (!examIsActive) return;
+
+    const handleWindowBlur = () => {
+      if (document.hidden) return; // evita log duplicado (visibilitychange já cobre)
+      triggerExamLock("Tentativa de sair da janela (Alt+Tab) detectada.");
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        triggerExamLock("Aluno saiu da aba/janela durante a prova.");
+      }
+    };
+
+    const handleFullscreenChange = () => {
+      const doc = document as any;
+      const fsElement =
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement;
+      if (!fsElement) {
+        triggerExamLock("Modo de tela cheia foi encerrado durante a prova.");
+      }
+    };
+
+    window.addEventListener("blur", handleWindowBlur);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+
+    return () => {
+      window.removeEventListener("blur", handleWindowBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener(
+        "webkitfullscreenchange",
+        handleFullscreenChange,
+      );
+    };
+  }, [isExam, isOwner, examStatus, examAcknowledged, triggerExamLock]);
   const isHtml = classroom?.subject === "HTML";
   const hasLimit =
     currentProblem?.maxAttempts != null && currentProblem.maxAttempts > 0;
@@ -1709,6 +1867,7 @@ export default function ClassroomView() {
       return;
     }
     toast.success("Prova finalizada! Todas as questões foram entregues.");
+    exitExamFullscreen();
   };
 
   const editorContent =
@@ -2165,6 +2324,48 @@ export default function ClassroomView() {
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden font-sans selection:bg-primary/20">
+      {/* ===== OVERLAY DE BLOQUEIO ANTI-COLA (PROVAS) ===== */}
+      {isExamLocked && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 backdrop-blur-sm select-none">
+          <div className="max-w-md w-full mx-4 bg-surface border-2 border-destructive/50 rounded-2xl p-8 text-center space-y-5 shadow-2xl">
+            <div className="mx-auto w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
+              <AlertTriangle size={32} className="text-destructive" />
+            </div>
+            <h2 className="text-xl font-bold text-foreground">
+              Tela bloqueada
+            </h2>
+            <p className="text-sm text-muted leading-relaxed">
+              Detectamos que você saiu da tela cheia ou trocou de janela durante
+              a prova. Essa ocorrência foi registrada e a tela ficará bloqueada
+              temporariamente.
+            </p>
+            {lockCountdown > 0 ? (
+              <>
+                <div className="text-5xl font-mono font-bold text-destructive tabular-nums">
+                  {String(Math.floor(lockCountdown / 60)).padStart(2, "0")}:
+                  {String(lockCountdown % 60).padStart(2, "0")}
+                </div>
+                <p className="text-xs text-muted">
+                  Aguarde o tempo terminar para poder retomar a prova.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-emerald-400 font-medium">
+                  Tempo de bloqueio encerrado.
+                </p>
+                <Button
+                  onClick={handleResumeExam}
+                  className="w-full h-12 text-base font-bold bg-emerald-500 hover:bg-emerald-400 text-white"
+                >
+                  Voltar à prova (tela cheia)
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {(!zenMode || activeTab !== "classwork") && (
         <header className="flex-none border-b border-border bg-surface px-4 py-3 md:px-6 md:py-4">
           <div className="flex items-center gap-4 mb-4">
@@ -3349,11 +3550,19 @@ export default function ClassroomView() {
                         Ao entregar uma questão, ela fica travada para edição.
                       </li>
                       <li>Você pode testar o código antes de entregar.</li>
+                      <li>
+                        A prova será exibida em tela cheia. Sair da tela cheia
+                        ou trocar de janela (Alt+Tab) bloqueará sua tela por 1
+                        minuto.
+                      </li>
                     </ul>
                   </div>
 
                   <Button
-                    onClick={() => setExamAcknowledged(true)}
+                    onClick={() => {
+                      setExamAcknowledged(true);
+                      requestExamFullscreen();
+                    }}
                     className="w-full h-12 text-base font-bold bg-amber-500 hover:bg-amber-400 text-white"
                   >
                     Estou ciente e quero iniciar a prova

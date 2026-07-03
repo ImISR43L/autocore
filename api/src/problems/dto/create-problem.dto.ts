@@ -97,6 +97,11 @@ export class CreateQuestionDto {
   solutionCode?: ProblemFileDto[];
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowedLanguages?: string[];
+
+  @IsOptional()
   @IsObject()
   validationConfig?: Record<string, any>;
 }
