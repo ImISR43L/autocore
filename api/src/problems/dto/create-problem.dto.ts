@@ -56,6 +56,14 @@ class TestCaseDto {
 }
 
 export class CreateQuestionDto {
+  // Opcional: presente quando a questão já existe (edição de uma prova).
+  // Usado pelo service para casar com a questão-filha já persistida em vez
+  // de sempre apagar tudo e recriar do zero — o que quebrava o histórico
+  // de submissões dos alunos a cada edição. Ausente = questão nova.
+  @IsOptional()
+  @IsString()
+  id?: string;
+
   @IsString()
   @IsNotEmpty()
   title: string;

@@ -8,7 +8,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import axios from 'axios';
 import { CreateProblemDto } from './dto/create-problem.dto';
 import { UpdateProblemDto } from './dto/update-problem.dto';
@@ -328,7 +328,13 @@ export class ProblemsService {
   async update(id: string, updateProblemDto: UpdateProblemDto, userId: string) {
     const problem = await this.problemsRepository.findOne({
       where: { id },
-      relations: ['children', 'testCases', 'classroom', 'classroom.owner'],
+      relations: [
+        'children',
+        'children.testCases',
+        'testCases',
+        'classroom',
+        'classroom.owner',
+      ],
     });
     if (!problem) throw new NotFoundException('Problema não encontrado');
 
@@ -386,32 +392,110 @@ export class ProblemsService {
     }
 
     if (questions) {
-      if (problem.children && problem.children.length > 0) {
-        await this.problemsRepository.remove(problem.children);
+      const existingChildren = problem.children || [];
+
+      // Casa cada questão enviada com a questão-filha já persistida (via
+      // `id`, quando presente). Isso é essencial: se simplesmente
+      // apagássemos tudo e recriássemos com IDs novos a cada edição —
+      // como o código fazia antes — toda submissão, tentativa e entrega
+      // que os alunos já tinham feito (todas ligadas ao ID antigo da
+      // questão) ficaria órfã. Para o aluno, a prova "virava outra" a
+      // cada vez que o professor editava qualquer coisa nela, mesmo no
+      // meio da prova ou depois de encerrada.
+      const incomingIds = new Set(
+        questions
+          .map((q) => (q as any).id)
+          .filter((qid): qid is string => Boolean(qid)),
+      );
+
+      // Só remove as questões-filhas que o professor realmente excluiu
+      // (não aparecem mais na lista enviada) — não todas.
+      const childrenToRemove = existingChildren.filter(
+        (c) => !incomingIds.has(c.id),
+      );
+      if (childrenToRemove.length > 0) {
+        await this.problemsRepository.remove(childrenToRemove);
       }
 
+      // Casos de teste antigos das questões REAPROVEITADAS (não das que
+      // acabaram de ser removidas acima, cujos testCases já vão junto via
+      // cascade) precisam ser apagados antes de atribuir os novos, já que
+      // simplesmente reatribuir `existingChild.testCases` em memória não
+      // garante a exclusão das linhas antigas no banco sem depender de
+      // orphanedRowAction — configuração que preferimos não ligar
+      // globalmente na entidade só por causa deste método (ela afetaria
+      // qualquer outro código que toque essa relação, com risco de apagar
+      // dados por engano se algum outro fluxo carregar a relação
+      // parcialmente). Em vez de um DELETE por questão, juntamos os ids de
+      // TODAS as questões reaproveitadas nesta edição e apagamos tudo numa
+      // única consulta em lote.
+      const oldTestCaseIdsToRemove: string[] = [];
+      for (const q of questions) {
+        const incomingId = (q as any).id as string | undefined;
+        if (!incomingId) continue;
+        const existingChild = existingChildren.find((c) => c.id === incomingId);
+        if (existingChild?.testCases?.length) {
+          oldTestCaseIdsToRemove.push(
+            ...existingChild.testCases.map((tc) => tc.id),
+          );
+        }
+      }
+      if (oldTestCaseIdsToRemove.length > 0) {
+        await this.testCasesRepository.delete({
+          id: In(oldTestCaseIdsToRemove),
+        });
+      }
+
+      // merge()/create() abaixo são operações em memória (não tocam o
+      // banco) — a escrita real acontece só no `save()` final, em cascata,
+      // então este map não precisa ser assíncrono.
       problem.children = questions.map((q) => {
+        const incomingId = (q as any).id as string | undefined;
+        const existingChild = incomingId
+          ? existingChildren.find((c) => c.id === incomingId)
+          : undefined;
+
         const childParams = q.parameters as unknown as ParameterDefinition[];
-        const childTestCases = q.testCases
-          ? q.testCases.map((tc) => {
-              delete (tc as any).id; // Remove ID para forçar INSERT real
-              return this.testCasesRepository.create({ ...tc });
-            })
-          : [];
 
-        delete (q as any).id; // Remove ID para forçar INSERT real
-        delete (q as any).classroom;
-        delete (q as any).children;
+        const buildTestCases = () =>
+          q.testCases
+            ? q.testCases.map((tc) => {
+                delete (tc as any).id; // Sempre força INSERT novo do caso de teste
+                return this.testCasesRepository.create({ ...tc });
+              })
+            : [];
 
+        const cleanQuestion = { ...q };
+        delete (cleanQuestion as any).id;
+        delete (cleanQuestion as any).classroom;
+        delete (cleanQuestion as any).children;
+
+        if (existingChild) {
+          // ATUALIZA em vez de recriar: preserva o ID da questão-filha,
+          // então todo o histórico de submissões continua válido.
+          return this.problemsRepository.merge(existingChild, {
+            ...cleanQuestion,
+            id: existingChild.id,
+            type: problem.type,
+            classroom: problem.classroom,
+            parameters: childParams,
+            slug: `${updateProblemDto.slug ?? problem.slug}--${q.slug}`,
+            starterCode: q.starterCode as any,
+            solutionCode: q.solutionCode as any,
+            testCases: buildTestCases(),
+          }) as unknown as Problem;
+        }
+
+        // Sem id correspondente = questão nova, criada nesta edição.
         return this.problemsRepository.create({
-          ...q,
+          ...cleanQuestion,
           type: problem.type,
           classroom: problem.classroom,
           parameters: childParams,
           slug: `${updateProblemDto.slug ?? problem.slug}--${q.slug}`,
           starterCode: q.starterCode as any,
           solutionCode: q.solutionCode as any,
-          testCases: childTestCases,
+          testCases: buildTestCases(),
         }) as unknown as Problem;
       });
     }

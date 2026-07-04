@@ -357,6 +357,23 @@ export default function ClassroomView() {
   // Splash da prova: aluno confirmou que leu as regras?
   // Resetar sempre que trocar de problema
   const [examAcknowledged, setExamAcknowledged] = useState(false);
+
+  // O aluno já finalizou a prova (entregou todas as questões e clicou em
+  // "Finalizar")? Usado para desligar o travamento de Alt+Tab/tela cheia
+  // depois que não há mais nada a proteger.
+  const [examFinalized, setExamFinalized] = useState(false);
+  // Espelha `examFinalized` em uma ref para leitura síncrona dentro de
+  // triggerExamLock. Precisamos disso porque handleFinalizeExam chama
+  // exitExamFullscreen() logo após finalizar — o que dispara nosso próprio
+  // listener de "fullscreenchange" — e o estado do React só reflete a
+  // finalização depois de um re-render, que pode não terminar a tempo de
+  // remover o listener antes do evento do navegador chegar. Atualizamos
+  // esta ref de forma síncrona dentro de handleFinalizeExam (e também aqui,
+  // para o caso de examFinalized vir true via hidratação/backend).
+  const examFinalizedRef = useRef(false);
+  useEffect(() => {
+    examFinalizedRef.current = examFinalized;
+  }, [examFinalized]);
   useEffect(() => {
     setExamAcknowledged(false);
   }, [selectedProblemId]);
@@ -381,6 +398,7 @@ export default function ClassroomView() {
     setDeliveredQuestions(new Set());
     setExamFilesMap({});
     setExamHtmlMap({});
+    setExamFinalized(false);
   }, [selectedProblemId]);
 
   useEffect(() => {
@@ -1601,6 +1619,68 @@ export default function ClassroomView() {
   // Estado do editor HTML ao vivo
   const isExam = currentProblem?.type === "EXAM";
 
+  // Hidrata deliveredQuestions/examFinalized a partir do backend ao carregar
+  // uma prova. Sem isso, esses estados viviam só na sessão do navegador: um
+  // F5 (ou simplesmente navegar para outro exercício e voltar) fazia o
+  // aluno "perder" o progresso de entrega no client — mesmo com o servidor
+  // já tendo tudo registrado — reativando a splash de reconhecimento e o
+  // travamento de Alt+Tab numa prova que ele já tinha terminado, o que
+  // também o impedia de ir fazer outros exercícios da disciplina sem medo
+  // de ser travado novamente.
+  useEffect(() => {
+    if (
+      !isExam ||
+      isOwner ||
+      !myUserId ||
+      !currentProblem?.children ||
+      currentProblem.children.length === 0
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const children = currentProblem.children;
+
+    const hydrateDeliveredQuestions = async () => {
+      try {
+        const results = await Promise.all(
+          children.map((child) =>
+            api
+              .get(`/submissions/problem/${child.id}`)
+              .then((res) => ({
+                childId: child.id,
+                data: (res.data || []) as Submission[],
+              }))
+              .catch(() => ({ childId: child.id, data: [] as Submission[] })),
+          ),
+        );
+
+        if (cancelled) return;
+
+        const delivered = new Set<string>();
+        results.forEach(({ childId, data }) => {
+          const wasDelivered = data.some(
+            (s) => s.user?.id === myUserId && s.isDelivery,
+          );
+          if (wasDelivered) delivered.add(childId);
+        });
+
+        setDeliveredQuestions(delivered);
+        if (delivered.size === children.length) {
+          setExamFinalized(true);
+        }
+      } catch (error) {
+        console.error("Erro ao restaurar status de entrega da prova.", error);
+      }
+    };
+
+    hydrateDeliveredQuestions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isExam, isOwner, myUserId, currentProblem]);
+
   // --- FUNÇÕES DE TELA CHEIA (PROVAS) ---
   const requestExamFullscreen = useCallback(() => {
     const el = document.documentElement as any;
@@ -1644,6 +1724,11 @@ export default function ClassroomView() {
 
   // Dispara o bloqueio de 1 minuto e registra a ocorrência no log de atividades
   const triggerExamLock = useCallback((reason: string) => {
+    // Checagem síncrona: se a prova já foi finalizada (mesmo que o efeito
+    // de detecção ainda não tenha sido desmontado por causa do timing do
+    // re-render), não trava a tela. Ver comentário na declaração de
+    // examFinalizedRef para o porquê disso ser necessário.
+    if (examFinalizedRef.current) return;
     setActivityLogs((prev) => [
       ...prev,
       {
@@ -1712,7 +1797,11 @@ export default function ClassroomView() {
   // Detecta tentativas de Alt+Tab, troca de aba ou saída da tela cheia durante a prova
   useEffect(() => {
     const examIsActive =
-      isExam && !isOwner && examStatus === "RUNNING" && examAcknowledged;
+      isExam &&
+      !isOwner &&
+      examStatus === "RUNNING" &&
+      examAcknowledged &&
+      !examFinalized;
     if (!examIsActive) return;
 
     const handleWindowBlur = () => {
@@ -1752,7 +1841,14 @@ export default function ClassroomView() {
         handleFullscreenChange,
       );
     };
-  }, [isExam, isOwner, examStatus, examAcknowledged, triggerExamLock]);
+  }, [
+    isExam,
+    isOwner,
+    examStatus,
+    examAcknowledged,
+    examFinalized,
+    triggerExamLock,
+  ]);
   const isHtml = classroom?.subject === "HTML";
   const hasLimit =
     currentProblem?.maxAttempts != null && currentProblem.maxAttempts > 0;
@@ -1901,6 +1997,18 @@ export default function ClassroomView() {
       return;
     }
     toast.success("Prova finalizada! Todas as questões foram entregues.");
+    // Marca a ref de forma SÍNCRONA (não depende de re-render) antes de
+    // sair da tela cheia logo abaixo — exitExamFullscreen() dispara nosso
+    // próprio listener de "fullscreenchange", e sem essa checagem síncrona
+    // ele poderia disparar o travamento de 1 minuto antes do React
+    // terminar de re-renderizar com examFinalized = true.
+    examFinalizedRef.current = true;
+    setExamFinalized(true);
+    // Se por acaso o aluno estava sob travamento no momento de finalizar,
+    // libera imediatamente — não há mais nada a proteger depois de
+    // finalizada, então não faz sentido manter a contagem regressiva.
+    setIsExamLocked(false);
+    setLockCountdown(0);
     exitExamFullscreen();
   };
 
@@ -3508,7 +3616,7 @@ export default function ClassroomView() {
             </div>
 
             {isExam &&
-              (isOwner || examAcknowledged) &&
+              (isOwner || examAcknowledged || examFinalized) &&
               currentProblem?.children &&
               currentProblem.children.length > 1 && (
                 <div className="flex-none flex items-center gap-2 px-4 py-2 bg-surface border-b border-border overflow-x-auto no-scrollbar">
@@ -3562,6 +3670,7 @@ export default function ClassroomView() {
             {isExam &&
             !isOwner &&
             !examAcknowledged &&
+            !examFinalized &&
             examStatus === "RUNNING" ? (
               /* ---------- SPLASH DA PROVA ---------- */
               <div className="flex-1 flex items-center justify-center p-8 bg-background">

@@ -139,6 +139,10 @@ export const htmlExamSettingsSchema = z.object({
 // Mantemos a prova focada em programação para já
 const programmingQuestionSchema = z
   .object({
+    // Presente apenas quando a questão já existe (edição). Permite ao
+    // backend atualizar a questão-filha existente em vez de recriar,
+    // preservando o histórico de submissões dos alunos.
+    id: z.string().optional(),
     title: z.string().min(1, "Título da questão é obrigatório"),
     description: z.string().min(1, "Descrição é obrigatória"),
     slug: z.string().min(1, "Slug é obrigatório"),

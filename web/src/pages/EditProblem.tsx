@@ -91,6 +91,7 @@ export default function EditProblem() {
           // demais causaria erro de validação ("property X should not
           // exist") por conta do forbidNonWhitelisted.
           return {
+            id: child.id,
             title: child.title || "",
             description: child.description || "",
             slug: childSlug,
@@ -159,9 +160,14 @@ export default function EditProblem() {
         // maxAttempts/startDate/deadline pertencem só ao problema pai (a
         // prova como um todo). timeLimit/memoryLimit, por outro lado, SÃO
         // aceitos por questão no backend (CreateQuestionDto) — não devem
-        // ser removidos.
-        const { id, maxAttempts, startDate, deadline, ...cleanQuestion } =
-          question;
+        // ser removidos. O `id` da questão TAMBÉM precisa ser preservado
+        // aqui: é ele que permite ao backend casar esta questão com a
+        // questão-filha já existente e atualizá-la em vez de recriar do
+        // zero (o que apagaria o histórico de submissões dos alunos a
+        // cada edição). Questões novas, adicionadas nesta sessão de
+        // edição, simplesmente não têm `id` — o backend as trata como
+        // criação.
+        const { maxAttempts, startDate, deadline, ...cleanQuestion } = question;
 
         return {
           ...cleanQuestion,
