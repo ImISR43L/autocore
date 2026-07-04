@@ -55,6 +55,12 @@ export class ProblemsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Patch(':id/end')
+  endExam(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.problemsService.endExam(id, req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
   update(
     @Param('id') id: string,

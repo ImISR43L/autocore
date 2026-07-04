@@ -178,13 +178,30 @@ export class ProblemsService {
       );
     }
 
+    // BLINDAGEM: uma prova com questões é apenas um invólucro (Fase 2 do
+    // plano de separação Pai/Filho). Os dados de execução (código, testes,
+    // parâmetros e limites de tempo/memória) pertencem exclusivamente às
+    // questões-filhas — nunca ao pai. Isso evita que um limite de
+    // tempo/memória "global" do pai vaze e afete questões de linguagens
+    // diferentes, e evita dados órfãos no pai quando ele também possui
+    // essas colunas (usadas normalmente por um EXERCISE avulso sem filhos).
+    // `maxAttempts` é a única exceção: é uma configuração de escopo de
+    // prova inteira (quantas tentativas o aluno tem na prova como um
+    // todo), então permanece no pai mesmo quando há questões.
+    const isExamShell = children.length > 0;
+
     const problem = this.problemsRepository.create({
       ...problemData,
       startDate: startDate ? new Date(startDate) : undefined,
       deadline: deadline ? new Date(deadline) : undefined,
-      parameters: parameters as unknown as ParameterDefinition[],
-      starterCode: problemData.starterCode as any,
-      solutionCode: problemData.solutionCode as any,
+      parameters: isExamShell
+        ? []
+        : (parameters as unknown as ParameterDefinition[]),
+      starterCode: isExamShell ? null : (problemData.starterCode as any),
+      solutionCode: isExamShell ? [] : (problemData.solutionCode as any),
+      testCases: isExamShell ? [] : ((problemData as any).testCases as any),
+      timeLimit: isExamShell ? null : (problemData as any).timeLimit,
+      memoryLimit: isExamShell ? null : (problemData as any).memoryLimit,
       classroom: classroom,
       children: children.length > 0 ? children : undefined,
     });
@@ -285,6 +302,29 @@ export class ProblemsService {
     return this.problemsRepository.save(problem);
   }
 
+  async endExam(id: string, userId: string) {
+    const problem = await this.problemsRepository.findOne({
+      where: { id },
+      relations: ['classroom', 'classroom.owner'],
+    });
+
+    if (!problem) throw new NotFoundException('Prova não encontrada');
+
+    if (problem.classroom.owner?.id !== userId)
+      throw new ForbiddenException('Apenas o professor pode encerrar.');
+
+    if (problem.type !== ProblemType.EXAM)
+      throw new ForbiddenException('Apenas provas podem ser encerradas.');
+
+    // Encerrar = definir o prazo final para agora. Reaproveitamos a mesma
+    // lógica de "isFinished" (now > deadline) que o front-end já usa para
+    // calcular o status da prova, em vez de criar uma coluna nova só para
+    // isso — funciona mesmo em provas que nunca tiveram deadline definido
+    // (que, sem isso, nunca chegam ao estado FINISHED sozinhas).
+    problem.deadline = new Date();
+    return this.problemsRepository.save(problem);
+  }
+
   async update(id: string, updateProblemDto: UpdateProblemDto, userId: string) {
     const problem = await this.problemsRepository.findOne({
       where: { id },
@@ -327,6 +367,24 @@ export class ProblemsService {
     delete (dataToUpdate as any).classroom;
     delete (dataToUpdate as any).children;
 
+    // BLINDAGEM (Fase 2): se o problema é (ou está se tornando) uma prova
+    // com questões, ele é só um invólucro — os dados de execução pertencem
+    // às questões-filhas, nunca ao pai. Usamos o tipo resultante (o que
+    // vier no PATCH, ou o já persistido) em vez de depender apenas de
+    // `questions` ter sido enviado neste request específico, para que o
+    // pai nunca fique com lixo de execução mesmo em updates parciais.
+    // `maxAttempts` fica de fora: é configuração da prova inteira, não de
+    // execução de código, então continua pertencendo ao pai.
+    const resultingType = (dataToUpdate as any).type ?? problem.type;
+    const isExamShell = resultingType === ProblemType.EXAM;
+
+    if (isExamShell) {
+      (dataToUpdate as any).starterCode = null;
+      (dataToUpdate as any).solutionCode = [];
+      (dataToUpdate as any).timeLimit = null;
+      (dataToUpdate as any).memoryLimit = null;
+    }
+
     if (questions) {
       if (problem.children && problem.children.length > 0) {
         await this.problemsRepository.remove(problem.children);
@@ -366,10 +424,22 @@ export class ProblemsService {
         delete (tc as any).id; // Remove ID para forçar INSERT real
         return this.testCasesRepository.create({ ...tc });
       });
+    } else if (
+      isExamShell &&
+      problem.testCases &&
+      problem.testCases.length > 0
+    ) {
+      // Prova sem testCases raiz enviados neste request: garante que
+      // resíduos antigos do pai (de antes da separação Pai/Filho) sejam
+      // removidos, já que o pai nunca deveria carregar casos de teste.
+      await this.testCasesRepository.remove(problem.testCases);
+      problem.testCases = [];
     }
 
     if (parameters) {
       problem.parameters = parameters as unknown as ParameterDefinition[];
+    } else if (isExamShell) {
+      problem.parameters = [] as any;
     }
 
     if (deadline !== undefined) {

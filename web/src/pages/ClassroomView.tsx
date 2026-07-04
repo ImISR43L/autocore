@@ -1480,6 +1480,27 @@ export default function ClassroomView() {
     }
   };
 
+  // Encerra manualmente uma prova em andamento. Necessário especialmente
+  // quando a prova não tem `deadline` definido: sem isso, o status nunca
+  // sai de "RUNNING" sozinho, e o professor ficava sem nenhuma forma de
+  // finalizar a prova para a turma.
+  const handleEndExam = async () => {
+    if (
+      !confirm(
+        "Encerrar a prova agora? Os alunos perderão o acesso imediatamente e não será possível reabri-la.",
+      )
+    )
+      return;
+    try {
+      await api.patch(`/problems/${selectedProblemId}/end`, {});
+      toast.success("Prova encerrada!");
+      const res = await api.get(`/problems/${selectedProblemId}`);
+      setCurrentProblem(res.data);
+    } catch {
+      toast.error("Erro ao encerrar a prova.");
+    }
+  };
+
   const handleMarkAsDelivery = async (subId: string) => {
     try {
       await api.patch(`/submissions/${subId}/deliver`);
@@ -1752,6 +1773,19 @@ export default function ClassroomView() {
 
   const isBlocked =
     (!isOwner && hasLimit && attemptsLeft <= 0) ||
+    (!isOwner && isDeadlinePassed) ||
+    (isExam && examStatus === "WAITING" && !isOwner) ||
+    (isExam && examStatus === "FINISHED" && !isOwner);
+
+  // Separamos os dois motivos que compunham "isBlocked" porque eles têm
+  // efeitos diferentes: tentativas esgotadas só deveriam impedir um novo
+  // TESTE (que consome tentativa) — não a ENTREGA de uma questão já
+  // testada, que apenas finaliza o que já foi enviado. Sem essa separação,
+  // com maxAttempts = 1, o aluno testava uma vez, "isBlocked" virava true,
+  // e o botão "Entregar Questão" ficava travado junto — impedindo-o de
+  // finalizar a própria questão que acabou de testar.
+  const attemptsExhausted = !isOwner && hasLimit && attemptsLeft <= 0;
+  const examWindowBlocked =
     (!isOwner && isDeadlinePassed) ||
     (isExam && examStatus === "WAITING" && !isOwner) ||
     (isExam && examStatus === "FINISHED" && !isOwner);
@@ -3024,6 +3058,16 @@ export default function ClassroomView() {
                         Iniciar
                       </Button>
                     )}
+                    {isOwner && examStatus === "RUNNING" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 ml-2 text-xs border-red-500/40 text-red-500 hover:bg-red-500/10"
+                        onClick={handleEndExam}
+                      >
+                        Encerrar Prova
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
@@ -3202,12 +3246,37 @@ export default function ClassroomView() {
                 {!isOwner &&
                   hasTeacher &&
                   (isExam ? (
-                    <div className="flex items-center gap-2">
-                      {/* Testar: submete mas não trava */}
+                    <div className="flex items-center gap-3">
+                      {/* Indicador de tentativas restantes: mostrado antes do
+                          aluno gastar tudo "às cegas". Só faz sentido
+                          quando há um limite configurado. */}
+                      {hasLimit && (
+                        <span
+                          className={cn(
+                            "text-xs font-mono px-2 py-1 rounded border whitespace-nowrap",
+                            attemptsLeft <= 0
+                              ? "text-destructive border-destructive/30 bg-destructive/10"
+                              : attemptsLeft === 1
+                                ? "text-amber-500 border-amber-500/30 bg-amber-500/10"
+                                : "text-muted border-border bg-background",
+                          )}
+                          title="Tentativas de teste restantes para esta questão"
+                        >
+                          {attemptsLeft}{" "}
+                          {attemptsLeft === 1
+                            ? "tentativa restante"
+                            : "tentativas restantes"}
+                        </span>
+                      )}
+
+                      {/* Testar: consome tentativa, não trava a questão */}
                       <Button
                         onClick={submitSolution}
                         disabled={
-                          loading || isCurrentQuestionDelivered || isBlocked
+                          loading ||
+                          isCurrentQuestionDelivered ||
+                          attemptsExhausted ||
+                          examWindowBlocked
                         }
                         isLoading={loading}
                         variant="secondary"
@@ -3216,14 +3285,19 @@ export default function ClassroomView() {
                         {loading ? "Testando..." : "Testar Código"}
                       </Button>
 
-                      {/* Entregar Questão: trava esta questão */}
+                      {/* Entregar Questão: apenas finaliza/trava esta questão.
+                          Não depende de tentativas — mesmo com 0 tentativas
+                          restantes, o aluno precisa poder entregar o que já
+                          testou. */}
                       <Button
                         onClick={() =>
                           displayProblem &&
                           handleDeliverQuestion(displayProblem.id)
                         }
                         disabled={
-                          isCurrentQuestionDelivered || isBlocked || loading
+                          isCurrentQuestionDelivered ||
+                          examWindowBlocked ||
+                          loading
                         }
                         className={cn(
                           "h-11 px-5 text-base font-semibold whitespace-nowrap",

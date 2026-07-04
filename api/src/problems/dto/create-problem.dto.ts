@@ -104,6 +104,19 @@ export class CreateQuestionDto {
   @IsOptional()
   @IsObject()
   validationConfig?: Record<string, any>;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxAttempts?: number;
+
+  @IsOptional()
+  @IsInt()
+  timeLimit?: number;
+
+  @IsOptional()
+  @IsInt()
+  memoryLimit?: number;
 }
 
 export class CreateProblemDto {
@@ -142,6 +155,40 @@ export class CreateProblemDto {
   classroomId: string;
 
   @IsOptional()
+  @IsEnum(ProblemType)
+  type?: ProblemType;
+
+  @IsOptional()
+  @IsISO8601()
+  startDate?: string | null;
+
+  @IsOptional()
+  @IsISO8601()
+  deadline?: string | null;
+
+  // --- Campos de execução (usados quando o problema é um EXERCISE avulso,
+  // ou seja, NÃO possui `questions`). Para uma EXAM com questões, esses
+  // dados vivem em cada CreateQuestionDto, e o service força estes campos
+  // do pai a ficarem vazios/nulos — mas o DTO precisa aceitá-los, pois um
+  // EXERCISE (Programação, Química ou HTML) não tem filhos e depende
+  // exclusivamente destes campos na raiz.
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ParameterDto)
+  parameters?: ParameterDto[];
+
+  @IsOptional()
+  @IsString()
+  returnType?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TestCaseDto)
+  testCases?: TestCaseDto[];
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ProblemFileDto)
@@ -154,14 +201,8 @@ export class CreateProblemDto {
   solutionCode?: SolutionFileDto[];
 
   @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => TestCaseDto)
-  testCases?: TestCaseDto[];
-
-  @IsOptional()
-  @IsEnum(ProblemType)
-  type?: ProblemType;
+  @IsObject()
+  validationConfig?: Record<string, any>;
 
   @IsOptional()
   @IsInt()
@@ -175,26 +216,6 @@ export class CreateProblemDto {
   @IsOptional()
   @IsInt()
   memoryLimit?: number;
-
-  @IsOptional()
-  @IsISO8601()
-  startDate?: string | null;
-
-  @IsOptional()
-  @IsISO8601()
-  deadline?: string | null;
-
-  @IsOptional()
-  @IsArray()
-  parameters?: ParameterDto[];
-
-  @IsOptional()
-  @IsString()
-  returnType?: string;
-
-  @IsOptional()
-  @IsObject()
-  validationConfig?: Record<string, any>;
 
   @IsOptional()
   @IsArray()

@@ -56,6 +56,56 @@ export default function EditProblem() {
           }
         }
 
+        // O backend retorna as questões de uma prova na relação `children`,
+        // mas o formulário (e o DTO) trabalham com o campo `questions`.
+        // Sem esse mapeamento, o formulário carrega `questions` vazio e,
+        // ao salvar, o backend apaga todas as questões existentes da prova
+        // (um array vazio ainda é "truthy" e aciona a substituição).
+        const parentSlug = res.data.slug || "";
+        const mapChildToQuestion = (child: any) => {
+          let childValidationConfig = child.validationConfig;
+          if (typeof childValidationConfig === "string") {
+            try {
+              childValidationConfig = JSON.parse(childValidationConfig);
+            } catch (e) {
+              console.error(
+                "Erro ao fazer parse do validationConfig da questão",
+                e,
+              );
+            }
+          }
+          // O backend salva o slug da questão já prefixado com o slug do
+          // problema pai (`${parentSlug}--${questionSlug}`). Se devolvermos
+          // esse valor combinado para o formulário sem remover o prefixo,
+          // cada novo salvamento adicionaria o prefixo de novo
+          // (prova-1--prova-1--q1, prova-1--prova-1--prova-1--q1...).
+          const rawSlug: string = child.slug || "";
+          const prefix = `${parentSlug}--`;
+          const childSlug = rawSlug.startsWith(prefix)
+            ? rawSlug.slice(prefix.length)
+            : rawSlug;
+
+          // Mapeamento explícito (whitelist) em vez de spread: `child` é uma
+          // entidade Problem completa (id, classroom, parent, timestamps,
+          // etc.), mas CreateQuestionDto só aceita estes campos. Enviar os
+          // demais causaria erro de validação ("property X should not
+          // exist") por conta do forbidNonWhitelisted.
+          return {
+            title: child.title || "",
+            description: child.description || "",
+            slug: childSlug,
+            parameters: child.parameters || [],
+            returnType: child.returnType || "void",
+            timeLimit: child.timeLimit ?? undefined,
+            memoryLimit: child.memoryLimit ?? undefined,
+            testCases: child.testCases || [],
+            starterCode: child.starterCode || [],
+            solutionCode: child.solutionCode || [],
+            allowedLanguages: child.allowedLanguages || [],
+            validationConfig: childValidationConfig,
+          };
+        };
+
         const formatted = {
           ...res.data,
           validationConfig: parsedValidationConfig,
@@ -64,6 +114,9 @@ export default function EditProblem() {
           testCases: res.data.testCases || [],
           starterCode: res.data.starterCode || [],
           solutionCode: res.data.solutionCode || [],
+          questions: Array.isArray(res.data.children)
+            ? res.data.children.map(mapChildToQuestion)
+            : [],
           startDate: res.data.startDate
             ? formatToLocalDatetime(res.data.startDate)
             : undefined,
@@ -71,6 +124,10 @@ export default function EditProblem() {
             ? formatToLocalDatetime(res.data.deadline)
             : undefined,
         };
+
+        // Remove a relação bruta do backend para não vazar campos que o
+        // DTO de update não conhece (ex: ids, parent, timestamps aninhados).
+        delete (formatted as any).children;
 
         setProblem(formatted);
       } catch (error) {
@@ -98,12 +155,21 @@ export default function EditProblem() {
     }
 
     if (Array.isArray(payload.questions)) {
-      payload.questions = payload.questions.map((question: any) => ({
-        ...question,
-        testCases: Array.isArray(question.testCases)
-          ? question.testCases.map(({ id, ...rest }: any) => rest)
-          : question.testCases,
-      }));
+      payload.questions = payload.questions.map((question: any) => {
+        // maxAttempts/startDate/deadline pertencem só ao problema pai (a
+        // prova como um todo). timeLimit/memoryLimit, por outro lado, SÃO
+        // aceitos por questão no backend (CreateQuestionDto) — não devem
+        // ser removidos.
+        const { id, maxAttempts, startDate, deadline, ...cleanQuestion } =
+          question;
+
+        return {
+          ...cleanQuestion,
+          testCases: Array.isArray(question.testCases)
+            ? question.testCases.map(({ id: tcId, ...rest }: any) => rest)
+            : question.testCases,
+        };
+      });
     }
 
     // Tratamento estrito de datas para evitar erro 400 no NestJS

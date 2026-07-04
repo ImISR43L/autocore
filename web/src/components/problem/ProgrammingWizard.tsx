@@ -154,16 +154,15 @@ export function ProgrammingWizard({
     (data as any).subject = classroomSubject;
 
     // Higienização dos dados da prova (etapa anterior)
+    // maxAttempts/startDate/deadline são configurações da prova inteira
+    // (nível do problema pai), então não pertencem a cada questão.
+    // timeLimit/memoryLimit, por outro lado, SÃO aceitos por questão pelo
+    // backend (CreateQuestionDto) — mantê-los aqui permite que cada
+    // questão tenha seu próprio limite de tempo/memória, em vez de um
+    // valor único "global" que afetava todas as questões da prova.
     if (data.type === "EXAM" && data.questions) {
       data.questions = data.questions.map((q: any) => {
-        const {
-          maxAttempts,
-          startDate,
-          deadline,
-          timeLimit, // <-- Adicionado
-          memoryLimit, // <-- Adicionado
-          ...cleanQuestion
-        } = q;
+        const { maxAttempts, startDate, deadline, ...cleanQuestion } = q;
         return cleanQuestion;
       }) as any;
     }

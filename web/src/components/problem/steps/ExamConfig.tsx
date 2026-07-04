@@ -44,28 +44,8 @@ export function ExamConfig() {
       <Card className="p-6 space-y-6">
         <h3 className="text-lg font-semibold text-foreground flex items-center gap-2 border-b border-border pb-3">
           <ShieldAlert className="text-primary" size={20} />
-          Regras de Execução
+          Regras da Prova
         </h3>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Input
-            type="number"
-            label="Tempo Limite (ms)"
-            placeholder="Ex: 1000"
-            {...register("timeLimit", { valueAsNumber: true })}
-            error={errors.timeLimit?.message}
-            className="bg-background"
-          />
-
-          <Input
-            type="number"
-            label="Memória (MB)"
-            placeholder="Ex: 256"
-            {...register("memoryLimit", { valueAsNumber: true })}
-            error={errors.memoryLimit?.message}
-            className="bg-background"
-          />
-        </div>
 
         <Input
           type="number"
@@ -81,7 +61,8 @@ export function ExamConfig() {
           <p className="text-xs text-muted">
             <strong className="text-foreground">Modo Prova:</strong> O feedback
             será limitado. Alunos não verão os casos de teste ocultos até o fim
-            do prazo.
+            do prazo. O tempo limite e a memória de execução são configurados
+            individualmente em cada questão, na etapa "Questões".
           </p>
         </div>
       </Card>

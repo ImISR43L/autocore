@@ -14,11 +14,14 @@ import {
   Settings2,
   FileText,
   Clock,
+  FileQuestion,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ScaffoldingConfig } from "./steps/ScaffoldingConfig";
 import { ValidationConfig } from "./steps/ValidationConfig";
+import { ExamQuestions } from "./steps/ExamQuestions";
+import { ExamConfig } from "./steps/ExamConfig";
 import { MarkdownInput } from "../inputs/MarkdownInput";
 
 import { Button } from "../ui/Button";
@@ -37,7 +40,7 @@ interface ProgrammingEditorProps {
   onDirtyChange?: (isDirty: boolean) => void;
 }
 
-type TabType = "general" | "code" | "validation" | "settings";
+type TabType = "general" | "code" | "validation" | "questions" | "settings";
 
 export function ProgrammingEditor({
   initialValues,
@@ -61,6 +64,22 @@ export function ProgrammingEditor({
     formState: { errors, isDirty },
   } = methods;
 
+  // A tela de edição atende tanto EXERCISE quanto EXAM. O tipo já vem
+  // definido na criação e não é editável aqui, então lemos direto dos
+  // valores carregados para decidir quais abas exibir.
+  const problemType = watch("type");
+  const isExam = problemType === "EXAM";
+
+  // Se o problema carregado for uma prova, "Código" e "Testes" (que
+  // trabalham com starterCode/testCases no nível raiz) não se aplicam —
+  // cada questão tem seu próprio código e testes, editados dentro da
+  // aba "Questões". Evita abrir numa aba que não existe para o tipo atual.
+  useEffect(() => {
+    if (isExam && (activeTab === "code" || activeTab === "validation")) {
+      setActiveTab("questions");
+    }
+  }, [isExam, activeTab]);
+
   useEffect(() => {
     if (onDirtyChange) {
       onDirtyChange(isDirty);
@@ -83,6 +102,7 @@ export function ProgrammingEditor({
     if (Array.isArray(questionErrors)) {
       const firstErrIndex = questionErrors.findIndex(Boolean);
       if (firstErrIndex !== -1) {
+        setActiveTab("questions");
         const qErr = questionErrors[firstErrIndex];
         const fieldName = qErr?.title
           ? "título"
@@ -147,16 +167,27 @@ export function ProgrammingEditor({
                   icon={<Layout size={16} />}
                   label="Geral"
                 />
-                <NavButton
-                  tab="code"
-                  icon={<Code2 size={16} />}
-                  label="Código"
-                />
-                <NavButton
-                  tab="validation"
-                  icon={<FlaskConical size={16} />}
-                  label="Testes"
-                />
+                {!isExam && (
+                  <NavButton
+                    tab="code"
+                    icon={<Code2 size={16} />}
+                    label="Código"
+                  />
+                )}
+                {!isExam && (
+                  <NavButton
+                    tab="validation"
+                    icon={<FlaskConical size={16} />}
+                    label="Testes"
+                  />
+                )}
+                {isExam && (
+                  <NavButton
+                    tab="questions"
+                    icon={<FileQuestion size={16} />}
+                    label="Questões"
+                  />
+                )}
                 <NavButton
                   tab="settings"
                   icon={<Settings2 size={16} />}
@@ -219,29 +250,47 @@ export function ProgrammingEditor({
                 </div>
               </div>
 
-              {/* ABA CÓDIGO */}
-              <div
-                className={cn(
-                  "h-full animate-in fade-in slide-in-from-bottom-2",
-                  activeTab === "code" ? "block" : "hidden",
-                )}
-              >
-                <div className="bg-surface border border-border rounded-xl p-1 h-[600px] md:h-[750px] shadow-lg">
-                  <ScaffoldingConfig />
+              {/* ABA CÓDIGO (somente EXERCISE) */}
+              {!isExam && (
+                <div
+                  className={cn(
+                    "h-full animate-in fade-in slide-in-from-bottom-2",
+                    activeTab === "code" ? "block" : "hidden",
+                  )}
+                >
+                  <div className="bg-surface border border-border rounded-xl p-1 h-[600px] md:h-[750px] shadow-lg">
+                    <ScaffoldingConfig />
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* ABA VALIDAÇÃO */}
-              <div
-                className={cn(
-                  "animate-in fade-in slide-in-from-bottom-2",
-                  activeTab === "validation" ? "block" : "hidden",
-                )}
-              >
-                <div className="bg-surface border border-border rounded-xl p-4 md:p-6 shadow-lg">
-                  <ValidationConfig />
+              {/* ABA VALIDAÇÃO (somente EXERCISE) */}
+              {!isExam && (
+                <div
+                  className={cn(
+                    "animate-in fade-in slide-in-from-bottom-2",
+                    activeTab === "validation" ? "block" : "hidden",
+                  )}
+                >
+                  <div className="bg-surface border border-border rounded-xl p-4 md:p-6 shadow-lg">
+                    <ValidationConfig />
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* ABA QUESTÕES (somente EXAM) */}
+              {isExam && (
+                <div
+                  className={cn(
+                    "h-full animate-in fade-in slide-in-from-bottom-2",
+                    activeTab === "questions" ? "block" : "hidden",
+                  )}
+                >
+                  <div className="bg-surface border border-border rounded-xl p-4 md:p-6 h-full shadow-lg">
+                    <ExamQuestions />
+                  </div>
+                </div>
+              )}
 
               {/* ABA CONFIGURAÇÕES */}
               <div
@@ -250,59 +299,66 @@ export function ProgrammingEditor({
                   activeTab === "settings" ? "block" : "hidden",
                 )}
               >
-                <div className="bg-surface border border-border rounded-xl p-4 md:p-10 space-y-8 md:space-y-12 shadow-lg max-w-5xl mx-auto">
-                  <section className="space-y-6 md:space-y-8">
-                    <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3">
-                      <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
-                        <Settings2 size={24} />
+                {isExam ? (
+                  // Provas usam os mesmos campos (janela de tempo, tentativas,
+                  // limites de execução), mas com o layout já preparado para
+                  // esse contexto no wizard de criação — reaproveitamos aqui.
+                  <ExamConfig />
+                ) : (
+                  <div className="bg-surface border border-border rounded-xl p-4 md:p-10 space-y-8 md:space-y-12 shadow-lg max-w-5xl mx-auto">
+                    <section className="space-y-6 md:space-y-8">
+                      <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3">
+                        <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
+                          <Settings2 size={24} />
+                        </div>
+                        Regras de Execução
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
+                        <Input
+                          label="Tempo Limite (ms)"
+                          type="number"
+                          {...register("timeLimit", { valueAsNumber: true })}
+                          className="bg-background h-11 md:h-12 text-base border-border"
+                        />
+                        <Input
+                          label="Memória Limite (MB)"
+                          type="number"
+                          {...register("memoryLimit", { valueAsNumber: true })}
+                          className="bg-background h-11 md:h-12 text-base border-border"
+                        />
+                        <Input
+                          label="Tentativas (0 = Infinito)"
+                          type="number"
+                          {...register("maxAttempts", { valueAsNumber: true })}
+                          className="bg-background h-11 md:h-12 text-base border-border"
+                        />
                       </div>
-                      Regras de Execução
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
-                      <Input
-                        label="Tempo Limite (ms)"
-                        type="number"
-                        {...register("timeLimit", { valueAsNumber: true })}
-                        className="bg-background h-11 md:h-12 text-base border-border"
-                      />
-                      <Input
-                        label="Memória Limite (MB)"
-                        type="number"
-                        {...register("memoryLimit", { valueAsNumber: true })}
-                        className="bg-background h-11 md:h-12 text-base border-border"
-                      />
-                      <Input
-                        label="Tentativas (0 = Infinito)"
-                        type="number"
-                        {...register("maxAttempts", { valueAsNumber: true })}
-                        className="bg-background h-11 md:h-12 text-base border-border"
-                      />
-                    </div>
-                  </section>
+                    </section>
 
-                  <section className="space-y-6 md:space-y-8">
-                    <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3">
-                      <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
-                        <Clock size={24} />
+                    <section className="space-y-6 md:space-y-8">
+                      <h3 className="text-xl md:text-2xl font-bold text-foreground border-b border-border pb-4 flex items-center gap-3">
+                        <div className="p-2 md:p-2.5 bg-primary/10 rounded-xl text-primary">
+                          <Clock size={24} />
+                        </div>
+                        Agendamento
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+                        <Input
+                          label="Data de Início"
+                          type="datetime-local"
+                          {...register("startDate")}
+                          className="bg-background h-11 md:h-12 text-base border-border"
+                        />
+                        <Input
+                          label="Prazo de Entrega (Deadline)"
+                          type="datetime-local"
+                          {...register("deadline")}
+                          className="bg-background h-11 md:h-12 text-base border-border"
+                        />
                       </div>
-                      Agendamento
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                      <Input
-                        label="Data de Início"
-                        type="datetime-local"
-                        {...register("startDate")}
-                        className="bg-background h-11 md:h-12 text-base border-border"
-                      />
-                      <Input
-                        label="Prazo de Entrega (Deadline)"
-                        type="datetime-local"
-                        {...register("deadline")}
-                        className="bg-background h-11 md:h-12 text-base border-border"
-                      />
-                    </div>
-                  </section>
-                </div>
+                    </section>
+                  </div>
+                )}
               </div>
             </div>
           </div>

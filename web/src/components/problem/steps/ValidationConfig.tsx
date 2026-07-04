@@ -464,6 +464,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                 )}
               </button>
               <Button
+                type="button"
                 size="sm"
                 variant="ghost"
                 onClick={handleResetSolution}
@@ -588,6 +589,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
 
           <div className="flex gap-2 w-full sm:w-auto">
             <Button
+              type="button"
               variant="secondary"
               size="sm"
               onClick={handleExportTests}
@@ -596,6 +598,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
               <FileJson size={16} />
             </Button>
             <Button
+              type="button"
               variant="outline"
               size="sm"
               onClick={handleDryRun}
@@ -614,6 +617,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
               {viewLang === "javascript" ? "JS" : viewLang.toUpperCase()})
             </Button>
             <Button
+              type="button"
               size="sm"
               onClick={() =>
                 appendTest({ input: "", expectedOutput: "", isHidden: false })
@@ -786,6 +790,7 @@ export function ValidationConfig({ basePath = "" }: ValidationConfigProps) {
                   : "Nenhum caso de teste adicionado."}
               </p>
               <Button
+                type="button"
                 variant={isMissingRequiredTests ? "danger" : "outline"}
                 size="sm"
                 onClick={() =>
