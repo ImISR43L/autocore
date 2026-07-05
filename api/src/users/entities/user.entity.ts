@@ -21,6 +21,17 @@ export class User {
   @Column({ nullable: true })
   name: string;
 
+  // Um usuário criado via token de acesso temporário de prova (sem conta
+  // real na plataforma). `email` continua único e obrigatório, mas para
+  // convidados ele recebe um valor sintético (sessões anônimas do
+  // Supabase não têm e-mail) — o e-mail de verdade informado no resgate
+  // fica em `guestEmail`, só pra referência/contato do professor.
+  @Column({ default: false })
+  isGuest: boolean;
+
+  @Column({ nullable: true })
+  guestEmail: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

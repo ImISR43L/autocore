@@ -8,7 +8,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, MoreThan, Repository } from 'typeorm';
 import axios from 'axios';
 import { CreateProblemDto } from './dto/create-problem.dto';
 import { UpdateProblemDto } from './dto/update-problem.dto';
@@ -21,6 +21,7 @@ import {
 import { TestCase } from './entities/test-case.entity';
 import { Classroom } from '../classrooms/entities/classroom.entity';
 import { WrapperGenerator } from '../submissions/wrapper-generator';
+import { ExamAccessGrant } from '../exam-access/entities/exam-access-grant.entity';
 
 @Injectable()
 export class ProblemsService {
@@ -36,7 +37,30 @@ export class ProblemsService {
     private testCasesRepository: Repository<TestCase>,
     @InjectRepository(Classroom)
     private classroomsRepository: Repository<Classroom>,
+    @InjectRepository(ExamAccessGrant)
+    private examAccessGrantsRepository: Repository<ExamAccessGrant>,
   ) {}
+
+  /**
+   * Verifica se o usuário tem um grant ativo (não revogado, não expirado)
+   * para este problema específico, via token de acesso temporário de
+   * prova. É a terceira via de autorização, além de dono/matriculado —
+   * usada tanto por convidados anônimos quanto por usuários reais que
+   * receberam um link de acesso pontual.
+   */
+  private async hasActiveExamGrant(
+    userId: string,
+    problemId: string,
+  ): Promise<boolean> {
+    const count = await this.examAccessGrantsRepository.count({
+      where: {
+        user: { id: userId },
+        problemId,
+        token: { revoked: false, expiresAt: MoreThan(new Date()) },
+      },
+    });
+    return count > 0;
+  }
 
   private compareOutputs(actual: string, expected: string): boolean {
     this.logger.debug(
@@ -254,7 +278,12 @@ export class ProblemsService {
         (student) => String(student.id) === String(userId),
       );
 
-    if (!isOwner && !isEnrolled) {
+    const hasGrant =
+      !isOwner &&
+      !isEnrolled &&
+      (await this.hasActiveExamGrant(userId, problem.id));
+
+    if (!isOwner && !isEnrolled && !hasGrant) {
       throw new ForbiddenException('Você não tem acesso a esta atividade.');
     }
 

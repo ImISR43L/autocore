@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
-import { Repository } from 'typeorm';
+import { MoreThan, Repository } from 'typeorm';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
 import { Submission } from './entities/submission.entity';
@@ -17,6 +17,7 @@ import { SubmissionsGateway } from './submissions.gateway';
 import { ChemistryService } from '../chemistry/chemistry.service';
 import { HtmlValidatorService } from '../html/html-validator.service';
 import type { ValidationResult } from '../chemistry/chemistry.service';
+import { ExamAccessGrant } from '../exam-access/entities/exam-access-grant.entity';
 interface LanguageConfig {
   fileName: string;
   runCommand: string[];
@@ -30,6 +31,8 @@ export class SubmissionsService {
     private submissionsRepository: Repository<Submission>,
     @InjectRepository(Problem)
     private problemsRepository: Repository<Problem>,
+    @InjectRepository(ExamAccessGrant)
+    private examAccessGrantsRepository: Repository<ExamAccessGrant>,
     @InjectQueue('submission-queue') private submissionsQueue: Queue,
     private submissionsGateway: SubmissionsGateway,
     private chemistryService: ChemistryService,
@@ -97,6 +100,20 @@ export class SubmissionsService {
     return this.submissionsRepository.save(submission);
   }
 
+  private async hasActiveExamGrant(
+    userId: string,
+    problemId: string,
+  ): Promise<boolean> {
+    const count = await this.examAccessGrantsRepository.count({
+      where: {
+        user: { id: userId },
+        problemId,
+        token: { revoked: false, expiresAt: MoreThan(new Date()) },
+      },
+    });
+    return count > 0;
+  }
+
   async create(createSubmissionDto: CreateSubmissionDto, userId: string) {
     const problem = await this.problemsRepository.findOne({
       where: { id: createSubmissionDto.problem_id },
@@ -126,7 +143,12 @@ export class SubmissionsService {
     const isEnrolled = problem.classroom.students?.some(
       (student) => String(student.id) === String(userId),
     );
-    if (!isOwner && !isEnrolled) {
+    const hasGrant =
+      !isOwner &&
+      !isEnrolled &&
+      (await this.hasActiveExamGrant(userId, problem.id));
+
+    if (!isOwner && !isEnrolled && !hasGrant) {
       throw new ForbiddenException('Você não está matriculado nesta turma.');
     }
 

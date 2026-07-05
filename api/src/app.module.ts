@@ -19,6 +19,7 @@ import { ChemistryModule } from './chemistry/chemistry.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import * as redisStore from 'cache-manager-redis-store';
 import { getSecret } from './common/utils/secrets.util';
+import { ExamAccessModule } from './exam-access/exam-access.module';
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { getSecret } from './common/utils/secrets.util';
     AnnouncementsModule,
     HealthModule,
     ChemistryModule,
+    ExamAccessModule,
   ],
   controllers: [AppController],
   providers: [

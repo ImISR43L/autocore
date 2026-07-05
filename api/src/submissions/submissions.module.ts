@@ -13,10 +13,11 @@ import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
 import { ChemistryModule } from '../chemistry/chemistry.module';
 import { HtmlModule } from 'src/html/html.module';
+import { ExamAccessGrant } from '../exam-access/entities/exam-access-grant.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Submission, Problem]),
+    TypeOrmModule.forFeature([Submission, Problem, ExamAccessGrant]),
 
     BullModule.forRootAsync({
       useFactory: () => ({

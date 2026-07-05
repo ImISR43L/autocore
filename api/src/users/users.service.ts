@@ -36,6 +36,40 @@ export class UsersService {
     return this.usersRepository.save(newUser);
   }
 
+  /**
+   * Usado pelo fluxo de resgate de token de acesso a prova. `supabaseUserId`
+   * é o `sub` do JWT — que já existe de verdade no Supabase Auth (seja de
+   * uma sessão anônima recém-criada no front, seja de um usuário real
+   * logado normalmente) no momento em que esta função é chamada; aqui só
+   * garantimos a linha espelho no nosso banco.
+   *
+   * IMPORTANTE: só marcamos `isGuest`/`guestEmail` na CRIAÇÃO. Se a pessoa
+   * já é um usuário real da plataforma (abriu o link de convite estando
+   * logada), reaproveitamos a conta dela como está — ela não vira "guest"
+   * retroativamente, só ganha acesso extra a essa prova específica via
+   * ExamAccessGrant.
+   */
+  async findOrCreateGuest(
+    supabaseUserId: string,
+    displayName: string,
+    contactEmail: string,
+  ): Promise<User> {
+    const existing = await this.findOne(supabaseUserId);
+    if (existing) return existing;
+
+    // Sintético e único por usuário Supabase — nunca o e-mail real
+    // informado, que vai em `guestEmail` só como referência.
+    const syntheticEmail = `guest+${supabaseUserId}@exam-guests.internal`;
+
+    return this.create({
+      id: supabaseUserId,
+      email: syntheticEmail,
+      name: displayName,
+      isGuest: true,
+      guestEmail: contactEmail || null,
+    });
+  }
+
   async remove(id: string): Promise<{ message: string }> {
     if (!id) {
       throw new BadRequestException('Identificador de deleção não fornecido.');
