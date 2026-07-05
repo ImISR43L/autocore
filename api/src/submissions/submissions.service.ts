@@ -100,7 +100,12 @@ export class SubmissionsService {
   async create(createSubmissionDto: CreateSubmissionDto, userId: string) {
     const problem = await this.problemsRepository.findOne({
       where: { id: createSubmissionDto.problem_id },
-      relations: ['testCases', 'classroom', 'classroom.owner'],
+      relations: [
+        'testCases',
+        'classroom',
+        'classroom.owner',
+        'classroom.students',
+      ],
     });
 
     if (!problem) {
@@ -111,6 +116,18 @@ export class SubmissionsService {
       throw new ForbiddenException(
         'O professor responsável por esta turma não existe mais. Não é possível enviar novas resoluções.',
       );
+    }
+
+    // CORREÇÃO DE SEGURANÇA: antes disto, qualquer usuário autenticado da
+    // plataforma conseguia enviar submissões para qualquer problema de
+    // qualquer turma, bastando saber o UUID — nunca havia checagem de
+    // matrícula aqui, só validações de prazo/idioma/tentativas.
+    const isOwner = String(problem.classroom.owner.id) === String(userId);
+    const isEnrolled = problem.classroom.students?.some(
+      (student) => String(student.id) === String(userId),
+    );
+    if (!isOwner && !isEnrolled) {
+      throw new ForbiddenException('Você não está matriculado nesta turma.');
     }
 
     if (problem.classroom?.isArchived) {
@@ -285,6 +302,18 @@ export class SubmissionsService {
 
     const isOwner =
       submission.problem?.classroom?.owner?.id === requestingUserId;
+    const isAuthor = submission.user?.id === requestingUserId;
+
+    // CORREÇÃO DE SEGURANÇA: antes disto, qualquer usuário autenticado
+    // (não só o professor da turma ou o próprio autor) conseguia ver o
+    // conteúdo completo de QUALQUER submissão — código, output, nota,
+    // comentário do professor — bastando saber o UUID. A checagem só
+    // controlava se `activityLogs` era removido, nunca se a pessoa tinha
+    // o direito de ver a submissão como um todo.
+    if (!isOwner && !isAuthor) {
+      throw new ForbiddenException('Você não tem acesso a esta submissão.');
+    }
+
     if (!isOwner) {
       const { activityLogs, ...rest } = submission;
       return rest;
@@ -345,12 +374,22 @@ export class SubmissionsService {
   async findAllByProblem(problemId: string, userId: string) {
     const problem = await this.problemsRepository.findOne({
       where: { id: problemId },
-      relations: ['classroom', 'classroom.owner'],
+      relations: ['classroom', 'classroom.owner', 'classroom.students'],
     });
 
     if (!problem) throw new NotFoundException('Problema não encontrado');
 
     const isOwner = problem.classroom.owner?.id === userId;
+    const isEnrolled = problem.classroom.students?.some(
+      (student) => String(student.id) === String(userId),
+    );
+
+    // Por consistência com os outros métodos: em vez de devolver uma
+    // lista vazia silenciosa pra quem não pertence à turma (o que já
+    // era seguro, mas confuso), negamos explicitamente.
+    if (!isOwner && !isEnrolled) {
+      throw new ForbiddenException('Você não está matriculado nesta turma.');
+    }
 
     if (isOwner) {
       // O professor apenas vê as entregas oficiais (uma por aluno)

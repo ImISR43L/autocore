@@ -231,10 +231,32 @@ export class ProblemsService {
         'children.testCases',
         'classroom',
         'classroom.owner',
+        'classroom.students',
       ],
     });
 
     if (!problem) throw new NotFoundException('Problema não encontrado');
+
+    const isOwner =
+      problem.classroom &&
+      String(problem.classroom.owner?.id) === String(userId);
+
+    // CORREÇÃO DE SEGURANÇA: antes disto, qualquer usuário autenticado da
+    // plataforma — matriculado ou não — conseguia ver qualquer problema só
+    // sabendo o UUID (a checagem só distinguia "é o dono" vs "não é",
+    // nunca "pertence a esta turma"). Isso é checado ANTES do bloco de
+    // auto-start logo abaixo, pra uma requisição não autorizada não
+    // conseguir nem sequer disparar o início automático da prova pra
+    // todo mundo.
+    const isEnrolled =
+      !isOwner &&
+      problem.classroom?.students?.some(
+        (student) => String(student.id) === String(userId),
+      );
+
+    if (!isOwner && !isEnrolled) {
+      throw new ForbiddenException('Você não tem acesso a esta atividade.');
+    }
 
     if (
       problem.type === ProblemType.EXAM &&
@@ -248,10 +270,6 @@ export class ProblemsService {
       problem.startedAt = problem.startDate;
       await this.problemsRepository.save(problem);
     }
-
-    const isOwner =
-      problem.classroom &&
-      String(problem.classroom.owner?.id) === String(userId);
 
     if (!isOwner) {
       delete (problem as any).solutionCode;
