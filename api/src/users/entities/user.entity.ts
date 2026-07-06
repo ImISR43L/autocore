@@ -29,7 +29,7 @@ export class User {
   @Column({ default: false })
   isGuest: boolean;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   guestEmail: string | null;
 
   @CreateDateColumn()

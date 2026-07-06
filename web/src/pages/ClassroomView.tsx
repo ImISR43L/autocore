@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { api } from "../lib/api";
 import { supabase } from "../lib/supabase";
+import { ExamAccessPanel } from "../components/examAccess/ExamAccessPanel";
 import Editor from "@monaco-editor/react";
 import type { OnMount } from "@monaco-editor/react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
@@ -240,10 +241,22 @@ const getLanguageFromExt = (filename: string) => {
   return "plaintext";
 };
 
-export default function ClassroomView() {
+interface ClassroomViewProps {
+  // true quando montado na rota /guest-exam/:problemId — sem turma, sem
+  // matrícula, acesso concedido só por um ExamAccessGrant válido para
+  // este problema específico.
+  isGuestMode?: boolean;
+}
+
+export default function ClassroomView({
+  isGuestMode = false,
+}: ClassroomViewProps = {}) {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const { colorblindMode } = usePreferences();
-  const { id } = useParams();
+  const params = useParams();
+  // Rota normal: /class/:id  |  Rota convidado: /guest-exam/:problemId
+  const id = isGuestMode ? undefined : params.id;
+  const guestProblemId = isGuestMode ? params.problemId : undefined;
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -278,6 +291,7 @@ export default function ClassroomView() {
   const [loading, setLoading] = useState<boolean>(false);
   const loadingRef = useRef(false);
   const [showSubmissions, setShowSubmissions] = useState(false);
+  const [showExamAccessPanel, setShowExamAccessPanel] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
 
   // Filtros de Submissão
@@ -726,6 +740,13 @@ export default function ClassroomView() {
   >(null);
 
   useEffect(() => {
+    if (isGuestMode && guestProblemId) {
+      setSelectedProblemId(guestProblemId);
+      setActiveTab("classwork");
+    }
+  }, [isGuestMode, guestProblemId]);
+
+  useEffect(() => {
     if (!classroom?.problems || selectedProblemId) return;
 
     const rootProblems = classroom.problems.filter((p) => !p.parent);
@@ -749,6 +770,36 @@ export default function ClassroomView() {
   }, [classroom, location.state, id, selectedProblemId]);
 
   const fetchClassroomData = useCallback(async () => {
+    if (isGuestMode) {
+      if (!guestProblemId) return;
+      try {
+        const res = await api.get(`/problems/${guestProblemId}`);
+        const problem = res.data;
+        // "Classroom" sintético: só para satisfazer as ~30 leituras de
+        // `classroom.X` espalhadas pelo componente (nome no cabeçalho,
+        // isArchived no banner, students[] no filtro da aba Pessoas —
+        // que fica oculta no modo convidado de qualquer forma). O
+        // convidado nunca enxerga a turma real: sem anúncios, sem lista
+        // de alunos, sem outras atividades além desta prova.
+        setClassroom({
+          id: problem.classroom?.id || "guest",
+          name: problem.title,
+          code: "",
+          isArchived: false,
+          subject: problem.subject,
+          owner: problem.classroom?.owner || null,
+          students: [],
+          announcements: [],
+          problems: [problem],
+        } as any);
+      } catch {
+        toast.error(
+          "Não foi possível carregar a prova. O acesso pode ter expirado.",
+        );
+      }
+      return;
+    }
+
     try {
       const res = await api.get(`/classrooms/${id}`);
       setClassroom(res.data);
@@ -756,7 +807,7 @@ export default function ClassroomView() {
       toast.error("Erro ao carregar turma.");
       navigate("/dashboard");
     }
-  }, [id, navigate]);
+  }, [id, isGuestMode, guestProblemId, navigate]);
 
   const fetchSubmissions = useCallback(async (probId: string) => {
     if (!probId) return;
@@ -806,7 +857,11 @@ export default function ClassroomView() {
   }, [fetchClassroomData]);
 
   useEffect(() => {
-    if (!myUserId || !id) return;
+    if (!myUserId) return;
+    // No modo normal ainda exigimos o id da turma (join-classroom-room
+    // depende dele); no modo convidado não há turma, só a sala pessoal do
+    // usuário — necessária para receber o evento "submission-finished".
+    if (!isGuestMode && !id) return;
 
     let newSocket: any;
 
@@ -829,7 +884,9 @@ export default function ClassroomView() {
         // O servidor agora valida a identidade via token e ignora as requisições puras do cliente
         // para mitigação do IDOR, mas os eventos permanecem como inicializadores da conexão.
         newSocket.emit("join-user-room", { userId: myUserId });
-        newSocket.emit("join-classroom-room", { classroomId: Number(id) });
+        if (!isGuestMode && id) {
+          newSocket.emit("join-classroom-room", { classroomId: Number(id) });
+        }
       });
 
       newSocket.on("submission-finished", (submission: Submission) => {
@@ -863,6 +920,9 @@ export default function ClassroomView() {
       newSocket.on(
         "classroom-update",
         (data: { type: string; problemId: string }) => {
+          // Convidado não participa de atualizações de turma (não está
+          // na "sala" da turma — ver join-classroom-room acima).
+          if (isGuestMode) return;
           fetchClassroomData();
           const currentTab = activeTabRef.current;
           const currentProb = displayProblemRef.current;
@@ -889,6 +949,7 @@ export default function ClassroomView() {
   }, [
     myUserId,
     id,
+    isGuestMode,
     API_URL,
     fetchSubmissions,
     fetchProblemStats,
@@ -2508,45 +2569,59 @@ export default function ClassroomView() {
         </div>
       )}
 
-      {(!zenMode || activeTab !== "classwork") && (
-        <header className="flex-none border-b border-border bg-surface px-4 py-3 md:px-6 md:py-4">
-          <div className="flex items-center gap-4 mb-4">
-            <Link
-              to="/dashboard"
-              className="p-2 hover:bg-white/10 rounded-full text-muted hover:text-foreground transition-colors"
-            >
-              <ArrowLeft size={24} />
-            </Link>
-            <h2 className="text-xl md:text-2xl font-semibold tracking-tight text-foreground truncate">
-              {classroom.name}
-            </h2>
-          </div>
-
-          <nav className="flex gap-6 text-base font-medium overflow-x-auto no-scrollbar">
-            {[
-              { id: "stream", label: "Mural" },
-              { id: "classwork", label: "Atividades" },
-              { id: "people", label: "Pessoas" },
-              isOwner ? { id: "analytics", label: "Estatísticas" } : null,
-            ]
-              .filter(Boolean)
-              .map((tab: any) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={cn(
-                    "pb-2 border-b-2 transition-colors px-1 whitespace-nowrap",
-                    activeTab === tab.id
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted hover:text-foreground",
-                  )}
+      {isGuestMode
+        ? (!zenMode || activeTab !== "classwork") && (
+            <header className="flex-none border-b border-border bg-surface px-4 py-3 md:px-6 md:py-4">
+              <div className="flex items-center gap-3">
+                <GraduationCap size={22} className="text-primary shrink-0" />
+                <h2 className="text-xl md:text-2xl font-semibold tracking-tight text-foreground truncate">
+                  {classroom.name}
+                </h2>
+                <span className="text-xs text-muted bg-background border border-border rounded-full px-2.5 py-1 ml-auto whitespace-nowrap">
+                  Acesso convidado
+                </span>
+              </div>
+            </header>
+          )
+        : (!zenMode || activeTab !== "classwork") && (
+            <header className="flex-none border-b border-border bg-surface px-4 py-3 md:px-6 md:py-4">
+              <div className="flex items-center gap-4 mb-4">
+                <Link
+                  to="/dashboard"
+                  className="p-2 hover:bg-white/10 rounded-full text-muted hover:text-foreground transition-colors"
                 >
-                  {tab.label}
-                </button>
-              ))}
-          </nav>
-        </header>
-      )}
+                  <ArrowLeft size={24} />
+                </Link>
+                <h2 className="text-xl md:text-2xl font-semibold tracking-tight text-foreground truncate">
+                  {classroom.name}
+                </h2>
+              </div>
+
+              <nav className="flex gap-6 text-base font-medium overflow-x-auto no-scrollbar">
+                {[
+                  { id: "stream", label: "Mural" },
+                  { id: "classwork", label: "Atividades" },
+                  { id: "people", label: "Pessoas" },
+                  isOwner ? { id: "analytics", label: "Estatísticas" } : null,
+                ]
+                  .filter(Boolean)
+                  .map((tab: any) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id as any)}
+                      className={cn(
+                        "pb-2 border-b-2 transition-colors px-1 whitespace-nowrap",
+                        activeTab === tab.id
+                          ? "border-primary text-primary"
+                          : "border-transparent text-muted hover:text-foreground",
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+              </nav>
+            </header>
+          )}
 
       {classroom.isArchived && (
         <div className="bg-orange-500/10 border-b border-orange-500/20 px-4 py-2.5 flex items-center justify-center gap-2 text-sm font-medium text-orange-500 shadow-inner shrink-0 z-10">
@@ -3082,59 +3157,61 @@ export default function ClassroomView() {
             {/* Toolbar da IDE */}
             <div className="flex-none flex items-center justify-between p-4 border-b border-border bg-surface gap-4">
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  {/* Pills para alternar tipo */}
-                  <div className="flex bg-background rounded-lg border border-border p-0.5 gap-0.5">
-                    <button
-                      onClick={() => setProblemTypeTab("exercises")}
-                      className={cn(
-                        "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all",
-                        problemTypeTab === "exercises"
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-muted hover:text-foreground",
-                      )}
-                    >
-                      <BookOpen size={14} /> Exercícios
-                    </button>
-                    <button
-                      onClick={() => setProblemTypeTab("exams")}
-                      className={cn(
-                        "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all",
-                        problemTypeTab === "exams"
-                          ? "bg-amber-500 text-white shadow-sm"
-                          : "text-muted hover:text-foreground",
-                      )}
-                    >
-                      <GraduationCap size={14} /> Provas
-                      {examOptions.length > 0 && (
-                        <span className="ml-1 bg-white/20 text-xs px-1.5 py-0.5 rounded-full">
-                          {examOptions.length}
-                        </span>
-                      )}
-                    </button>
-                  </div>
+                {!isGuestMode && (
+                  <div className="flex items-center gap-2">
+                    {/* Pills para alternar tipo */}
+                    <div className="flex bg-background rounded-lg border border-border p-0.5 gap-0.5">
+                      <button
+                        onClick={() => setProblemTypeTab("exercises")}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all",
+                          problemTypeTab === "exercises"
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "text-muted hover:text-foreground",
+                        )}
+                      >
+                        <BookOpen size={14} /> Exercícios
+                      </button>
+                      <button
+                        onClick={() => setProblemTypeTab("exams")}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all",
+                          problemTypeTab === "exams"
+                            ? "bg-amber-500 text-white shadow-sm"
+                            : "text-muted hover:text-foreground",
+                        )}
+                      >
+                        <GraduationCap size={14} /> Provas
+                        {examOptions.length > 0 && (
+                          <span className="ml-1 bg-white/20 text-xs px-1.5 py-0.5 rounded-full">
+                            {examOptions.length}
+                          </span>
+                        )}
+                      </button>
+                    </div>
 
-                  {/* Dropdown filtrado */}
-                  <Select
-                    value={selectedProblemId || ""}
-                    onChange={(e) => setSelectedProblemId(e.target.value)}
-                    className="w-60 h-11 text-base"
-                  >
-                    <option value="">
-                      {problemTypeTab === "exercises"
-                        ? "Selecione um exercício..."
-                        : "Selecione uma prova..."}
-                    </option>
-                    {(problemTypeTab === "exercises"
-                      ? exerciseOptions
-                      : examOptions
-                    ).map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.title}
+                    {/* Dropdown filtrado */}
+                    <Select
+                      value={selectedProblemId || ""}
+                      onChange={(e) => setSelectedProblemId(e.target.value)}
+                      className="w-60 h-11 text-base"
+                    >
+                      <option value="">
+                        {problemTypeTab === "exercises"
+                          ? "Selecione um exercício..."
+                          : "Selecione uma prova..."}
                       </option>
-                    ))}
-                  </Select>
-                </div>
+                      {(problemTypeTab === "exercises"
+                        ? exerciseOptions
+                        : examOptions
+                      ).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.title}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                )}
 
                 {/* Status do Exame */}
                 {isExam && (
@@ -3197,6 +3274,18 @@ export default function ClassroomView() {
                     >
                       <Settings size={18} />
                     </Button>
+
+                    {isExam && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="h-11 px-3"
+                        onClick={() => setShowExamAccessPanel(true)}
+                        title="Links de acesso temporário"
+                      >
+                        <Link2 size={18} />
+                      </Button>
+                    )}
 
                     {/* BOTÃO DE EXCLUIR AUMENTADO */}
                     <Button
@@ -3973,6 +4062,14 @@ export default function ClassroomView() {
       </main>
 
       {/* --- OVERLAYS --- */}
+      {isOwner && selectedProblemId && (
+        <ExamAccessPanel
+          problemId={selectedProblemId}
+          problemTitle={currentProblem?.title || ""}
+          open={showExamAccessPanel}
+          onClose={() => setShowExamAccessPanel(false)}
+        />
+      )}
       {showSubmissions && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 md:p-6">
           <div className="bg-background w-full max-w-5xl max-h-[90vh] rounded-xl border border-border flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">

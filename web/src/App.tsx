@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import ClassroomView from "./pages/ClassroomView";
 import CreateProblem from "./pages/CreateProblem";
 import EditProblem from "./pages/EditProblem";
+import ExamAccessLanding from "./pages/ExamAccessLanding";
 import { SettingsModal } from "./components/SettingsModal";
 
 // 1. Importe o componente principal da sua nova feature
@@ -86,6 +87,23 @@ function App() {
             </PrivateRoute>
           }
         />
+
+        {/* Acesso temporário a provas via token (sem turma/matrícula) */}
+        {/* Pública de propósito: quem chega aqui ainda não tem sessão. */}
+        <Route path="/exam-access/:token" element={<ExamAccessLanding />} />
+        {/* Protegida pelo PrivateRoute normal: depois do resgate em
+            ExamAccessLanding, o convidado já tem uma sessão Supabase
+            válida (anônima ou real) — PrivateRoute não diferencia uma da
+            outra, só exige que exista. */}
+        <Route
+          path="/guest-exam/:problemId"
+          element={
+            <PrivateRoute>
+              <ClassroomView isGuestMode />
+            </PrivateRoute>
+          }
+        />
+
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
       </Routes>
