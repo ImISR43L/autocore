@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
-import { MoreThan, Repository } from 'typeorm';
+import { In, MoreThan, Repository } from 'typeorm';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
 import { Submission } from './entities/submission.entity';
@@ -100,14 +100,25 @@ export class SubmissionsService {
     return this.submissionsRepository.save(submission);
   }
 
+  /**
+   * Verifica grant tanto pelo id do problema em si quanto pelo id do seu
+   * PAI (se houver). Necessário porque o token de acesso é gerado e
+   * concedido para a prova (o problema pai), mas as submissões de código
+   * são feitas contra cada QUESTÃO (problema filho) individualmente — sem
+   * checar o pai, um convidado com grant válido era barrado ao tentar
+   * testar/entregar qualquer questão da prova.
+   */
   private async hasActiveExamGrant(
     userId: string,
-    problemId: string,
+    problem: Problem,
   ): Promise<boolean> {
+    const candidateIds = [problem.id];
+    if (problem.parent?.id) candidateIds.push(problem.parent.id);
+
     const count = await this.examAccessGrantsRepository.count({
       where: {
         user: { id: userId },
-        problemId,
+        problemId: In(candidateIds),
         token: { revoked: false, expiresAt: MoreThan(new Date()) },
       },
     });
@@ -122,6 +133,7 @@ export class SubmissionsService {
         'classroom',
         'classroom.owner',
         'classroom.students',
+        'parent',
       ],
     });
 
@@ -146,7 +158,7 @@ export class SubmissionsService {
     const hasGrant =
       !isOwner &&
       !isEnrolled &&
-      (await this.hasActiveExamGrant(userId, problem.id));
+      (await this.hasActiveExamGrant(userId, problem));
 
     if (!isOwner && !isEnrolled && !hasGrant) {
       throw new ForbiddenException('Você não está matriculado nesta turma.');
@@ -396,7 +408,12 @@ export class SubmissionsService {
   async findAllByProblem(problemId: string, userId: string) {
     const problem = await this.problemsRepository.findOne({
       where: { id: problemId },
-      relations: ['classroom', 'classroom.owner', 'classroom.students'],
+      relations: [
+        'classroom',
+        'classroom.owner',
+        'classroom.students',
+        'parent',
+      ],
     });
 
     if (!problem) throw new NotFoundException('Problema não encontrado');
@@ -405,11 +422,24 @@ export class SubmissionsService {
     const isEnrolled = problem.classroom.students?.some(
       (student) => String(student.id) === String(userId),
     );
+    const hasGrant =
+      !isOwner &&
+      !isEnrolled &&
+      (await this.hasActiveExamGrant(userId, problem));
 
     // Por consistência com os outros métodos: em vez de devolver uma
     // lista vazia silenciosa pra quem não pertence à turma (o que já
     // era seguro, mas confuso), negamos explicitamente.
-    if (!isOwner && !isEnrolled) {
+    //
+    // Esta checagem faltando aqui (só isOwner/isEnrolled, sem o grant) é
+    // o que fazia "Entregar Questão" falhar com "envie pelo menos uma
+    // solução" para um convidado: a submissão era criada com sucesso em
+    // create() (já corrigido antes), mas o front nunca conseguia
+    // RECARREGAR essa submissão via fetchSubmissions() → este método —
+    // então `submissions` ficava vazio no client, e handleDeliverQuestion
+    // não encontrava nada para entregar, mesmo com o dado já salvo no
+    // banco.
+    if (!isOwner && !isEnrolled && !hasGrant) {
       throw new ForbiddenException('Você não está matriculado nesta turma.');
     }
 

@@ -40,34 +40,60 @@ export class UsersService {
    * Usado pelo fluxo de resgate de token de acesso a prova. `supabaseUserId`
    * é o `sub` do JWT — que já existe de verdade no Supabase Auth (seja de
    * uma sessão anônima recém-criada no front, seja de um usuário real
-   * logado normalmente) no momento em que esta função é chamada; aqui só
-   * garantimos a linha espelho no nosso banco.
+   * logado normalmente) no momento em que esta função é chamada.
    *
-   * IMPORTANTE: só marcamos `isGuest`/`guestEmail` na CRIAÇÃO. Se a pessoa
-   * já é um usuário real da plataforma (abriu o link de convite estando
-   * logada), reaproveitamos a conta dela como está — ela não vira "guest"
-   * retroativamente, só ganha acesso extra a essa prova específica via
-   * ExamAccessGrant.
+   * IMPORTANTE: existe um trigger no Postgres (`on auth.users after
+   * insert`) que already cria a linha espelho em public."user" no
+   * instante em que o Supabase cria a conta — ou seja, no caso de
+   * signInAnonymously(), a linha já existe (com um nome genérico) ANTES
+   * desta função rodar. Por isso não dá pra assumir "não existe = é
+   * nova": precisamos detectar se a linha existente é um stub anônimo
+   * ainda não personalizado (e-mail sintético, criado pelo trigger) e, se
+   * for, completá-la com o nome/e-mail de contato reais informados no
+   * resgate — em vez de só devolver o que já está lá.
+   *
+   * Se a linha existente NÃO tiver o e-mail sintético, é uma conta real
+   * (a pessoa já era usuária da plataforma e abriu o link logada) — nesse
+   * caso não mexemos em nada, ela só ganha acesso extra via
+   * ExamAccessGrant, sem virar "guest" retroativamente.
    */
   async findOrCreateGuest(
     supabaseUserId: string,
     displayName: string,
     contactEmail: string,
   ): Promise<User> {
+    const syntheticEmail = this.buildSyntheticGuestEmail(supabaseUserId);
     const existing = await this.findOne(supabaseUserId);
-    if (existing) return existing;
 
-    // Sintético e único por usuário Supabase — nunca o e-mail real
-    // informado, que vai em `guestEmail` só como referência.
-    const syntheticEmail = `guest+${supabaseUserId}@exam-guests.internal`;
+    if (!existing) {
+      // Caminho de segurança: se por algum motivo o trigger não rodou (ou
+      // não existe neste ambiente), criamos a linha nós mesmos.
+      return this.create({
+        id: supabaseUserId,
+        email: syntheticEmail,
+        name: displayName,
+        isGuest: true,
+        guestEmail: contactEmail || null,
+      });
+    }
 
-    return this.create({
-      id: supabaseUserId,
-      email: syntheticEmail,
-      name: displayName,
-      isGuest: true,
-      guestEmail: contactEmail || null,
-    });
+    const isUnpersonalizedStub = existing.email === syntheticEmail;
+    if (!isUnpersonalizedStub) {
+      // Conta real de um usuário já cadastrado — não tocar.
+      return existing;
+    }
+
+    existing.name = displayName;
+    existing.isGuest = true;
+    existing.guestEmail = contactEmail || null;
+    return this.usersRepository.save(existing);
+  }
+
+  // Precisa ficar IDÊNTICO ao padrão usado no trigger SQL
+  // (handle_new_user, em auth.users), senão os dois lados param de se
+  // reconhecer.
+  private buildSyntheticGuestEmail(supabaseUserId: string): string {
+    return `guest+${supabaseUserId}@exam-guests.internal`;
   }
 
   async remove(id: string): Promise<{ message: string }> {

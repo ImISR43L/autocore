@@ -1434,7 +1434,15 @@ export default function ClassroomView({
       setLoading(false);
       loadingRef.current = false;
       setVerdict("Na Fila...");
-      toast.info("Gabarito enviado! Aguardando o motor químico...");
+      // Antes, esta mensagem citava "motor químico" incondicionalmente,
+      // mesmo para submissões de Programação ou HTML.
+      if (classroom?.subject === "CHEMISTRY") {
+        toast.info("Gabarito enviado! Aguardando o motor químico...");
+      } else if (classroom?.subject === "HTML") {
+        toast.info("Solução enviada! Validando sua página...");
+      } else {
+        toast.info("Solução enviada! Aguardando o resultado...");
+      }
 
       setTimeout(() => {
         if (displayProblemRef.current) {
@@ -4301,7 +4309,9 @@ export default function ClassroomView({
                                 Ação:{" "}
                                 {log.action === "PASTE"
                                   ? "Colagem externa"
-                                  : "Cópia de código"}
+                                  : log.action == "COPY"
+                                    ? "Cópia de código"
+                                    : "Troca de tela"}
                               </p>
                               <p className="text-xs text-muted mt-0.5">
                                 {log.details}

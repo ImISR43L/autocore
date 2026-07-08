@@ -47,15 +47,22 @@ export class ProblemsService {
    * prova. É a terceira via de autorização, além de dono/matriculado —
    * usada tanto por convidados anônimos quanto por usuários reais que
    * receberam um link de acesso pontual.
+   *
+   * Checa tanto o id do problema em si quanto o do seu PAI, quando
+   * houver: o token/grant é concedido para a prova (o problema pai),
+   * nunca para cada questão-filha individualmente.
    */
   private async hasActiveExamGrant(
     userId: string,
-    problemId: string,
+    problem: Problem,
   ): Promise<boolean> {
+    const candidateIds = [problem.id];
+    if (problem.parent?.id) candidateIds.push(problem.parent.id);
+
     const count = await this.examAccessGrantsRepository.count({
       where: {
         user: { id: userId },
-        problemId,
+        problemId: In(candidateIds),
         token: { revoked: false, expiresAt: MoreThan(new Date()) },
       },
     });
@@ -256,6 +263,7 @@ export class ProblemsService {
         'classroom',
         'classroom.owner',
         'classroom.students',
+        'parent',
       ],
     });
 
@@ -281,7 +289,7 @@ export class ProblemsService {
     const hasGrant =
       !isOwner &&
       !isEnrolled &&
-      (await this.hasActiveExamGrant(userId, problem.id));
+      (await this.hasActiveExamGrant(userId, problem));
 
     if (!isOwner && !isEnrolled && !hasGrant) {
       throw new ForbiddenException('Você não tem acesso a esta atividade.');
