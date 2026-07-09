@@ -28,6 +28,19 @@ export default {
           foreground: "rgb(var(--destructive-foreground) / <alpha-value>)",
         },
 
+        // Adicionados na auditoria de acessibilidade: sem eles, o
+        // ClassroomView.tsx (e possivelmente outros componentes) usava
+        // cores cruas do Tailwind (emerald-500, amber-500, etc.) para
+        // sinalizar sucesso/erro/aviso — nunca remapeadas por modo de
+        // daltonismo e sem variação por tema claro/escuro, já que essas
+        // não passavam pelo sistema de variáveis do index.css.
+        success: {
+          DEFAULT: "rgb(var(--status-success) / <alpha-value>)",
+        },
+        warning: {
+          DEFAULT: "rgb(var(--status-warning) / <alpha-value>)",
+        },
+
         muted: {
           DEFAULT: "rgb(var(--muted) / <alpha-value>)",
           foreground: "rgb(var(--muted-foreground) / <alpha-value>)",

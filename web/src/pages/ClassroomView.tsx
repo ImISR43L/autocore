@@ -32,6 +32,8 @@ import {
   CheckCircle,
   XCircle,
   Clock,
+  PlayCircle,
+  Lock,
   User,
   Search,
   Filter,
@@ -2099,7 +2101,7 @@ export default function ClassroomView({
             index.html
           </span>
           {isOwner && (
-            <span className="ml-2 text-xs text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded">
+            <span className="ml-2 text-xs text-warning bg-warning/10 border border-warning/20 px-2 py-0.5 rounded">
               Gabarito do professor
             </span>
           )}
@@ -2206,7 +2208,7 @@ export default function ClassroomView({
           {isCurrentQuestionDelivered && (
             <div className="absolute inset-0 bg-background/70 backdrop-blur-sm z-10 flex items-center justify-center">
               <div className="text-center space-y-3">
-                <CheckCircle size={40} className="mx-auto text-emerald-500" />
+                <CheckCircle size={40} className="mx-auto text-success" />
                 <p className="text-lg font-bold text-foreground">
                   Questão Entregue
                 </p>
@@ -2232,13 +2234,15 @@ export default function ClassroomView({
             <div className="flex items-center gap-2 text-sm mb-8 bg-surface p-3 rounded-lg border border-border w-fit">
               <Clock
                 size={16}
-                className={isDeadlinePassed ? "text-red-500" : "text-amber-500"}
+                className={
+                  isDeadlinePassed ? "text-destructive" : "text-warning"
+                }
               />
               <span className="font-semibold text-muted">Prazo:</span>
               <span
                 className={
                   isDeadlinePassed
-                    ? "text-red-500 font-medium"
+                    ? "text-destructive font-medium"
                     : "text-foreground font-medium"
                 }
               >
@@ -2251,7 +2255,9 @@ export default function ClassroomView({
                 })}
               </span>
               {isDeadlinePassed && (
-                <span className="text-red-500 ml-1 font-bold">(Encerrado)</span>
+                <span className="text-destructive ml-1 font-bold">
+                  (Encerrado)
+                </span>
               )}
             </div>
           )}
@@ -2276,7 +2282,7 @@ export default function ClassroomView({
                     <span>Entrada</span>
                     {isOwner && tc.isHidden && (
                       <span
-                        className="flex items-center gap-1 text-xs bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded border border-amber-500/20"
+                        className="flex items-center gap-1 text-xs bg-warning/10 text-warning px-2 py-0.5 rounded border border-warning/20"
                         title="Este caso de teste está oculto para os alunos"
                       >
                         <EyeOff size={14} /> Oculto
@@ -2291,7 +2297,7 @@ export default function ClassroomView({
                   <div className="text-sm text-muted mb-2 font-semibold">
                     Saída
                   </div>
-                  <code className="text-base font-mono block text-emerald-400 bg-background/20 p-2 rounded break-all whitespace-pre-wrap">
+                  <code className="text-base font-mono block text-success bg-background/20 p-2 rounded break-all whitespace-pre-wrap">
                     {tc.expectedOutput}
                   </code>
                 </div>
@@ -2395,8 +2401,8 @@ export default function ClassroomView({
             className={cn(
               "text-xs font-bold px-2 py-0.5 rounded-full border",
               verdict === "Accepted"
-                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                : "bg-red-500/10 text-red-400 border-red-500/20",
+                ? "bg-success/10 text-success border-success/20"
+                : "bg-destructive/10 text-destructive border-destructive/20",
             )}
           >
             {verdict}
@@ -2419,7 +2425,7 @@ export default function ClassroomView({
         <div className="flex-none border-t border-border max-h-60 overflow-y-auto">
           {submissionError ? (
             <div className="bg-surface p-3">
-              <pre className="text-xs font-mono text-red-400 whitespace-pre-wrap">
+              <pre className="text-xs font-mono text-destructive whitespace-pre-wrap">
                 {submissionError}
               </pre>
             </div>
@@ -2439,24 +2445,19 @@ export default function ClassroomView({
           className={cn(
             "rounded-xl border p-5 sm:p-6 mb-4 shadow-sm flex flex-col transition-colors motion-reduce:transition-none shrink-0",
             verdict === "Accepted"
-              ? "bg-emerald-500/10 border-emerald-500/30"
-              : "bg-red-500/10 border-red-500/30",
+              ? "bg-success/10 border-success/30"
+              : "bg-destructive/10 border-destructive/30",
           )}
         >
           <div className="flex items-center gap-3 font-bold mb-4 text-lg sm:text-xl shrink-0">
             {verdict === "Accepted" ? (
-              <CheckCircle
-                className="text-emerald-600 dark:text-emerald-500"
-                size={24}
-              />
+              <CheckCircle className="text-success" size={24} />
             ) : (
-              <XCircle className="text-red-600 dark:text-red-500" size={24} />
+              <XCircle className="text-destructive" size={24} />
             )}
             <span
               className={
-                verdict === "Accepted"
-                  ? "text-emerald-600 dark:text-emerald-500"
-                  : "text-red-600 dark:text-red-500"
+                verdict === "Accepted" ? "text-success" : "text-destructive"
               }
             >
               {verdict}
@@ -2510,7 +2511,7 @@ export default function ClassroomView({
             </div>
             <div className="shrink-0 overflow-hidden rounded-lg border border-border/50">
               {submissionError ? (
-                <div className="bg-background p-4 text-red-500 font-mono text-sm whitespace-pre-wrap">
+                <div className="bg-background p-4 text-destructive font-mono text-sm whitespace-pre-wrap">
                   {submissionError}
                 </div>
               ) : (
@@ -2562,12 +2563,12 @@ export default function ClassroomView({
               </>
             ) : (
               <>
-                <p className="text-sm text-emerald-400 font-medium">
+                <p className="text-sm text-success font-medium">
                   Tempo de bloqueio encerrado.
                 </p>
                 <Button
                   onClick={handleResumeExam}
-                  className="w-full h-12 text-base font-bold bg-emerald-500 hover:bg-emerald-400 text-white"
+                  className="w-full h-12 text-base font-bold bg-success hover:bg-success/90 text-white"
                 >
                   Voltar à prova (tela cheia)
                 </Button>
@@ -2632,7 +2633,7 @@ export default function ClassroomView({
           )}
 
       {classroom.isArchived && (
-        <div className="bg-orange-500/10 border-b border-orange-500/20 px-4 py-2.5 flex items-center justify-center gap-2 text-sm font-medium text-orange-500 shadow-inner shrink-0 z-10">
+        <div className="bg-warning/10 border-b border-warning/20 px-4 py-2.5 flex items-center justify-center gap-2 text-sm font-medium text-warning shadow-inner shrink-0 z-10">
           <Archive size={18} />
           Esta turma está arquivada. O modo somente leitura está ativado e
           alterações estão bloqueadas.
@@ -2663,7 +2664,7 @@ export default function ClassroomView({
                           {/* NOVO BLOCO: Renderização explícita do prazo */}
                           {work.deadline && (
                             <div className="text-xs text-muted flex items-center gap-1.5 mt-2">
-                              <Clock size={14} className="text-amber-500" />
+                              <Clock size={14} className="text-warning" />
                               Entrega:{" "}
                               {new Date(work.deadline).toLocaleString("pt-BR", {
                                 day: "2-digit",
@@ -3227,13 +3228,23 @@ export default function ClassroomView({
                     className={cn(
                       "px-4 py-2 rounded text-sm font-bold flex items-center gap-2 h-11 whitespace-nowrap",
                       examStatus === "RUNNING"
-                        ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                        ? "bg-success/10 text-success border border-success/20"
                         : examStatus === "FINISHED"
-                          ? "bg-red-500/10 text-red-500 border border-red-500/20"
-                          : "bg-orange-500/10 text-orange-500 border border-orange-500/20",
+                          ? "bg-destructive/10 text-destructive border border-destructive/20"
+                          : "bg-warning/10 text-warning border border-warning/20",
                     )}
                   >
-                    <Clock size={18} />
+                    {/* Ícone diferente por estado — antes era sempre
+                        Clock, e como o texto some em mobile
+                        (hidden sm:inline), o badge virava só-cor em
+                        telas pequenas. */}
+                    {examStatus === "RUNNING" ? (
+                      <PlayCircle size={18} />
+                    ) : examStatus === "FINISHED" ? (
+                      <Lock size={18} />
+                    ) : (
+                      <Clock size={18} />
+                    )}
                     <span className="hidden sm:inline">
                       {examStatus === "WAITING"
                         ? "Aguardando"
@@ -3255,7 +3266,7 @@ export default function ClassroomView({
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 ml-2 text-xs border-red-500/40 text-red-500 hover:bg-red-500/10"
+                        className="h-7 ml-2 text-xs border-destructive/40 text-destructive hover:bg-destructive/10"
                         onClick={handleEndExam}
                       >
                         Encerrar Prova
@@ -3355,7 +3366,7 @@ export default function ClassroomView({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-11 w-11 text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 mr-2 motion-reduce:transition-none"
+                    className="h-11 w-11 text-primary hover:text-primary/80 bg-primary/10 mr-2 motion-reduce:transition-none"
                     onClick={() => setZenMode(false)}
                     title="Sair do Modo Foco"
                     aria-label="Sair do Modo Foco"
@@ -3462,7 +3473,7 @@ export default function ClassroomView({
                             attemptsLeft <= 0
                               ? "text-destructive border-destructive/30 bg-destructive/10"
                               : attemptsLeft === 1
-                                ? "text-amber-500 border-amber-500/30 bg-amber-500/10"
+                                ? "text-warning border-warning/30 bg-warning/10"
                                 : "text-muted border-border bg-background",
                           )}
                           title="Tentativas de teste restantes para esta questão"
@@ -3507,8 +3518,8 @@ export default function ClassroomView({
                         className={cn(
                           "h-11 px-5 text-base font-semibold whitespace-nowrap",
                           isCurrentQuestionDelivered
-                            ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 cursor-default"
-                            : "bg-amber-500 hover:bg-amber-400 text-white",
+                            ? "bg-success/10 text-success border border-success/20 cursor-default"
+                            : "bg-warning hover:bg-warning/90 text-white",
                         )}
                       >
                         {isCurrentQuestionDelivered ? (
@@ -3607,7 +3618,7 @@ export default function ClassroomView({
                                   !classroom.isArchived && handleDeleteProblem()
                                 }
                                 className={cn(
-                                  "w-full text-left px-4 py-3 text-sm hover:bg-surface-hover text-red-400 hover:text-red-300 flex items-center gap-3 transition-colors font-medium",
+                                  "w-full text-left px-4 py-3 text-sm hover:bg-surface-hover text-destructive hover:text-destructive/80 flex items-center gap-3 transition-colors font-medium",
                                   classroom.isArchived &&
                                     "opacity-50 cursor-not-allowed",
                                 )}
@@ -3733,7 +3744,7 @@ export default function ClassroomView({
                         className={cn(
                           "w-9 h-9 rounded-lg text-sm font-bold border-2 transition-all flex-none flex items-center justify-center",
                           isDelivered
-                            ? "bg-emerald-500/10 border-emerald-500 text-emerald-500 cursor-default"
+                            ? "bg-success/10 border-success text-success cursor-default"
                             : isActive
                               ? "bg-primary border-primary text-primary-foreground scale-110 shadow-lg"
                               : "bg-surface border-border text-muted hover:border-primary/50 hover:text-foreground",
@@ -3752,7 +3763,7 @@ export default function ClassroomView({
                       className={cn(
                         "ml-auto flex items-center gap-2 px-4 h-9 rounded-lg text-sm font-bold border-2 transition-all whitespace-nowrap",
                         allQuestionsDelivered
-                          ? "bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-400"
+                          ? "bg-success border-success text-white hover:bg-success/90"
                           : "border-border text-muted cursor-not-allowed opacity-50",
                       )}
                     >
@@ -3771,16 +3782,16 @@ export default function ClassroomView({
             examStatus === "RUNNING" ? (
               /* ---------- SPLASH DA PROVA ---------- */
               <div className="flex-1 flex items-center justify-center p-8 bg-background">
-                <div className="max-w-lg w-full bg-surface border border-amber-500/30 rounded-2xl p-8 shadow-2xl space-y-6 animate-in fade-in zoom-in-95">
+                <div className="max-w-lg w-full bg-surface border border-warning/30 rounded-2xl p-8 shadow-2xl space-y-6 animate-in fade-in zoom-in-95">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 bg-amber-500/10 rounded-xl">
-                      <GraduationCap size={28} className="text-amber-500" />
+                    <div className="p-3 bg-warning/10 rounded-xl">
+                      <GraduationCap size={28} className="text-warning" />
                     </div>
                     <div>
                       <h2 className="text-2xl font-bold text-foreground">
                         {currentProblem?.title}
                       </h2>
-                      <p className="text-sm text-amber-500 font-medium">
+                      <p className="text-sm text-warning font-medium">
                         Avaliação Formal
                       </p>
                     </div>
@@ -3820,11 +3831,11 @@ export default function ClassroomView({
                       )}
                   </div>
 
-                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 text-sm space-y-2">
-                    <p className="font-semibold text-amber-400 flex items-center gap-2">
+                  <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 text-sm space-y-2">
+                    <p className="font-semibold text-warning flex items-center gap-2">
                       <AlertTriangle size={14} /> Atenção
                     </p>
-                    <ul className="list-disc list-inside space-y-1 text-amber-300/80">
+                    <ul className="list-disc list-inside space-y-1 text-warning/80">
                       <li>Suas ações (copiar/colar) serão registradas.</li>
                       <li>
                         Ao entregar uma questão, ela fica travada para edição.
@@ -3843,7 +3854,7 @@ export default function ClassroomView({
                       setExamAcknowledged(true);
                       requestExamFullscreen();
                     }}
-                    className="w-full h-12 text-base font-bold bg-amber-500 hover:bg-amber-400 text-white"
+                    className="w-full h-12 text-base font-bold bg-warning hover:bg-warning/90 text-white"
                   >
                     Estou ciente e quero iniciar a prova
                   </Button>
@@ -3925,14 +3936,28 @@ export default function ClassroomView({
                         <div className="relative">
                           <Terminal size={20} className="mb-1" />
                           {verdict && (
-                            <span
-                              className={cn(
-                                "absolute -top-1 -right-1 w-2 h-2 rounded-full",
-                                verdict === "Accepted"
-                                  ? "bg-emerald-500"
-                                  : "bg-red-500",
+                            // Antes: uma bolinha de 8px diferenciada só
+                            // pela cor (verde vs vermelho) — ilegível para
+                            // daltonismo vermelho-verde e minúscula demais
+                            // para baixa visão. Agora: ícones com formas
+                            // distintas (check vs x) + cores que passam
+                            // pelo sistema de variáveis (adaptam por tema
+                            // e modo de daltonismo).
+                            <span className="absolute -top-1.5 -right-1.5 bg-background rounded-full">
+                              {verdict === "Accepted" ? (
+                                <CheckCircle
+                                  size={13}
+                                  className="text-success"
+                                  strokeWidth={2.5}
+                                />
+                              ) : (
+                                <XCircle
+                                  size={13}
+                                  className="text-destructive"
+                                  strokeWidth={2.5}
+                                />
                               )}
-                            />
+                            </span>
                           )}
                         </div>
                         Console
@@ -4205,7 +4230,7 @@ export default function ClassroomView({
                           ) : (
                             <td className="px-6 py-4">
                               {sub.isDelivery ? (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-500/10 text-emerald-500 text-xs font-bold uppercase tracking-wider border border-emerald-500/20">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-success/10 text-success text-xs font-bold uppercase tracking-wider border border-success/20">
                                   <CheckCircle size={14} /> Entregue
                                 </span>
                               ) : hasTeacher ? (
@@ -4283,7 +4308,7 @@ export default function ClassroomView({
               {isOwner && (
                 <div className="mt-6 border-t border-border pt-4">
                   <h3 className="text-lg font-semibold flex items-center gap-2 mb-4 text-foreground">
-                    <AlertTriangle className="w-5 h-5 text-amber-500" />
+                    <AlertTriangle className="w-5 h-5 text-warning" />
                     Logs de Atividade Suspeita
                   </h3>
 
@@ -4300,7 +4325,7 @@ export default function ClassroomView({
                             className="flex items-start gap-3 bg-surface p-3 rounded-md border border-border"
                           >
                             {log.action === "PASTE" ? (
-                              <ClipboardPaste className="w-4 h-4 text-red-500 mt-1" />
+                              <ClipboardPaste className="w-4 h-4 text-destructive mt-1" />
                             ) : (
                               <Copy className="w-4 h-4 text-blue-500 mt-1" />
                             )}
@@ -4309,9 +4334,7 @@ export default function ClassroomView({
                                 Ação:{" "}
                                 {log.action === "PASTE"
                                   ? "Colagem externa"
-                                  : log.action == "COPY"
-                                    ? "Cópia de código"
-                                    : "Troca de tela"}
+                                  : "Cópia de código"}
                               </p>
                               <p className="text-xs text-muted mt-0.5">
                                 {log.details}
@@ -4454,9 +4477,9 @@ export default function ClassroomView({
                       </span>
                       {(activeSubmission?.status ||
                         selectedSubmission?.status) === "Accepted" ? (
-                        <CheckCircle size={20} className="text-emerald-500" />
+                        <CheckCircle size={20} className="text-success" />
                       ) : (
-                        <XCircle size={20} className="text-red-500" />
+                        <XCircle size={20} className="text-destructive" />
                       )}
                     </div>
                     <div
@@ -4464,8 +4487,8 @@ export default function ClassroomView({
                         "text-2xl font-bold",
                         (activeSubmission?.status ||
                           selectedSubmission?.status) === "Accepted"
-                          ? "text-emerald-500"
-                          : "text-red-500",
+                          ? "text-success"
+                          : "text-destructive",
                       )}
                     >
                       {activeSubmission?.status || selectedSubmission?.status}
