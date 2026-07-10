@@ -5,8 +5,6 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { InjectQueue } from '@nestjs/bull';
-import type { Queue } from 'bull';
 import { In, MoreThan, Repository } from 'typeorm';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
@@ -14,17 +12,24 @@ import { Submission } from './entities/submission.entity';
 import { Problem } from '../problems/entities/problem.entity';
 import { SubjectType } from '../common/enums/subject-type.enum';
 import { SubmissionsGateway } from './submissions.gateway';
-import { ChemistryService } from '../chemistry/chemistry.service';
-import { HtmlValidatorService } from '../html/html-validator.service';
-import type { ValidationResult } from '../chemistry/chemistry.service';
 import { ExamAccessGrant } from '../exam-access/entities/exam-access-grant.entity';
-interface LanguageConfig {
-  fileName: string;
-  runCommand: string[];
-}
+import { LANGUAGE_CONFIG } from './language-config';
+import {
+  GradingResult,
+  GradingStrategy,
+} from './strategies/grading-strategy.interface';
+import { ChemistryGradingStrategy } from './strategies/chemistry-grading.strategy';
+import { HtmlGradingStrategy } from './strategies/html-grading.strategy';
+import { ProgrammingGradingStrategy } from './strategies/programming-grading.strategy';
+
 @Injectable()
 export class SubmissionsService {
   private readonly logger = new Logger(SubmissionsService.name);
+
+  // Catálogo de estratégias, indexado pela matéria do problema. Adicionar
+  // uma nova matéria (ex: Física) não exige tocar em nenhum método deste
+  // service além do registro abaixo — só criar a nova GradingStrategy.
+  private readonly gradingStrategies = new Map<SubjectType, GradingStrategy>();
 
   constructor(
     @InjectRepository(Submission)
@@ -33,11 +38,18 @@ export class SubmissionsService {
     private problemsRepository: Repository<Problem>,
     @InjectRepository(ExamAccessGrant)
     private examAccessGrantsRepository: Repository<ExamAccessGrant>,
-    @InjectQueue('submission-queue') private submissionsQueue: Queue,
     private submissionsGateway: SubmissionsGateway,
-    private chemistryService: ChemistryService,
-    private htmlValidatorService: HtmlValidatorService,
-  ) {}
+    chemistryGradingStrategy: ChemistryGradingStrategy,
+    htmlGradingStrategy: HtmlGradingStrategy,
+    programmingGradingStrategy: ProgrammingGradingStrategy,
+  ) {
+    this.gradingStrategies.set(SubjectType.CHEMISTRY, chemistryGradingStrategy);
+    this.gradingStrategies.set(SubjectType.HTML, htmlGradingStrategy);
+    this.gradingStrategies.set(
+      SubjectType.PROGRAMMING,
+      programmingGradingStrategy,
+    );
+  }
 
   async getProblemStats(problemId: string) {
     const submissions = await this.submissionsRepository.find({
@@ -182,24 +194,22 @@ export class SubmissionsService {
       throw new ForbiddenException('O prazo de entrega já encerrou.');
     }
 
-    // Validação de Linguagem Permitida
-    const languageMap: Record<number, string> = {
-      71: 'python',
-      63: 'javascript',
-      54: 'cpp',
-    };
-
-    // CORREÇÃO 1: Trata o undefined para o TS não reclamar do index type
-    const submittedLangString =
+    // FIX (a): antes havia um `languageMap` local aqui, que só conhecia
+    // Python/JS/C++, divergente do mapa usado no Processor (que também
+    // roda Java/Go/C). Um aluno podia submeter nessas linguagens sem
+    // jamais passar pela checagem de `allowedLanguages` da questão, porque
+    // este mapa simplesmente não sabia que esses IDs existiam. Agora os
+    // dois lugares importam a mesma constante.
+    const langConfig =
       createSubmissionDto.language_id != null
-        ? languageMap[createSubmissionDto.language_id]
+        ? LANGUAGE_CONFIG[createSubmissionDto.language_id]
         : undefined;
 
     if (
       problem.allowedLanguages &&
       problem.allowedLanguages.length > 0 &&
-      submittedLangString &&
-      !problem.allowedLanguages.includes(submittedLangString)
+      langConfig &&
+      !problem.allowedLanguages.includes(langConfig.slug)
     ) {
       throw new ForbiddenException(
         'A linguagem selecionada não é permitida para esta atividade.',
@@ -218,7 +228,6 @@ export class SubmissionsService {
       }
     }
 
-    // CORREÇÃO 2: Alterado de language_id para languageId para bater com a entidade
     const submission = this.submissionsRepository.create({
       files: createSubmissionDto.files,
       languageId: createSubmissionDto.language_id,
@@ -231,87 +240,66 @@ export class SubmissionsService {
 
     const savedSubmission = await this.submissionsRepository.save(submission);
 
-    // Roteamento: HTML e Química são validações síncronas e baratas
-    // (JSDOM / RDKit local) — não precisam da fila pesada do Go-Judge.
-    // Resolvemos na própria requisição e nunca tocamos o BullMQ para elas.
-    if (
-      problem.subject === SubjectType.HTML ||
-      problem.subject === SubjectType.CHEMISTRY
-    ) {
-      return this.resolveSynchronously(savedSubmission, problem, userId);
-    }
-
-    // Programação: segue o fluxo assíncrono via BullMQ + Go-Judge
-    try {
-      await this.submissionsQueue.add('grade', {
-        submissionId: savedSubmission.id,
-        files: savedSubmission.files,
-        // CORREÇÃO 3: Lendo de languageId ao invés de language_id
-        language: savedSubmission.languageId,
-        testCases: problem.testCases,
-        timeLimit: problem.timeLimit,
-        memoryLimit: problem.memoryLimit,
-      });
-    } catch (error) {
-      savedSubmission.status = 'Internal Error';
-      savedSubmission.output = 'Falha no sistema de filas.';
-      await this.submissionsRepository.save(savedSubmission);
-    }
-
-    return savedSubmission;
+    return this.routeToGradingStrategy(savedSubmission, problem, userId);
   }
 
   /**
-   * Resolve submissões síncronas (HTML/Química) sem passar pela fila do
-   * Go-Judge. Salva o resultado final e dispara o WebSocket imediatamente,
-   * tudo dentro da mesma requisição HTTP do envio.
+   * Ponto único de despacho para o Strategy Pattern. Substitui os dois
+   * `if/else` que existiam antes (um decidindo sync-vs-fila, outro
+   * decidindo HTML-vs-Química) por uma única resolução via Map.
+   *
+   * Também resolve parcialmente o bug (c) do processor: qualquer exceção
+   * lançada pela própria estratégia (ex: falha ao enfileirar no Bull) é
+   * capturada aqui e a submissão é marcada como 'Internal Error' — em vez
+   * de o aluno ficar com uma submissão presa em 'Pending' sem explicação.
    */
-  private async resolveSynchronously(
+  private async routeToGradingStrategy(
     submission: Submission,
     problem: Problem,
     userId: string,
   ) {
+    const strategy = this.gradingStrategies.get(problem.subject);
+
+    if (!strategy) {
+      submission.status = 'Internal Error';
+      submission.output =
+        'Motor de correção não configurado para este tipo de exercício.';
+      return this.submissionsRepository.save(submission);
+    }
+
     try {
-      const files = submission.files;
-      const firstFileContent =
-        Array.isArray(files) && files.length > 0 ? files[0].content || '' : '';
+      const result = await strategy.grade(submission, problem);
 
-      let result: ValidationResult;
-
-      if (problem.subject === SubjectType.HTML) {
-        const config = problem.validationConfig as any;
-        if (!config?.rules?.length) {
-          result = {
-            status: 'Runtime Error',
-            score: 0,
-            feedback:
-              'Configuração de validação ausente. Certifique-se de submeter ' +
-              'para uma questão específica da prova, não para a prova em si.',
-          };
-        } else {
-          result = this.htmlValidatorService.validateSubmission(
-            firstFileContent,
-            config,
-          );
-        }
-      } else {
-        const expectedSmiles = problem.validationConfig?.expectedSmiles || '';
-        result = this.chemistryService.validateSubmission(
-          firstFileContent,
-          expectedSmiles,
-        );
+      // Modo síncrono (HTML/Química): o resultado já é final, persistimos
+      // e notificamos o aluno imediatamente, dentro da mesma requisição.
+      if (strategy.mode === 'sync') {
+        return this.persistAndNotify(submission, result, userId);
       }
 
-      submission.status = result.status;
-      submission.grade = result.score;
-      submission.output = result.feedback ?? null;
-      submission.executionTime = 0;
-      submission.memoryUsage = 0;
+      // Modo assíncrono (Programação): a estratégia já enfileirou o job;
+      // quem persiste o resultado final e notifica é o SubmissionsProcessor.
+      return submission;
     } catch (error) {
-      this.logger.error('Erro na validação síncrona:', error);
+      this.logger.error(
+        `Erro ao rotear submissão ${submission.id} para a estratégia de correção:`,
+        error,
+      );
       submission.status = 'Internal Error';
-      submission.output = 'Erro interno ao processar a submissão.';
+      submission.output = 'Falha no sistema de correção.';
+      return this.submissionsRepository.save(submission);
     }
+  }
+
+  private async persistAndNotify(
+    submission: Submission,
+    result: GradingResult,
+    userId: string,
+  ) {
+    submission.status = result.status;
+    submission.grade = result.score;
+    submission.output = result.feedback ?? null;
+    submission.executionTime = 0;
+    submission.memoryUsage = 0;
 
     const savedSubmission = await this.submissionsRepository.save(submission);
 
@@ -376,7 +364,6 @@ export class SubmissionsService {
       );
     }
 
-    // NOVA VALIDAÇÃO: Bloqueio de turmas arquivadas
     if (submission.problem?.classroom?.isArchived) {
       throw new ForbiddenException(
         'Turma em modo leitura (arquivada). Ações bloqueadas.',
@@ -427,24 +414,11 @@ export class SubmissionsService {
       !isEnrolled &&
       (await this.hasActiveExamGrant(userId, problem));
 
-    // Por consistência com os outros métodos: em vez de devolver uma
-    // lista vazia silenciosa pra quem não pertence à turma (o que já
-    // era seguro, mas confuso), negamos explicitamente.
-    //
-    // Esta checagem faltando aqui (só isOwner/isEnrolled, sem o grant) é
-    // o que fazia "Entregar Questão" falhar com "envie pelo menos uma
-    // solução" para um convidado: a submissão era criada com sucesso em
-    // create() (já corrigido antes), mas o front nunca conseguia
-    // RECARREGAR essa submissão via fetchSubmissions() → este método —
-    // então `submissions` ficava vazio no client, e handleDeliverQuestion
-    // não encontrava nada para entregar, mesmo com o dado já salvo no
-    // banco.
     if (!isOwner && !isEnrolled && !hasGrant) {
       throw new ForbiddenException('Você não está matriculado nesta turma.');
     }
 
     if (isOwner) {
-      // O professor apenas vê as entregas oficiais (uma por aluno)
       return this.submissionsRepository.find({
         where: { problem: { id: problemId }, isDelivery: true },
         relations: ['user', 'problem'],

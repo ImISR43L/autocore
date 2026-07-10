@@ -14,6 +14,9 @@ import { UsersModule } from '../users/users.module';
 import { ChemistryModule } from '../chemistry/chemistry.module';
 import { HtmlModule } from 'src/html/html.module';
 import { ExamAccessGrant } from '../exam-access/entities/exam-access-grant.entity';
+import { ChemistryGradingStrategy } from './strategies/chemistry-grading.strategy';
+import { HtmlGradingStrategy } from './strategies/html-grading.strategy';
+import { ProgrammingGradingStrategy } from './strategies/programming-grading.strategy';
 
 @Module({
   imports: [
@@ -38,10 +41,16 @@ import { ExamAccessGrant } from '../exam-access/entities/exam-access-grant.entit
     AuthModule,
     UsersModule,
     ChemistryModule,
-
     HtmlModule,
   ],
   controllers: [SubmissionsController],
-  providers: [SubmissionsService, SubmissionsProcessor, SubmissionsGateway],
+  providers: [
+    SubmissionsService,
+    SubmissionsProcessor,
+    SubmissionsGateway,
+    ChemistryGradingStrategy,
+    HtmlGradingStrategy,
+    ProgrammingGradingStrategy,
+  ],
 })
 export class SubmissionsModule {}
