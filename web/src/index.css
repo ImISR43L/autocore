@@ -294,17 +294,24 @@
   }
 
   .log-status-pending {
-    @apply border-gray-700 border-dashed bg-gray-900/50 text-gray-500;
+    /* Antes: só tinha valores de tema escuro (sem variante clara) —
+       renderizava uma caixa quase preta flutuando numa página clara. */
+    @apply border-dashed border-gray-300 bg-gray-100 text-gray-500;
+    @apply dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-500;
   }
 
   .log-status-default {
-    @apply border-gray-800 bg-gray-950;
+    @apply border-gray-300 bg-gray-50;
+    @apply dark:border-gray-800 dark:bg-gray-950;
   }
 
   /* Cabeçalho */
   .log-header {
     @apply flex items-center gap-2 px-4 py-2 border-b transition-colors;
-    @apply border-gray-700/50 bg-black/20 text-gray-200;
+    /* Antes: text-gray-200 sobre bg-black/20 sem variante clara — no
+       tema claro isso dava 1.19:1 de contraste (texto quase invisível). */
+    @apply border-border bg-black/5 text-foreground/80;
+    @apply dark:border-gray-700/50 dark:bg-black/20 dark:text-gray-200;
   }
 
   /* Ícones do Cabeçalho (Usando variáveis) */
@@ -318,7 +325,7 @@
     color: rgb(var(--status-warning));
   }
   .log-icon-default {
-    @apply text-gray-400;
+    @apply text-gray-500 dark:text-gray-400;
   }
 
   /* Conteúdo das Linhas */
@@ -345,11 +352,12 @@
   }
 
   .log-text-info {
-    @apply text-blue-400 underline decoration-blue-400/30;
+    @apply text-blue-700 dark:text-blue-400 underline decoration-blue-400/30;
   }
 
   .log-text-default {
-    @apply text-gray-300;
+    /* Antes: text-gray-300 sem variante clara — 1.41:1 no tema claro. */
+    @apply text-gray-700 dark:text-gray-300;
   }
 
   /* --- OVERRIDES PARA ACROMATOPSIA (Logs) --- */
