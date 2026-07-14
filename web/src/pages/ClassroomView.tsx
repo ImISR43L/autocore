@@ -4,6 +4,9 @@ import { supabase } from "../lib/supabase";
 import { ExamAccessPanel } from "../components/examAccess/ExamAccessPanel";
 import Editor from "@monaco-editor/react";
 import type { OnMount } from "@monaco-editor/react";
+import { ErDiagramCanvas } from "../components/erDiagram/ErDiagramCanvas";
+import { EMPTY_ER_MODEL } from "../types/erModel";
+import type { ErModel } from "../types/erModel";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -60,6 +63,7 @@ import {
   Beaker,
   ClipboardPaste,
   AlertTriangle,
+  Network,
 } from "lucide-react";
 import {
   Panel,
@@ -122,6 +126,13 @@ interface Problem {
   title: string;
   description: string;
   slug: string;
+  // Decide o comportamento por ATIVIDADE (editor, submissão, painel de
+  // resultado), não por turma — uma turma "SQL" pode ter tanto
+  // atividades de consulta (subject: SQL) quanto de modelagem (subject:
+  // SQL_MODELING) ao mesmo tempo. Opcional porque nem toda tela busca
+  // este campo explicitamente do backend ainda; ausência cai no
+  // fallback por classroom.subject onde os call sites já tratam isso.
+  subject?: "PROGRAMMING" | "CHEMISTRY" | "HTML" | "SQL" | "SQL_MODELING";
   testCases?: TestCase[];
   type: "EXERCISE" | "EXAM";
   maxAttempts?: number;
@@ -140,13 +151,16 @@ interface Problem {
     expectedSmiles?: string;
     rawState?: any;
   };
+  sqlSchema?: string;
+  sqlOrderSensitive?: boolean;
+  referenceModel?: ErModel;
 }
 
 interface Classroom {
   id: number;
   name: string;
   code: string;
-  subject?: "PROGRAMMING" | "CHEMISTRY" | "HTML";
+  subject?: "PROGRAMMING" | "CHEMISTRY" | "HTML" | "SQL" | "SQL_MODELING";
   owner: { id: string; email: string; name?: string } | null;
   students: { id: string; email: string; name?: string }[];
   problems: Problem[];
@@ -165,8 +179,10 @@ interface Submission {
     | "Compilation Error"
     | "Runtime Error"
     | "Memory Limit Exceeded"
-    | "Internal Error";
+    | "Internal Error"
+    | "Awaiting Manual Review";
   files: FileEntry[];
+  modelData?: ErModel | null;
   stdout?: string;
   stderr?: string;
   output: string;
@@ -283,6 +299,13 @@ export default function ClassroomView({
 
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
+  const [diagramModel, setDiagramModel] = useState<ErModel>(EMPTY_ER_MODEL);
+  // Incrementado sempre que o problema/submissão muda, força o
+  // ErDiagramCanvas a remontar (ele só lê seu valor inicial uma vez —
+  // ver o comentário no próprio componente). Sem isso, trocar de questão
+  // dentro do mesmo componente montado deixaria o diagrama da questão
+  // anterior "grudado" na tela.
+  const [diagramResetKey, setDiagramResetKey] = useState(0);
   const [newFileName, setNewFileName] = useState("");
 
   const editorRef = useRef<any>(null);
@@ -316,6 +339,8 @@ export default function ClassroomView({
   >({});
   const [activeInspectionIndex, setActiveInspectionIndex] = useState(0);
   const [inspectFileIndex, setInspectFileIndex] = useState(0);
+  const [showReferenceInInspector, setShowReferenceInInspector] =
+    useState(false);
 
   const [selectedSubmission, setSelectedSubmission] =
     useState<Submission | null>(null);
@@ -974,8 +999,49 @@ export default function ClassroomView({
   }, [selectedProblemId]);
 
   useEffect(() => {
+    if (!displayProblem) return;
+
+    // Este efeito deriva o arquivo inicial de `languageId`/`LANGUAGES`, o
+    // que faz sentido para Programming, mas sobrescreveria o editor de
+    // SQL com um starter Python (já que `languageId` mantém o default de
+    // 71 mesmo quando a matéria não usa seletor de linguagem). SQL tem
+    // seu próprio caminho de inicialização, abaixo.
+    if (displayProblem?.subject === "SQL") {
+      const storageKey = `sql-draft-${displayProblem.id}`;
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          setFiles([{ name: "query.sql", content: saved }]);
+          setActiveFileIndex(0);
+          return;
+        } catch (e) {
+          console.error("Erro ao parsear autosave de SQL", e);
+        }
+      }
+      setFiles([{ name: "query.sql", content: "" }]);
+      setActiveFileIndex(0);
+      return;
+    }
+
+    if (displayProblem?.subject === "SQL_MODELING") {
+      const storageKey = `sql-modeling-draft-${displayProblem.id}`;
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          setDiagramModel(JSON.parse(saved));
+          setDiagramResetKey((k) => k + 1);
+          return;
+        } catch (e) {
+          console.error("Erro ao parsear autosave de diagrama ER", e);
+        }
+      }
+      setDiagramModel(EMPTY_ER_MODEL);
+      setDiagramResetKey((k) => k + 1);
+      return;
+    }
+
     const lang = LANGUAGES.find((l) => l.id === languageId);
-    if (!lang || !displayProblem) return;
+    if (!lang) return;
 
     const currentLangStr = LANGUAGE_MAP[languageId];
     const storageKey = getStorageKey(displayProblem.id, languageId);
@@ -1418,12 +1484,46 @@ export default function ClassroomView({
         payloadLanguageId = undefined; // HTML não usa language_id
       }
 
+      if (displayProblem?.subject === "SQL") {
+        const sqlContent = activeQuestionFiles[0]?.content ?? "";
+        if (!sqlContent.trim()) {
+          toast.error("O editor está vazio! Escreva sua consulta SQL antes de enviar.");
+          setLoading(false);
+          loadingRef.current = false;
+          setVerdict(null);
+          return;
+        }
+        payloadFiles = [{ name: "query.sql", content: sqlContent }];
+        payloadLanguageId = undefined; // SQL não usa language_id (backend lê files[0])
+      }
+
+      if (displayProblem?.subject === "SQL_MODELING") {
+        if (!diagramModel.entities || diagramModel.entities.length === 0) {
+          toast.error("O diagrama está vazio! Adicione ao menos uma entidade antes de enviar.");
+          setLoading(false);
+          loadingRef.current = false;
+          setVerdict(null);
+          return;
+        }
+        payloadLanguageId = undefined; // modelagem não usa language_id nem files
+      }
+
       // Monta o payload dinâmico
       const payload: any = {
-        files: payloadFiles,
         problem_id: displayProblem.id,
         activityLogs: activityLogs,
       };
+
+      // SQL_MODELING manda `modelData` em vez de `files` — são submissões
+      // estruturalmente diferentes (grafo, não texto). Mandar os dois
+      // juntos não quebraria a validação do backend (files é opcional),
+      // mas enviar um `files` vazio/lixo sem sentido junto do modelData
+      // só polui o payload à toa.
+      if (displayProblem?.subject === "SQL_MODELING") {
+        payload.modelData = diagramModel;
+      } else {
+        payload.files = payloadFiles;
+      }
 
       // Só anexa o language_id se ele existir (ou seja, se for programação)
       if (payloadLanguageId !== undefined) {
@@ -1442,6 +1542,10 @@ export default function ClassroomView({
         toast.info("Gabarito enviado! Aguardando o motor químico...");
       } else if (classroom?.subject === "HTML") {
         toast.info("Solução enviada! Validando sua página...");
+      } else if (displayProblem?.subject === "SQL") {
+        toast.info("Consulta enviada! Rodando no banco de sandbox...");
+      } else if (displayProblem?.subject === "SQL_MODELING") {
+        toast.info("Diagrama enviado! Aguardando a correção do professor.");
       } else {
         toast.info("Solução enviada! Aguardando o resultado...");
       }
@@ -1921,6 +2025,8 @@ export default function ClassroomView({
     triggerExamLock,
   ]);
   const isHtml = classroom?.subject === "HTML";
+  const isSql = displayProblem?.subject === "SQL";
+  const isSqlModeling = displayProblem?.subject === "SQL_MODELING";
   const hasLimit =
     currentProblem?.maxAttempts != null && currentProblem.maxAttempts > 0;
   const maxAttempts = hasLimit ? currentProblem!.maxAttempts! : Infinity;
@@ -2131,6 +2237,128 @@ export default function ClassroomView({
               readOnly: isOwner,
             }}
           />
+        </div>
+      </div>
+    ) : displayProblem?.subject === "SQL" ? (
+      <div className="flex flex-col h-full bg-background">
+        {/* Barra de identificação do editor de SQL (sem abas — é sempre um arquivo único) */}
+        <div className="flex-none flex items-center gap-2 px-3 py-2 bg-surface border-b border-border">
+          <span className="text-xs font-mono text-muted px-2 py-1 bg-background rounded border border-border">
+            query.sql
+          </span>
+          {isOwner && (
+            <span className="ml-2 text-xs text-warning bg-warning/10 border border-warning/20 px-2 py-0.5 rounded">
+              Visualização do professor
+            </span>
+          )}
+        </div>
+
+        <div className="flex-1 relative">
+          <Editor
+            key={`sql-${displayProblem?.id}`}
+            height="100%"
+            theme={monacoTheme}
+            language="sql"
+            value={
+              isOwner
+                ? (displayProblem?.sqlSchema ?? "")
+                : (activeQuestionFiles[0]?.content ?? "")
+            }
+            onChange={(value) => {
+              if (isOwner) return;
+              const val = value || "";
+              if (isExam && displayProblem) {
+                setExamFilesMap((prev) => {
+                  const current = prev[displayProblem.id] ?? [
+                    { name: "query.sql", content: "" },
+                  ];
+                  const updated = [...current];
+                  updated[0] = { ...updated[0], name: "query.sql", content: val };
+                  return { ...prev, [displayProblem.id]: updated };
+                });
+              } else {
+                // Não usamos handleCodeChange aqui de propósito: ele chama
+                // validateCode(val, languageId), um linter que assume
+                // sintaxe Python/JS e marcaria qualquer query SQL como erro
+                // de sintaxe. SQL sempre é arquivo único (índice 0), sem
+                // necessidade da lógica de activeFileIndex também.
+                setFiles([{ name: "query.sql", content: val }]);
+                if (displayProblem) {
+                  localStorage.setItem(`sql-draft-${displayProblem.id}`, val);
+                }
+              }
+            }}
+            options={{
+              minimap: { enabled: false },
+              automaticLayout: true,
+              fontSize: 16,
+              scrollBeyondLastLine: false,
+              padding: { top: 16 },
+              readOnly: isOwner,
+              accessibilitySupport: screenReaderMode ? "on" : "auto",
+            }}
+          />
+          {isCurrentQuestionDelivered && (
+            <div className="absolute inset-0 bg-background/70 backdrop-blur-sm z-10 flex items-center justify-center">
+              <div className="text-center space-y-3">
+                <CheckCircle size={40} className="mx-auto text-success" />
+                <p className="text-lg font-bold text-foreground">
+                  Questão Entregue
+                </p>
+                <p className="text-sm text-muted">
+                  Esta questão foi travada e não pode mais ser editada.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    ) : displayProblem?.subject === "SQL_MODELING" ? (
+      <div className="flex flex-col h-full bg-background">
+        <div className="flex-none flex items-center gap-2 px-3 py-2 bg-surface border-b border-border">
+          <span className="text-xs font-medium text-muted flex items-center gap-1.5">
+            <Network size={14} /> Diagrama Entidade-Relacionamento
+          </span>
+          {isOwner && (
+            <span className="ml-2 text-xs text-warning bg-warning/10 border border-warning/20 px-2 py-0.5 rounded">
+              Visualização do professor (gabarito, se houver)
+            </span>
+          )}
+        </div>
+
+        <div className="flex-1 relative min-h-0">
+          <ErDiagramCanvas
+            key={`sql-modeling-${displayProblem?.id}-${diagramResetKey}`}
+            initialValue={
+              isOwner
+                ? (displayProblem?.referenceModel ?? EMPTY_ER_MODEL)
+                : diagramModel
+            }
+            onChange={(model) => {
+              if (isOwner) return;
+              setDiagramModel(model);
+              if (displayProblem) {
+                localStorage.setItem(
+                  `sql-modeling-draft-${displayProblem.id}`,
+                  JSON.stringify(model),
+                );
+              }
+            }}
+            readOnly={isOwner || isCurrentQuestionDelivered}
+          />
+          {isCurrentQuestionDelivered && !isOwner && (
+            <div className="absolute inset-0 bg-background/70 backdrop-blur-sm z-10 flex items-center justify-center pointer-events-none">
+              <div className="text-center space-y-3">
+                <CheckCircle size={40} className="mx-auto text-success" />
+                <p className="text-lg font-bold text-foreground">
+                  Questão Entregue
+                </p>
+                <p className="text-sm text-muted">
+                  Esta questão foi travada e não pode mais ser editada.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     ) : (
@@ -2435,6 +2663,143 @@ export default function ClassroomView({
               status={(lastSubmission?.status as any) || "Pending"}
             />
           )}
+        </div>
+      )}
+    </div>
+  ) : isSql ? (
+    <div className="h-full overflow-y-auto bg-background p-4 sm:p-6 flex flex-col">
+      {verdict ? (
+        <div
+          className={cn(
+            "rounded-xl border p-5 sm:p-6 mb-4 shadow-sm flex flex-col transition-colors motion-reduce:transition-none shrink-0",
+            verdict === "Accepted"
+              ? "bg-success/10 border-success/30"
+              : "bg-destructive/10 border-destructive/30",
+          )}
+        >
+          <div className="flex items-center gap-3 font-bold mb-4 text-lg sm:text-xl shrink-0">
+            {verdict === "Accepted" ? (
+              <CheckCircle className="text-success" size={24} />
+            ) : (
+              <XCircle className="text-destructive" size={24} />
+            )}
+            <span
+              className={
+                verdict === "Accepted" ? "text-success" : "text-destructive"
+              }
+            >
+              {verdict}
+            </span>
+          </div>
+
+          {/* Sem grid de Tempo/Memória aqui de propósito: SQL não roda no
+              Go-Judge, então executionTime/memoryUsage não são
+              preenchidos pelo SqlSubmissionsProcessor — mostrar zerados
+              seria enganoso. */}
+
+          <div className="mt-2 flex flex-col shrink-0">
+            <div className="text-xs sm:text-sm font-bold text-muted mb-3 uppercase tracking-wider shrink-0">
+              {verdict === "Accepted" ? "Resultado" : "Detalhes do Erro"}
+            </div>
+            <div className="shrink-0 overflow-hidden rounded-lg border border-border/50">
+              {submissionError ? (
+                <div className="bg-background p-4 text-destructive font-mono text-sm whitespace-pre-wrap">
+                  {submissionError}
+                </div>
+              ) : (
+                <LogViewer
+                  logs={lastSubmission?.output || ""}
+                  status={(lastSubmission?.status as any) || "Pending"}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center h-full text-muted space-y-4 min-h-[200px] shrink-0">
+          <Terminal size={48} className="opacity-20" />
+          <p className="text-sm sm:text-base text-center px-4">
+            Execute sua consulta para ver o resultado aqui.
+          </p>
+        </div>
+      )}
+    </div>
+  ) : isSqlModeling ? (
+    <div className="h-full overflow-y-auto bg-background p-4 sm:p-6 flex flex-col gap-4">
+      {verdict ? (
+        <>
+          <div
+            className={cn(
+              "rounded-xl border p-5 sm:p-6 shadow-sm flex flex-col gap-3 shrink-0",
+              lastSubmission?.grade != null
+                ? "bg-primary/10 border-primary/30"
+                : "bg-warning/10 border-warning/30",
+            )}
+          >
+            <div className="flex items-center gap-3 font-bold text-lg sm:text-xl">
+              {lastSubmission?.grade != null ? (
+                <CheckCircle className="text-primary" size={24} />
+              ) : (
+                <Clock className="text-warning" size={24} />
+              )}
+              <span
+                className={
+                  lastSubmission?.grade != null
+                    ? "text-primary"
+                    : "text-warning"
+                }
+              >
+                {lastSubmission?.grade != null
+                  ? "Corrigido"
+                  : "Aguardando correção do professor"}
+              </span>
+            </div>
+            <p className="text-sm text-muted">
+              {lastSubmission?.grade != null
+                ? "O professor já avaliou este diagrama manualmente."
+                : "A correção de modelagem conceitual é manual — o professor avalia o diagrama e atribui uma nota. Isto pode levar um tempo."}
+            </p>
+
+            {lastSubmission?.grade != null && (
+              <div className="mt-2 p-4 bg-background border border-border rounded-lg flex items-center justify-between">
+                <span className="text-sm text-muted uppercase font-bold tracking-wider">
+                  Nota
+                </span>
+                <span className="text-3xl font-bold text-primary">
+                  {lastSubmission.grade}
+                </span>
+              </div>
+            )}
+            {lastSubmission?.teacherComment && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm text-muted font-medium">
+                  <MessageSquare size={16} /> Comentário do professor:
+                </div>
+                <div className="p-4 bg-background border border-border rounded-lg text-foreground text-sm leading-relaxed whitespace-pre-wrap">
+                  {lastSubmission.teacherComment}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Preview somente-leitura do que foi de fato enviado — dá
+              confiança pro aluno de que o diagrama chegou certinho,
+              já que não há um veredito automático imediato como nas
+              outras matérias. */}
+          <div className="flex-1 min-h-[300px] rounded-xl border border-border overflow-hidden">
+            <ErDiagramCanvas
+              key={`sql-modeling-preview-${lastSubmission?.id}`}
+              initialValue={lastSubmission?.modelData ?? diagramModel}
+              readOnly
+            />
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col items-center justify-center h-full text-muted space-y-4 min-h-[200px] shrink-0">
+          <Network size={48} className="opacity-20" />
+          <p className="text-sm sm:text-base text-center px-4">
+            Envie seu diagrama para ver o status da correção aqui.
+          </p>
         </div>
       )}
     </div>
@@ -3332,7 +3697,11 @@ export default function ClassroomView({
                       ? "Novo Exercício de Química"
                       : classroom?.subject === "HTML"
                         ? "Novo Exercício de HTML"
-                        : "Novo Exercício de Programação"}
+                        : classroom?.subject === "SQL"
+                          ? "Novo Exercício de SQL"
+                          : classroom?.subject === "SQL_MODELING"
+                            ? "Novo Exercício de Modelagem"
+                            : "Novo Exercício de Programação"}
                   </Button>
                 )}
 
@@ -4419,6 +4788,39 @@ export default function ClassroomView({
                       ))}
                     </div>
                   )}
+
+                  {/* SQL_MODELING não tem "arquivos" — em vez de abas de
+                      arquivo, alterna entre a resposta do aluno e o
+                      gabarito (se o professor desenhou um), já que ainda
+                      não existe diff automático entre os dois. */}
+                  {displayProblem?.subject === "SQL_MODELING" &&
+                    (displayProblem?.referenceModel?.entities?.length || 0) >
+                      0 && (
+                      <div className="flex bg-background/20 rounded overflow-hidden">
+                        <button
+                          onClick={() => setShowReferenceInInspector(false)}
+                          className={cn(
+                            "px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors",
+                            !showReferenceInInspector
+                              ? "text-primary bg-white/5"
+                              : "text-muted",
+                          )}
+                        >
+                          Resposta do aluno
+                        </button>
+                        <button
+                          onClick={() => setShowReferenceInInspector(true)}
+                          className={cn(
+                            "px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors",
+                            showReferenceInInspector
+                              ? "text-primary bg-white/5"
+                              : "text-muted",
+                          )}
+                        >
+                          Gabarito
+                        </button>
+                      </div>
+                    )}
                 </div>
 
                 <div className="flex-1 relative bg-background">
@@ -4440,6 +4842,42 @@ export default function ClassroomView({
                       initialMode={
                         displayProblem?.validationConfig?.expectedMode as any
                       }
+                    />
+                  ) : displayProblem?.subject === "SQL" ? (
+                    <Editor
+                      height="100%"
+                      width="100%"
+                      language="sql"
+                      theme={monacoTheme}
+                      value={
+                        (isOwner &&
+                          activeSubmission?.files[inspectFileIndex]?.content) ||
+                        selectedSubmission?.files[inspectFileIndex]?.content ||
+                        "-- Consulta não disponível"
+                      }
+                      options={{
+                        readOnly: true,
+                        minimap: { enabled: false },
+                        fontSize: 16,
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                        accessibilitySupport: screenReaderMode ? "on" : "auto",
+                      }}
+                    />
+                  ) : displayProblem?.subject === "SQL_MODELING" ? (
+                    <ErDiagramCanvas
+                      key={`inspect-${
+                        showReferenceInInspector ? "reference" : "student"
+                      }-${activeSubmission?.id || selectedSubmission?.id || "viewer"}`}
+                      initialValue={
+                        showReferenceInInspector
+                          ? (displayProblem?.referenceModel ?? EMPTY_ER_MODEL)
+                          : ((isOwner
+                              ? activeSubmission?.modelData
+                              : selectedSubmission?.modelData) ??
+                              EMPTY_ER_MODEL)
+                      }
+                      readOnly
                     />
                   ) : (
                     <Editor

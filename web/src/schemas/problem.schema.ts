@@ -51,7 +51,9 @@ export const baseProblemSchema = z.object({
     ),
   description: z.string().min(10, "Descrição muito curta"),
   type: z.enum(["EXERCISE", "EXAM"]),
-  subject: z.enum(["PROGRAMMING", "CHEMISTRY", "HTML"]).default("PROGRAMMING"),
+  subject: z
+    .enum(["PROGRAMMING", "CHEMISTRY", "HTML", "SQL", "SQL_MODELING"])
+    .default("PROGRAMMING"),
   classroomId: z.string().min(1, "A vinculação a uma turma é obrigatória"),
   maxAttempts: z.coerce.number().int().min(0).optional(),
   startDate: z
@@ -133,6 +135,71 @@ export const htmlExamSettingsSchema = z.object({
     .array(htmlQuestionSchema)
     .min(1, "A prova deve ter pelo menos uma questão")
     .default([]),
+});
+
+// 3.5 Detalhes Exclusivos de SQL
+//
+// Fase 1 cobre só EXERCISE (sem prova de SQL por enquanto — mesmo recorte
+// que Química, que também não tem *ExamSettingsSchema). `testCases` reusa
+// o mesmo testCaseSchema de Programming, mas com sentido diferente dos
+// campos (ver SqlSubmissionsProcessor no backend):
+//   - input:          DML de seed opcional deste caso (pode ficar vazio
+//                      de fato — mas o schema abaixo exige >=1 caractere
+//                      pelo mesmo motivo do testCaseSchema genérico; se
+//                      o exercício não precisa de seed extra, usar um
+//                      comentário SQL como "-- sem seed adicional").
+//   - expectedOutput: o result set esperado, serializado como JSON
+//                      (array de objetos). Preenchido automaticamente
+//                      pelo botão de dry-run em SqlValidationConfig (via
+//                      POST /problems/dry-run-sql), ou digitado à mão
+//                      pelo professor se preferir.
+export const sqlDetailsSchema = z.object({
+  sqlSchema: z.string().min(1, "O schema de referência (DDL) é obrigatório"),
+  sqlOrderSensitive: z.boolean().default(false),
+  testCases: z
+    .array(testCaseSchema)
+    .min(1, "Adicione pelo menos um caso de teste"),
+});
+
+// 3.6 Detalhes Exclusivos de Modelagem Conceitual (Fase 2 — SQL_MODELING)
+//
+// Espelha ErModel em web/src/types/erModel.ts (frontend) e
+// submission.entity.ts (backend) — os três precisam ficar em sincronia
+// manual se o shape mudar.
+//
+// `referenceModel` é OPCIONAL de propósito: a Fase 2a (visualizador +
+// correção manual) funciona sem gabarito formal, o professor avalia o
+// diagrama do aluno de olho. Um corretor automático futuro (Fase 2b) é
+// que passaria a exigir isso preenchido.
+const erAttributeSchema = z.object({
+  name: z.string(),
+  isPK: z.boolean().default(false),
+  isFK: z.boolean().default(false),
+  type: z.string().optional(),
+});
+
+const erEntitySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  attributes: z.array(erAttributeSchema).default([]),
+  position: z.object({ x: z.number(), y: z.number() }).optional(),
+});
+
+const erRelationshipSchema = z.object({
+  id: z.string(),
+  from: z.string(),
+  to: z.string(),
+  cardinality: z.enum(["1:1", "1:N", "N:M"]),
+  name: z.string().optional(),
+});
+
+export const erModelSchema = z.object({
+  entities: z.array(erEntitySchema).default([]),
+  relationships: z.array(erRelationshipSchema).default([]),
+});
+
+export const sqlModelingDetailsSchema = z.object({
+  referenceModel: erModelSchema.default({ entities: [], relationships: [] }),
 });
 
 // --- 4. Schemas de Prova (Exams) ---
@@ -237,6 +304,23 @@ export const htmlExamSchema = baseProblemSchema
     refineDates(data, ctx);
   });
 
+export const sqlExerciseSchema = baseProblemSchema
+  .extend({ type: z.literal("EXERCISE"), subject: z.literal("SQL") })
+  .merge(sqlDetailsSchema)
+  .superRefine((data, ctx) => {
+    refineDates(data, ctx);
+  });
+
+export const sqlModelingExerciseSchema = baseProblemSchema
+  .extend({
+    type: z.literal("EXERCISE"),
+    subject: z.literal("SQL_MODELING"),
+  })
+  .merge(sqlModelingDetailsSchema)
+  .superRefine((data, ctx) => {
+    refineDates(data, ctx);
+  });
+
 // --- 7. Schema Global (União para tipagem do formulário geral) ---
 export const problemSchema = z.union([
   programmingExerciseSchema,
@@ -244,6 +328,8 @@ export const problemSchema = z.union([
   chemistryExerciseSchema,
   htmlExerciseSchema,
   htmlExamSchema,
+  sqlExerciseSchema,
+  sqlModelingExerciseSchema,
 ]);
 
 // Tipos Inferidos exportados
@@ -256,4 +342,8 @@ export type ChemistryExerciseFormValues = z.infer<
 >;
 export type HtmlExerciseFormValues = z.infer<typeof htmlExerciseSchema>;
 export type HtmlExamFormValues = z.infer<typeof htmlExamSchema>;
+export type SqlExerciseFormValues = z.infer<typeof sqlExerciseSchema>;
+export type SqlModelingExerciseFormValues = z.infer<
+  typeof sqlModelingExerciseSchema
+>;
 export type HtmlRule = z.infer<typeof htmlRuleSchema>;

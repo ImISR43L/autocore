@@ -15,9 +15,16 @@ services:
       - REDIS_HOST=redis
       - EXECUTOR_URL=http://go-judge:5050/run
       - NODE_ENV=development
+      # Não-sensível: host/porta/db/user do sandbox de SQL. A senha vem
+      # via secret (sql_sandbox_role_password), lida pelo getSecret().
+      - SQL_SANDBOX_HOST=sql-sandbox-db
+      - SQL_SANDBOX_PORT=5432
+      - SQL_SANDBOX_DATABASE=grading_sandbox
+      - SQL_SANDBOX_USER=sql_sandbox
     secrets:
       - redis_password
       - jwt_secret
+      - sql_sandbox_role_password
     # CORREÇÃO 1: Voltamos com o comando de inicialização
     command: npm run start:dev
     develop:
@@ -41,9 +48,12 @@ services:
         condition: service_healthy
       go-judge:
         condition: service_started
+      sql-sandbox-db:
+        condition: service_healthy
     networks:
       - backend_net
       - secure_sandbox
+      - sql_sandbox_net
     deploy:
       resources:
         limits:
@@ -102,6 +112,45 @@ services:
           memory: 768M
     restart: on-failure
 
+  # Sandbox de execução de SQL enviado por alunos (Fase 1 do corretor
+  # automático de SQL). Fica em rede própria (sql_sandbox_net), separada
+  # da secure_sandbox do go-judge — os dois são "motores de execução de
+  # código de aluno", mas go-judge roda privileged/capabilities elevadas;
+  # não queremos que um go-judge comprometido tenha caminho de rede até
+  # este banco. Nenhum dado real de aluno/turma mora aqui: só schemas
+  # efêmeros criados e destruídos a cada submissão.
+  sql-sandbox-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=grading_sandbox
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD_FILE=/run/secrets/sql_sandbox_admin_password
+    secrets:
+      - sql_sandbox_admin_password
+      - sql_sandbox_role_password
+    volumes:
+      - ./infra/sql-sandbox/init-sql-sandbox.sh:/docker-entrypoint-initdb.d/init-sql-sandbox.sh:ro
+    # PROPOSITALMENTE sem volume de dados persistente: o conteúdo é
+    # inteiramente efêmero por design. Reiniciar o container sempre volta
+    # ao estado limpo — não há nada aqui que valha a pena persistir.
+    #
+    # PROPOSITALMENTE sem `ports:`: não é acessível do host nem de fora
+    # do compose. A api fala com ele só via sql_sandbox_net, por nome de
+    # serviço (sql-sandbox-db:5432).
+    networks:
+      - sql_sandbox_net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d grading_sandbox"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: on-failure
+
   web:
     build:
       context: ./web
@@ -133,11 +182,18 @@ secrets:
     file: ./secrets/redis_password.txt
   jwt_secret:
     file: ./secrets/jwt_secret.txt
+  sql_sandbox_admin_password:
+    file: ./secrets/sql_sandbox_admin_password.txt
+  sql_sandbox_role_password:
+    file: ./secrets/sql_sandbox_role_password.txt
 
 networks:
   backend_net:
     driver: bridge
   secure_sandbox:
+    driver: bridge
+    internal: true
+  sql_sandbox_net:
     driver: bridge
     internal: true
 

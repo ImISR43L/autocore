@@ -20,6 +20,36 @@ export interface ActivityLog {
   details?: string;
 }
 
+// Estrutura do diagrama ER submetido pelo aluno (Fase 2 — modelagem
+// conceitual). Ver ErModel no frontend para o tipo espelhado usado pelo
+// editor de diagrama.
+export interface ErModelAttribute {
+  name: string;
+  isPK: boolean;
+  isFK: boolean;
+  type?: string;
+}
+
+export interface ErModelEntity {
+  id: string;
+  name: string;
+  attributes: ErModelAttribute[];
+  position?: { x: number; y: number };
+}
+
+export interface ErModelRelationship {
+  id: string;
+  from: string;
+  to: string;
+  cardinality: '1:1' | '1:N' | 'N:M';
+  name?: string;
+}
+
+export interface ErModel {
+  entities: ErModelEntity[];
+  relationships: ErModelRelationship[];
+}
+
 @Entity()
 @Index(['problem', 'user'])
 @Index(['problem', 'status'])
@@ -28,8 +58,12 @@ export class Submission {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'jsonb' })
-  files: FileEntry[];
+  // Nullable a partir da Fase 2: submissões de modelagem (SQL_MODELING)
+  // não têm arquivos de texto, usam `modelData` abaixo. Continua
+  // obrigatório na prática para as demais matérias — a obrigatoriedade
+  // é aplicada em CreateSubmissionDto por subject, não aqui na entidade.
+  @Column({ type: 'jsonb', nullable: true })
+  files: FileEntry[] | null;
 
   @Column({ type: 'int', nullable: true })
   languageId: number;
@@ -63,6 +97,14 @@ export class Submission {
 
   @Column({ type: 'text', nullable: true, default: null })
   teacherComment: string | null;
+
+  // NOVA COLUNA (Fase 2): o diagrama ER desenhado pelo aluno, serializado
+  // como ErModel. Coluna própria em vez de reaproveitar `files` (que
+  // guardaria um JSON.stringify(ErModel) dentro de um FileEntry) — não é
+  // um "arquivo" semanticamente, é uma estrutura de grafo, e uma coluna
+  // dedicada permite consultar/validar sem parsear JSON dentro de JSON.
+  @Column({ type: 'jsonb', nullable: true })
+  modelData: ErModel | null;
 
   @CreateDateColumn()
   @Index()

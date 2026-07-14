@@ -9,6 +9,8 @@ import { Button } from "../components/ui/Button";
 import { ProgrammingEditor } from "../components/problem/ProgrammingEditor";
 import { ChemistryEditor } from "../components/problem/ChemistryEditor";
 import { HtmlEditor } from "../components/problem/HtmlEditor";
+import { SqlEditor } from "../components/problem/SqlEditor";
+import { SqlModelingEditor } from "../components/problem/SqlModelingEditor";
 
 export default function EditProblem() {
   const params = useParams();
@@ -115,6 +117,19 @@ export default function EditProblem() {
           testCases: res.data.testCases || [],
           starterCode: res.data.starterCode || [],
           solutionCode: res.data.solutionCode || [],
+          // Campos específicos de SQL. Default explícito pelo mesmo motivo
+          // de testCases/starterCode acima: evita que o formulário quebre
+          // se o problema foi criado antes desses campos existirem.
+          sqlSchema: res.data.sqlSchema || "",
+          sqlOrderSensitive: res.data.sqlOrderSensitive ?? false,
+          // Fase 2 — modelagem conceitual. Mesmo motivo do sqlSchema
+          // acima: default explícito pra não quebrar o ErDiagramCanvas
+          // (que exige um ErModel válido, nunca undefined) se o problema
+          // foi criado sem gabarito (campo é opcional no backend).
+          referenceModel: res.data.referenceModel || {
+            entities: [],
+            relationships: [],
+          },
           questions: Array.isArray(res.data.children)
             ? res.data.children.map(mapChildToQuestion)
             : [],
@@ -287,6 +302,20 @@ export default function EditProblem() {
             />
           ) : problem?.subject === "HTML" ? (
             <HtmlEditor
+              initialValues={problem}
+              onSubmit={handleUpdate}
+              mode="EDIT"
+              onDirtyChange={setIsFormDirty}
+            />
+          ) : problem?.subject === "SQL" ? (
+            <SqlEditor
+              initialValues={problem}
+              onSubmit={handleUpdate}
+              mode="EDIT"
+              onDirtyChange={setIsFormDirty}
+            />
+          ) : problem?.subject === "SQL_MODELING" ? (
+            <SqlModelingEditor
               initialValues={problem}
               onSubmit={handleUpdate}
               mode="EDIT"

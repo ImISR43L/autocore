@@ -1,0 +1,35 @@
+# Mesclar este serviço no docker-compose.yml existente do projeto,
+# junto dos demais serviços (app, db, redis, etc.). Não é um arquivo
+# standalone — os nomes de rede/volumes devem seguir a convenção do
+# compose já usado no resto do projeto.
+
+services:
+  sql-sandbox-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: grading_sandbox
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SQL_SANDBOX_ADMIN_PASSWORD}
+      # Lido pelo init-sql-sandbox.sh para criar a role restrita.
+      SQL_SANDBOX_ROLE_PASSWORD: ${SQL_SANDBOX_ROLE_PASSWORD}
+    volumes:
+      - ./infra/sql-sandbox/init-sql-sandbox.sh:/docker-entrypoint-initdb.d/init-sql-sandbox.sh:ro
+    # PROPOSITALMENTE sem volume persistente. O conteúdo deste banco é
+    # inteiramente efêmero por design (schemas criados e destruídos a
+    # cada submissão pelo SqlExecutorService) — não persistir reforça
+    # isso: reiniciar o container sempre volta pro estado limpo, e não
+    # há dado real de aluno aqui para se preocupar em perder.
+    #
+    # Não expor porta para fora do host/rede interna do compose — a
+    # aplicação acessa via nome do serviço (sql-sandbox-db:5432) dentro
+    # da mesma rede docker, sem necessidade de publicar a porta.
+    networks:
+      - default
+
+  app:
+    # Adicionar sql-sandbox-db aqui na lista de depends_on do serviço da
+    # aplicação (junto do db/redis existentes), para o Nest não subir
+    # antes do Postgres de sandbox estar pronto para aceitar conexões.
+    depends_on:
+      - sql-sandbox-db

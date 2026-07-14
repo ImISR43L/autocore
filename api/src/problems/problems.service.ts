@@ -148,7 +148,7 @@ export class ProblemsService {
     return false;
   }
 
-  async create(createProblemDto: CreateProblemDto) {
+  async create(createProblemDto: CreateProblemDto, userId: string) {
     const {
       classroomId,
       questions,
@@ -166,10 +166,22 @@ export class ProblemsService {
 
     const classroom = await this.classroomsRepository.findOne({
       where: { id: String(classroomId) },
+      relations: ['owner'],
     });
 
     if (!classroom) {
       throw new NotFoundException('Turma não encontrada.');
+    }
+
+    // CORREÇÃO DE SEGURANÇA: o controller já recebia req.user, mas nunca
+    // repassava o userId pra cá — qualquer usuário autenticado da
+    // plataforma conseguia criar problemas em QUALQUER turma, bastando
+    // saber o classroomId. Mesma checagem que update()/remove() já
+    // fazem, só que ausente aqui.
+    if (classroom.owner?.id !== userId) {
+      throw new ForbiddenException(
+        'Apenas o dono da turma pode criar atividades.',
+      );
     }
 
     if (classroom.isArchived) {
@@ -240,10 +252,25 @@ export class ProblemsService {
     return this.problemsRepository.save(problem);
   }
 
-  async findAll() {
-    const problems = await this.problemsRepository.find({
-      relations: ['classroom'],
-    });
+  async findAll(userId: string) {
+    // CORREÇÃO DE SEGURANÇA: sem guard nenhum antes, retornava título,
+    // descrição, testCases (inclusive os não-ocultos de QUALQUER turma)
+    // pra qualquer requisição não autenticada. Conferi contra
+    // exam-access.controller.ts — o fluxo de convidado usa
+    // GET /exam-access/:token + POST /exam-access/:token/redeem, nunca
+    // este endpoint, então não há caso de uso legítimo de listagem
+    // pública aqui. Escopo agora replica as duas primeiras camadas de
+    // autorização que findOne() já usa (dono da turma OU matriculado) —
+    // a terceira camada de findOne() (grant de prova) não se aplica a
+    // uma listagem geral, só a UM problema específico via token.
+    const problems = await this.problemsRepository
+      .createQueryBuilder('problem')
+      .leftJoinAndSelect('problem.classroom', 'classroom')
+      .leftJoin('classroom.owner', 'owner')
+      .leftJoin('classroom.students', 'student')
+      .where('owner.id = :userId', { userId })
+      .orWhere('student.id = :userId', { userId })
+      .getMany();
 
     // Proteção de dados: Ocultar gabarito em listagens públicas
     problems.forEach((problem) => {

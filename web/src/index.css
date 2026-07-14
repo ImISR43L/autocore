@@ -388,6 +388,37 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Editor de diagrama ER (Fase 2 — React Flow). Sobrescreve as variáveis
+   de tema próprias da lib (@xyflow/react/dist/style.css), que por padrão
+   vêm com cores fixas de modo claro — sem isso, MiniMap/Controls
+   ficariam brancos mesmo com .dark aplicado na página.
+   NOTA: nomes de variável conferidos contra o @xyflow/react v12 por
+   memória, não testados visualmente daqui — se algum não pegar (lib
+   pode ter renomeado entre versões), inspecionar o elemento .react-flow
+   no DevTools mostra as variáveis realmente aceitas nessa versão. */
+.react-flow {
+  --xy-background-color: rgb(var(--background));
+  --xy-background-pattern-color: rgb(var(--border));
+  --xy-node-background-color: rgb(var(--surface));
+  --xy-node-border: 1px solid rgb(var(--border));
+  --xy-node-border-radius: 8px;
+  --xy-node-color: rgb(var(--foreground));
+  --xy-node-boxshadow-selected: 0 0 0 2px rgb(var(--primary));
+  --xy-edge-stroke: rgb(var(--border));
+  --xy-edge-stroke-selected: rgb(var(--primary));
+  --xy-handle-background-color: rgb(var(--primary));
+  --xy-handle-border-color: rgb(var(--background));
+  --xy-controls-button-background-color: rgb(var(--surface));
+  --xy-controls-button-background-color-hover: rgb(var(--surface-hover));
+  --xy-controls-button-color: rgb(var(--foreground));
+  --xy-controls-button-color-hover: rgb(var(--primary));
+  --xy-controls-button-border-color: rgb(var(--border));
+  --xy-minimap-background-color: rgb(var(--surface));
+  --xy-minimap-mask-background-color: rgba(var(--background), 0.6);
+  --xy-selection-background-color: rgba(var(--primary), 0.08);
+  --xy-selection-border: 1px dashed rgb(var(--primary));
+}
+
 #root {
   width: 100%;
   min-height: 100vh;

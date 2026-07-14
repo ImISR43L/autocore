@@ -2,4 +2,6 @@ export enum SubjectType {
   PROGRAMMING = 'PROGRAMMING',
   CHEMISTRY = 'CHEMISTRY',
   HTML = 'HTML',
+  SQL = 'SQL',
+  SQL_MODELING = 'SQL_MODELING',
 }

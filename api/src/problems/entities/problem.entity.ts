@@ -110,6 +110,37 @@ export class Problem {
   @Column({ type: 'timestamp', nullable: true })
   startedAt: Date;
 
+  /**
+   * DDL de referência para exercícios de SQL (CREATE TABLE, PKs, FKs,
+   * constraints). É executado em um schema efêmero, isolado por
+   * submissão, antes da query do aluno rodar — ver SqlExecutorService.
+   *
+   * Fica em coluna própria (não dentro de `validationConfig`) pelo mesmo
+   * motivo de `timeLimit`/`memoryLimit` serem colunas dedicadas: é um
+   * dado estrutural do exercício, não uma opção de validação, e precisa
+   * ser lido sem parsear um jsonb genérico toda vez.
+   */
+  @Column({ type: 'text', nullable: true })
+  sqlSchema: string | null;
+
+  /**
+   * Se true, a comparação do result set respeita a ordem das linhas
+   * retornadas pela query do aluno (exercício exige ORDER BY explícito).
+   * Se false (default), duas queries que retornam o mesmo conjunto de
+   * linhas em ordens diferentes são consideradas equivalentes.
+   */
+  @Column({ type: 'boolean', default: false })
+  sqlOrderSensitive: boolean;
+
+  // Gabarito de modelagem conceitual (Fase 2 — subject SQL_MODELING).
+  // Mesma estrutura ErModel que Submission.modelData (ver
+  // submission.entity.ts). Nullable porque a Fase 2a (visualizador +
+  // correção manual) funciona sem gabarito formal — o professor pode
+  // avaliar de olho. Preencher isto passa a valer a pena quando existir
+  // um corretor automático (Fase 2b) para comparar contra.
+  @Column({ type: 'jsonb', nullable: true })
+  referenceModel: Record<string, any> | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -32,14 +32,15 @@ export class ProblemsController {
   @Post()
   create(
     @Body() createProblemDto: CreateProblemDto,
-    @Request() req: RequestWithUser, // Mantivemos o req, mas não usamos o userId por enquanto
+    @Request() req: RequestWithUser,
   ) {
-    return this.problemsService.create(createProblemDto);
+    return this.problemsService.create(createProblemDto, req.user.userId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get()
-  findAll() {
-    return this.problemsService.findAll();
+  findAll(@Request() req: RequestWithUser) {
+    return this.problemsService.findAll(req.user.userId);
   }
 
   @UseGuards(JwtAuthGuard)

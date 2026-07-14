@@ -36,3 +36,28 @@ export const dryRunProblem = async (payload: {
   });
   return data;
 };
+
+// Adicionar em web/src/lib/api.ts, próximo de onde `dryRunProblem` (usado
+// por ValidationConfig.tsx, o dry-run de Programming) já está definido —
+// não tenho esse arquivo então não posso editá-lo diretamente, mas o
+// formato deve seguir o mesmo padrão que ele já usa para chamar `api`.
+
+export interface DryRunSqlParams {
+  sqlSchema: string;
+  seedDml?: string;
+  referenceQuery: string;
+}
+
+export interface DryRunSqlResult {
+  success: boolean;
+  rows?: Record<string, any>[];
+  status?: string;
+  error?: string;
+}
+
+export async function dryRunSqlTestCase(
+  params: DryRunSqlParams,
+): Promise<DryRunSqlResult> {
+  const res = await api.post("/problems/dry-run-sql", params);
+  return res.data;
+}

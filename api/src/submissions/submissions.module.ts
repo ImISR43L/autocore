@@ -6,6 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Submission } from './entities/submission.entity';
 import { Problem } from '../problems/entities/problem.entity';
 import { SubmissionsProcessor } from './submissions.processor';
+import { SqlSubmissionsProcessor } from './sql-submissions.processor';
 import { SubmissionsGateway } from './submissions.gateway';
 import { getSecret } from '../common/utils/secrets.util';
 import { ProblemsModule } from '../problems/problems.module';
@@ -17,6 +18,10 @@ import { ExamAccessGrant } from '../exam-access/entities/exam-access-grant.entit
 import { ChemistryGradingStrategy } from './strategies/chemistry-grading.strategy';
 import { HtmlGradingStrategy } from './strategies/html-grading.strategy';
 import { ProgrammingGradingStrategy } from './strategies/programming-grading.strategy';
+import { SqlQueryGradingStrategy } from './strategies/sql-query-grading.strategy';
+import { SqlExecutorService } from './sql/sql-executor.service';
+import { SqlDryRunController } from './sql-dry-run.controller';
+import { ManualGradingStrategy } from './strategies/manual-grading.strategy';
 
 @Module({
   imports: [
@@ -32,10 +37,15 @@ import { ProgrammingGradingStrategy } from './strategies/programming-grading.str
       }),
     }),
 
-    // Registro da Fila Específica
-    BullModule.registerQueue({
-      name: 'submission-queue',
-    }),
+    // Registro das Filas Específicas.
+    // sql-queue é separada de submission-queue de propósito: o motor de
+    // execução é outro (Postgres efêmero vs Go-Judge), e um pico de
+    // submissões de SQL não deve competir por workers/recursos com a
+    // correção de código.
+    BullModule.registerQueue(
+      { name: 'submission-queue' },
+      { name: 'sql-queue' },
+    ),
 
     ProblemsModule,
     AuthModule,
@@ -43,14 +53,18 @@ import { ProgrammingGradingStrategy } from './strategies/programming-grading.str
     ChemistryModule,
     HtmlModule,
   ],
-  controllers: [SubmissionsController],
+  controllers: [SubmissionsController, SqlDryRunController],
   providers: [
     SubmissionsService,
     SubmissionsProcessor,
+    SqlSubmissionsProcessor,
     SubmissionsGateway,
     ChemistryGradingStrategy,
     HtmlGradingStrategy,
     ProgrammingGradingStrategy,
+    SqlQueryGradingStrategy,
+    SqlExecutorService,
+    ManualGradingStrategy,
   ],
 })
 export class SubmissionsModule {}

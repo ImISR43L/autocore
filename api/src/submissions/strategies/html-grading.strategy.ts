@@ -55,15 +55,22 @@ export class HtmlGradingStrategy implements GradingStrategy {
    * como <style> antes de passar para o JSDOM. Isso permite que regras de
    * validação baseadas em propriedades CSS computadas continuem funcionando
    * mesmo com os arquivos separados.
+   *
+   * FIX (Fase 2): `| null` adicionado à assinatura. Submission.files
+   * passou a ser `FileEntry[] | null` (submissões de SQL_MODELING não
+   * têm arquivos, usam `modelData`). HTML nunca vai receber null de
+   * verdade — problem.subject sempre roteia pra esta strategy só quando
+   * é HTML — mas o compilador não sabe disso a partir do tipo da coluna,
+   * então o parâmetro precisa aceitar o union inteiro. `Array.isArray`
+   * já tratava null e undefined da mesma forma (ambos retornam false),
+   * então o comportamento em runtime não muda em nada.
    */
-  private buildDocument(files: SubmissionFile[] | undefined): string {
+  private buildDocument(files: SubmissionFile[] | null | undefined): string {
     if (!Array.isArray(files) || files.length === 0) return '';
 
     const htmlFile =
       files.find((f) => f.name?.toLowerCase().endsWith('.html')) ?? files[0];
-    const cssFile = files.find((f) =>
-      f.name?.toLowerCase().endsWith('.css'),
-    );
+    const cssFile = files.find((f) => f.name?.toLowerCase().endsWith('.css'));
 
     let html = htmlFile?.content || '';
 

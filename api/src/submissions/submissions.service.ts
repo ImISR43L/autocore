@@ -21,6 +21,8 @@ import {
 import { ChemistryGradingStrategy } from './strategies/chemistry-grading.strategy';
 import { HtmlGradingStrategy } from './strategies/html-grading.strategy';
 import { ProgrammingGradingStrategy } from './strategies/programming-grading.strategy';
+import { SqlQueryGradingStrategy } from './strategies/sql-query-grading.strategy';
+import { ManualGradingStrategy } from './strategies/manual-grading.strategy';
 
 @Injectable()
 export class SubmissionsService {
@@ -42,6 +44,8 @@ export class SubmissionsService {
     chemistryGradingStrategy: ChemistryGradingStrategy,
     htmlGradingStrategy: HtmlGradingStrategy,
     programmingGradingStrategy: ProgrammingGradingStrategy,
+    sqlQueryGradingStrategy: SqlQueryGradingStrategy,
+    manualGradingStrategy: ManualGradingStrategy,
   ) {
     this.gradingStrategies.set(SubjectType.CHEMISTRY, chemistryGradingStrategy);
     this.gradingStrategies.set(SubjectType.HTML, htmlGradingStrategy);
@@ -49,6 +53,19 @@ export class SubmissionsService {
       SubjectType.PROGRAMMING,
       programmingGradingStrategy,
     );
+    this.gradingStrategies.set(SubjectType.SQL, sqlQueryGradingStrategy);
+    this.gradingStrategies.set(
+      SubjectType.SQL_MODELING,
+      manualGradingStrategy,
+    );
+  }
+
+  // Pending (aguardando processamento assíncrono) e Awaiting Manual
+  // Review (aguardando um professor) não são "erro" — sem essa checagem,
+  // qualquer atividade de SQL_MODELING apareceria como 100% de erro nos
+  // dashboards até alguém corrigir manualmente.
+  private isNonTerminalStatus(status: string): boolean {
+    return status === 'Pending' || status === 'Awaiting Manual Review';
   }
 
   async getProblemStats(problemId: string) {
@@ -58,13 +75,16 @@ export class SubmissionsService {
     });
     let accepted = 0;
     let error = 0;
+    let awaiting = 0;
     submissions.forEach((sub) => {
       if (sub.status === 'Accepted') accepted++;
+      else if (this.isNonTerminalStatus(sub.status)) awaiting++;
       else error++;
     });
     return [
       { name: 'Acertos', value: accepted, fill: '#4caf50' },
       { name: 'Erros', value: error, fill: '#f44336' },
+      { name: 'Aguardando', value: awaiting, fill: '#f5a623' },
     ];
   }
 
@@ -73,7 +93,12 @@ export class SubmissionsService {
       where: { classroom: { owner: { id: userId } } },
       select: ['id', 'title'],
     });
-    const stats: { name: string; Accepted: number; Error: number }[] = [];
+    const stats: {
+      name: string;
+      Accepted: number;
+      Error: number;
+      Awaiting: number;
+    }[] = [];
     for (const p of problems) {
       const subs = await this.submissionsRepository.find({
         where: { problem: { id: p.id }, isDelivery: true },
@@ -81,12 +106,14 @@ export class SubmissionsService {
       });
       let acc = 0;
       let err = 0;
+      let awt = 0;
       subs.forEach((s) => {
         if (s.status === 'Accepted') acc++;
+        else if (this.isNonTerminalStatus(s.status)) awt++;
         else err++;
       });
       if (subs.length > 0) {
-        stats.push({ name: p.title, Accepted: acc, Error: err });
+        stats.push({ name: p.title, Accepted: acc, Error: err, Awaiting: awt });
       }
     }
     return stats;
@@ -230,6 +257,7 @@ export class SubmissionsService {
 
     const submission = this.submissionsRepository.create({
       files: createSubmissionDto.files,
+      modelData: createSubmissionDto.modelData as any,
       languageId: createSubmissionDto.language_id,
       problem,
       user: { id: userId },
@@ -276,8 +304,9 @@ export class SubmissionsService {
         return this.persistAndNotify(submission, result, userId);
       }
 
-      // Modo assíncrono (Programação): a estratégia já enfileirou o job;
-      // quem persiste o resultado final e notifica é o SubmissionsProcessor.
+      // Modo assíncrono (Programação, SQL): a estratégia já enfileirou o
+      // job; quem persiste o resultado final e notifica é o Processor
+      // correspondente.
       return submission;
     } catch (error) {
       this.logger.error(
@@ -296,7 +325,12 @@ export class SubmissionsService {
     userId: string,
   ) {
     submission.status = result.status;
-    submission.grade = result.score;
+    // 'Awaiting Manual Review' não é um resultado final — gravar grade=0
+    // aqui pareceria "já corrigido e zerado" tanto pro aluno quanto nos
+    // dashboards. Deixa null até o professor de fato avaliar via
+    // SubmissionsService.grade().
+    submission.grade =
+      result.status === 'Awaiting Manual Review' ? null : result.score;
     submission.output = result.feedback ?? null;
     submission.executionTime = 0;
     submission.memoryUsage = 0;
@@ -443,7 +477,12 @@ export class SubmissionsService {
       where: { classroom: { id: classroomId } },
       select: ['id', 'title'],
     });
-    const stats: { name: string; Accepted: number; Error: number }[] = [];
+    const stats: {
+      name: string;
+      Accepted: number;
+      Error: number;
+      Awaiting: number;
+    }[] = [];
     for (const p of problems) {
       const subs = await this.submissionsRepository.find({
         where: { problem: { id: p.id }, isDelivery: true },
@@ -451,12 +490,14 @@ export class SubmissionsService {
       });
       let acc = 0;
       let err = 0;
+      let awt = 0;
       subs.forEach((s) => {
         if (s.status === 'Accepted') acc++;
+        else if (this.isNonTerminalStatus(s.status)) awt++;
         else err++;
       });
       if (subs.length > 0) {
-        stats.push({ name: p.title, Accepted: acc, Error: err });
+        stats.push({ name: p.title, Accepted: acc, Error: err, Awaiting: awt });
       }
     }
     return stats;

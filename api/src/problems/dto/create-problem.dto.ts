@@ -178,7 +178,7 @@ export class CreateProblemDto {
   // ou seja, NÃO possui `questions`). Para uma EXAM com questões, esses
   // dados vivem em cada CreateQuestionDto, e o service força estes campos
   // do pai a ficarem vazios/nulos — mas o DTO precisa aceitá-los, pois um
-  // EXERCISE (Programação, Química ou HTML) não tem filhos e depende
+  // EXERCISE (Programação, Química, HTML ou SQL) não tem filhos e depende
   // exclusivamente destes campos na raiz.
   @IsOptional()
   @IsArray()
@@ -224,6 +224,30 @@ export class CreateProblemDto {
   @IsOptional()
   @IsInt()
   memoryLimit?: number;
+
+  // --- Campos exclusivos de SQL (subject: SQL). Mesmo recorte do
+  // sqlSchema/sqlOrderSensitive adicionados à entidade Problem na Fase 1:
+  // sqlSchema é o DDL de referência, sqlOrderSensitive controla se a
+  // comparação do result set respeita a ordem das linhas. Ambos opcionais
+  // no DTO porque as demais matérias não os enviam — quem exige
+  // sqlSchema de fato é o SqlQueryGradingStrategy em tempo de submissão
+  // (retorna 'Internal Error' se ausente), não a validação de criação
+  // aqui.
+  @IsOptional()
+  @IsString()
+  sqlSchema?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  sqlOrderSensitive?: boolean;
+
+  // Gabarito de modelagem conceitual (subject: SQL_MODELING). Estrutura
+  // livre (Record) no DTO de propósito — a Fase 2a não valida o shape do
+  // ErModel no create, só persiste; validação estrutural fica pro
+  // corretor automático quando ele existir (Fase 2b).
+  @IsOptional()
+  @IsObject()
+  referenceModel?: Record<string, any>;
 
   @IsOptional()
   @IsArray()
