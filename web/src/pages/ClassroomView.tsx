@@ -64,6 +64,7 @@ import {
   ClipboardPaste,
   AlertTriangle,
   Network,
+  Loader2,
 } from "lucide-react";
 import {
   Panel,
@@ -296,6 +297,18 @@ export default function ClassroomView({
     null,
   );
   const [currentProblem, setCurrentProblem] = useState<Problem | null>(null);
+
+  // Modal "Duplicar Exercício" (POST /problems/:id/duplicate)
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicateTargets, setDuplicateTargets] = useState<
+    { id: string; name: string; isArchived?: boolean }[]
+  >([]);
+  const [isLoadingDuplicateTargets, setIsLoadingDuplicateTargets] =
+    useState(false);
+  const [duplicateTargetId, setDuplicateTargetId] = useState<string | null>(
+    null,
+  );
+  const [isDuplicating, setIsDuplicating] = useState(false);
 
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
@@ -1416,6 +1429,64 @@ export default function ClassroomView({
     }
   };
 
+  // GET /classrooms confirmado (classrooms.controller.ts): retorna turmas
+  // que o usuário possui OU está matriculado — como duplicate() exige
+  // posse da turma de destino, filtramos aqui pra só oferecer as que ele
+  // realmente pode escolher. O backend confere de novo de qualquer forma
+  // (é a fonte de verdade); isso é só pra não deixar o professor escolher
+  // uma turma que o próprio 403 recusaria em seguida.
+  const handleOpenDuplicateModal = async () => {
+    if (!selectedProblemId) return;
+    setShowDuplicateModal(true);
+    setDuplicateTargetId(null);
+    setIsLoadingDuplicateTargets(true);
+    try {
+      const res = await api.get("/classrooms");
+      const list = Array.isArray(res.data) ? res.data : [];
+      setDuplicateTargets(
+        list
+          .filter((c: any) => c.owner?.id === myUserId)
+          .map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            isArchived: c.isArchived,
+          })),
+      );
+    } catch {
+      toast.error("Erro ao carregar suas turmas.");
+      setDuplicateTargets([]);
+    } finally {
+      setIsLoadingDuplicateTargets(false);
+    }
+  };
+
+  const handleConfirmDuplicate = async () => {
+    if (!selectedProblemId || !duplicateTargetId) return;
+    setIsDuplicating(true);
+    try {
+      await api.post(`/problems/${selectedProblemId}/duplicate`, {
+        targetClassroomId: duplicateTargetId,
+      });
+      toast.success(
+        duplicateTargetId === id
+          ? "Exercício duplicado nesta turma!"
+          : "Exercício duplicado para a outra turma!",
+      );
+      setShowDuplicateModal(false);
+      if (duplicateTargetId === id) {
+        // Duplicou dentro da própria turma que está aberta agora — só
+        // essa combinação precisa de refetch pra ver o novo exercício
+        // aparecer na lista sem recarregar a página manualmente.
+        fetchClassroomData();
+      }
+    } catch (error: any) {
+      const msg = error.response?.data?.message;
+      toast.error(Array.isArray(msg) ? msg[0] : "Erro ao duplicar exercício.");
+    } finally {
+      setIsDuplicating(false);
+    }
+  };
+
   const submitSolution = async (e?: React.SyntheticEvent) => {
     if (e) e.preventDefault();
 
@@ -1487,7 +1558,9 @@ export default function ClassroomView({
       if (displayProblem?.subject === "SQL") {
         const sqlContent = activeQuestionFiles[0]?.content ?? "";
         if (!sqlContent.trim()) {
-          toast.error("O editor está vazio! Escreva sua consulta SQL antes de enviar.");
+          toast.error(
+            "O editor está vazio! Escreva sua consulta SQL antes de enviar.",
+          );
           setLoading(false);
           loadingRef.current = false;
           setVerdict(null);
@@ -1499,7 +1572,9 @@ export default function ClassroomView({
 
       if (displayProblem?.subject === "SQL_MODELING") {
         if (!diagramModel.entities || diagramModel.entities.length === 0) {
-          toast.error("O diagrama está vazio! Adicione ao menos uma entidade antes de enviar.");
+          toast.error(
+            "O diagrama está vazio! Adicione ao menos uma entidade antes de enviar.",
+          );
           setLoading(false);
           loadingRef.current = false;
           setVerdict(null);
@@ -2273,7 +2348,11 @@ export default function ClassroomView({
                     { name: "query.sql", content: "" },
                   ];
                   const updated = [...current];
-                  updated[0] = { ...updated[0], name: "query.sql", content: val };
+                  updated[0] = {
+                    ...updated[0],
+                    name: "query.sql",
+                    content: val,
+                  };
                   return { ...prev, [displayProblem.id]: updated };
                 });
               } else {
@@ -3671,6 +3750,16 @@ export default function ClassroomView({
                       </Button>
                     )}
 
+                    <Button
+                      variant="secondary"
+                      className="h-11 px-4 flex items-center gap-2 flex-none"
+                      onClick={handleOpenDuplicateModal}
+                      title="Duplicar este exercício para outra turma"
+                    >
+                      <Copy size={18} />
+                      <span className="hidden xl:inline">Duplicar</span>
+                    </Button>
+
                     {/* BOTÃO DE EXCLUIR AUMENTADO */}
                     <Button
                       variant="danger"
@@ -3980,6 +4069,15 @@ export default function ClassroomView({
                                 )}
                               >
                                 <Settings size={16} /> Editar
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setIsMobileMenuOpen(false);
+                                  handleOpenDuplicateModal();
+                                }}
+                                className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center gap-2"
+                              >
+                                <Copy size={16} /> Duplicar
                               </button>
                               <button
                                 disabled={classroom.isArchived} // <-- Trava
@@ -4472,6 +4570,90 @@ export default function ClassroomView({
           onClose={() => setShowExamAccessPanel(false)}
         />
       )}
+      {showDuplicateModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-surface border border-border rounded-xl shadow-2xl p-6 max-w-md w-full animate-in zoom-in-95">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3 text-primary">
+                <Copy size={22} />
+                <h3 className="text-lg font-bold text-foreground">
+                  Duplicar "{currentProblem?.title}"
+                </h3>
+              </div>
+              <p className="text-sm text-muted">
+                Escolha a turma de destino. Testes, gabarito e configuração de
+                execução são copiados; datas de início/prazo não — você
+                reconfigura na turma de destino.
+              </p>
+
+              <div className="max-h-64 overflow-y-auto flex flex-col gap-2 -mx-1 px-1">
+                {isLoadingDuplicateTargets ? (
+                  <div className="flex items-center justify-center py-8 text-muted text-sm gap-2">
+                    <Loader2 size={16} className="animate-spin" /> Carregando
+                    suas turmas...
+                  </div>
+                ) : duplicateTargets.length === 0 ? (
+                  <div className="text-center py-8 text-sm text-muted">
+                    Nenhuma turma encontrada.
+                  </div>
+                ) : (
+                  duplicateTargets.map((c) => {
+                    const disabled = !!c.isArchived;
+                    const isCurrent = c.id === id;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => setDuplicateTargetId(c.id)}
+                        className={cn(
+                          "text-left px-4 py-3 rounded-lg border transition-colors flex items-center justify-between gap-2",
+                          disabled && "opacity-50 cursor-not-allowed",
+                          duplicateTargetId === c.id
+                            ? "border-primary bg-primary/5 text-foreground"
+                            : "border-border hover:border-primary/40 text-muted hover:text-foreground",
+                        )}
+                      >
+                        <span className="flex items-center gap-2">
+                          {c.name}
+                          {isCurrent && (
+                            <span className="text-[10px] uppercase tracking-wider text-muted bg-background px-1.5 py-0.5 rounded border border-border">
+                              esta turma
+                            </span>
+                          )}
+                        </span>
+                        {disabled && (
+                          <span className="text-[10px] text-muted">
+                            Arquivada
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="flex gap-3 mt-2 justify-end">
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowDuplicateModal(false)}
+                  disabled={isDuplicating}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={handleConfirmDuplicate}
+                  disabled={!duplicateTargetId || isDuplicating}
+                  isLoading={isDuplicating}
+                >
+                  Duplicar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showSubmissions && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 md:p-6">
           <div className="bg-background w-full max-w-5xl max-h-[90vh] rounded-xl border border-border flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -4875,7 +5057,7 @@ export default function ClassroomView({
                           : ((isOwner
                               ? activeSubmission?.modelData
                               : selectedSubmission?.modelData) ??
-                              EMPTY_ER_MODEL)
+                            EMPTY_ER_MODEL)
                       }
                       readOnly
                     />

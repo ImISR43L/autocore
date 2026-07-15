@@ -14,6 +14,7 @@ import { CreateProblemDto } from './dto/create-problem.dto';
 import { UpdateProblemDto } from './dto/update-problem.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { DryRunDto } from './dto/dry-run.dto';
+import { DuplicateProblemDto } from './dto/duplicate-problem.dto';
 
 // Interface para tipagem do Request
 interface RequestWithUser {
@@ -75,6 +76,21 @@ export class ProblemsController {
   @Delete(':id')
   remove(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.problemsService.remove(id, req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/duplicate')
+  duplicate(
+    @Param('id') id: string,
+    @Body() dto: DuplicateProblemDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.problemsService.duplicate(
+      id,
+      dto.targetClassroomId,
+      req.user.userId,
+      dto.includeTeacherNotes,
+    );
   }
 
   @Post('dry-run')

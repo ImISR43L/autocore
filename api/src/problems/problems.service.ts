@@ -651,6 +651,175 @@ export class ProblemsService {
     return this.problemsRepository.remove(problem);
   }
 
+  /**
+   * Base server-side pra "duplicar entre turmas" (mesma conta). Desenhado
+   * de propósito pra também servir de núcleo de um export/import JSON
+   * futuro entre contas diferentes — a lógica de "o que copiar, o que
+   * não copiar, como resolver slug duplicado" fica só aqui; um endpoint
+   * de export seria só serializar o resultado de uma leitura equivalente
+   * a esta, e um de import seria essencialmente este método recebendo os
+   * dados de um JSON em vez de uma entidade já persistida.
+   *
+   * Nunca copiados (de propósito, não esquecimento):
+   *   - id, createdAt, startedAt — identidade e histórico da origem.
+   *   - startDate/deadline — agendamento específico daquele período;
+   *     levar pra outra turma como estava seria quase sempre errado (a
+   *     prova "começaria" numa data que já passou). Ficam undefined; o
+   *     professor reagenda na turma de destino.
+   *   - submissions (nem chegam a ser carregadas: não estão nas
+   *     relations do findOne abaixo).
+   *   - teacherNotes, a menos que includeTeacherNotes seja explicitamente
+   *     true — é anotação pessoal do professor de origem.
+   */
+  async duplicate(
+    id: string,
+    targetClassroomId: string,
+    userId: string,
+    includeTeacherNotes = false,
+  ) {
+    const source = await this.problemsRepository.findOne({
+      where: { id },
+      relations: [
+        'testCases',
+        'children',
+        'children.testCases',
+        'classroom',
+        'classroom.owner',
+      ],
+    });
+
+    if (!source) throw new NotFoundException('Problema não encontrado.');
+
+    if (source.classroom?.owner?.id !== userId) {
+      throw new ForbiddenException(
+        'Você não é dono da turma de origem deste problema.',
+      );
+    }
+
+    const targetClassroom = await this.classroomsRepository.findOne({
+      where: { id: targetClassroomId },
+      relations: ['owner'],
+    });
+
+    if (!targetClassroom) {
+      throw new NotFoundException('Turma de destino não encontrada.');
+    }
+
+    if (targetClassroom.owner?.id !== userId) {
+      throw new ForbiddenException('Você não é dono da turma de destino.');
+    }
+
+    if (targetClassroom.isArchived) {
+      throw new ForbiddenException(
+        'Turma de destino em modo leitura (arquivada). Ações bloqueadas.',
+      );
+    }
+
+    const slug = await this.resolveUniqueSlug(source.slug, targetClassroom.id);
+
+    const cloneTestCases = (testCases: TestCase[] = []) =>
+      testCases.map((tc) =>
+        this.testCasesRepository.create({
+          input: tc.input,
+          expectedOutput: tc.expectedOutput,
+          isHidden: tc.isHidden,
+        }),
+      );
+
+    let children: Problem[] = [];
+    if (source.children && source.children.length > 0) {
+      children = source.children.map((child) => {
+        // O slug da questão é salvo já prefixado com o slug do pai
+        // (`${parentSlug}--${childSlug}`, ver create()) — precisamos do
+        // sufixo puro pra recompor com o novo slug do pai clonado.
+        const prefix = `${source.slug}--`;
+        const rawChildSlug = child.slug.startsWith(prefix)
+          ? child.slug.slice(prefix.length)
+          : child.slug;
+
+        return this.problemsRepository.create({
+          title: child.title,
+          description: child.description,
+          slug: `${slug}--${rawChildSlug}`,
+          type: ProblemType.EXERCISE,
+          parameters: child.parameters,
+          returnType: child.returnType,
+          starterCode: child.starterCode,
+          solutionCode: child.solutionCode,
+          allowedLanguages: child.allowedLanguages,
+          validationConfig: child.validationConfig,
+          timeLimit: child.timeLimit,
+          memoryLimit: child.memoryLimit,
+          testCases: cloneTestCases(child.testCases),
+        });
+      });
+    }
+
+    // Mesma blindagem Pai/Filho do create(): dados de execução pertencem
+    // só às questões quando existem filhos. SQL/SQL_MODELING nunca têm
+    // filhos hoje, então isExamShell é sempre false pra esses subjects —
+    // mas a checagem fica aqui de qualquer forma, por consistência com
+    // create() e como salvaguarda caso isso mude no futuro.
+    const isExamShell = children.length > 0;
+
+    const clone = this.problemsRepository.create({
+      title: source.title,
+      description: source.description,
+      slug,
+      subject: source.subject,
+      type: source.type,
+      teacherNotes: includeTeacherNotes ? source.teacherNotes : undefined,
+      allowedLanguages: source.allowedLanguages,
+      tags: source.tags,
+      parameters: isExamShell ? [] : source.parameters,
+      returnType: source.returnType,
+      starterCode: isExamShell ? null : source.starterCode,
+      solutionCode: isExamShell ? [] : source.solutionCode,
+      testCases: isExamShell ? [] : cloneTestCases(source.testCases),
+      validationConfig: source.validationConfig,
+      maxAttempts: source.maxAttempts,
+      timeLimit: isExamShell ? undefined : source.timeLimit,
+      memoryLimit: isExamShell ? undefined : source.memoryLimit,
+      // Campos de SQL (Fase 1) e SQL_MODELING (Fase 2).
+      sqlSchema: isExamShell ? null : source.sqlSchema,
+      sqlOrderSensitive: source.sqlOrderSensitive,
+      referenceModel: source.referenceModel,
+      classroom: targetClassroom,
+      children: children.length > 0 ? children : undefined,
+    });
+
+    return this.problemsRepository.save(clone);
+  }
+
+  /**
+   * "titulo-do-problema" -> "titulo-do-problema-copia" ->
+   * "titulo-do-problema-copia-2" -> ... até achar um slug livre na turma
+   * de destino. `@Unique(['slug', 'classroom'])` na entidade Problem faz
+   * duplicar pra uma turma que já tem esse slug estourar a constraint
+   * sem isso — inclusive no caso mais comum de todos, duplicar um
+   * problema DENTRO da mesma turma (slug de origem sempre vai colidir
+   * consigo mesmo).
+   */
+  private async resolveUniqueSlug(
+    baseSlug: string,
+    classroomId: string,
+  ): Promise<string> {
+    let candidate = baseSlug;
+    let attempt = 0;
+
+    while (
+      await this.problemsRepository.findOne({
+        where: { slug: candidate, classroom: { id: classroomId } },
+      })
+    ) {
+      attempt++;
+      candidate =
+        attempt === 1 ? `${baseSlug}-copia` : `${baseSlug}-copia-${attempt}`;
+    }
+
+    return candidate;
+  }
+
   async dryRun(dto: DryRunDto) {
     this.logger.log(`[DryRun] Iniciando execução para ${dto.language}`);
 
