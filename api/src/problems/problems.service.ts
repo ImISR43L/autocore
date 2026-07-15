@@ -20,6 +20,7 @@ import {
 } from './entities/problem.entity';
 import { TestCase } from './entities/test-case.entity';
 import { Classroom } from '../classrooms/entities/classroom.entity';
+import { SubjectType } from '../common/enums/subject-type.enum';
 import { WrapperGenerator } from '../submissions/wrapper-generator';
 import { ExamAccessGrant } from '../exam-access/entities/exam-access-grant.entity';
 
@@ -715,6 +716,21 @@ export class ProblemsService {
       );
     }
 
+    // CORREÇÃO: duplicar era permitido entre turmas de QUALQUER subject
+    // pra QUALQUER outro — uma turma de Programação podia receber um
+    // problema de Química. Isso não é só inconsistente, quebra de
+    // verdade: fora do par SQL/SQL_MODELING (o único onde o
+    // ClassroomView decide o editor por problem.subject), o resto do
+    // ClassroomView ainda decide por classroom.subject — o aluno veria
+    // o editor errado (ex: Monaco de Programação pra um problema de
+    // Química) e a submissão chegaria com um payload que a
+    // GradingStrategy do subject real nem espera.
+    if (!this.areSubjectsCompatible(source.subject, targetClassroom.subject)) {
+      throw new ForbiddenException(
+        `Não é possível duplicar um problema de ${source.subject} para uma turma de ${targetClassroom.subject}.`,
+      );
+    }
+
     const slug = await this.resolveUniqueSlug(source.slug, targetClassroom.id);
 
     const cloneTestCases = (testCases: TestCase[] = []) =>
@@ -800,6 +816,26 @@ export class ProblemsService {
    * problema DENTRO da mesma turma (slug de origem sempre vai colidir
    * consigo mesmo).
    */
+  /**
+   * Duas matérias são compatíveis pra duplicação se forem exatamente a
+   * mesma, OU se ambas pertencerem à mesma "família" — hoje só
+   * {SQL, SQL_MODELING}, porque é o único par onde o ClassroomView
+   * decide o editor/submissão por `problem.subject` em vez de
+   * `classroom.subject` (ver ClassroomView.tsx). Se um dia o mesmo
+   * refactor for feito pras outras matérias, essa lista de famílias
+   * cresce — até lá, misturar qualquer outro par é inseguro de verdade,
+   * não só inconsistente.
+   */
+  private areSubjectsCompatible(a: SubjectType, b: SubjectType): boolean {
+    if (a === b) return true;
+
+    const families: SubjectType[][] = [
+      [SubjectType.SQL, SubjectType.SQL_MODELING],
+    ];
+
+    return families.some((family) => family.includes(a) && family.includes(b));
+  }
+
   private async resolveUniqueSlug(
     baseSlug: string,
     classroomId: string,

@@ -260,6 +260,19 @@ const getLanguageFromExt = (filename: string) => {
   return "plaintext";
 };
 
+// Espelha ProblemsService.areSubjectsCompatible() no backend — é só uma
+// checagem de UI (desabilitar/avisar antes de clicar), a validação real
+// e definitiva continua no backend em duplicate(). As duas listas
+// PRECISAM ficar em sincronia manual se um dia crescerem.
+const SUBJECT_FAMILIES: string[][] = [["SQL", "SQL_MODELING"]];
+const areSubjectsCompatible = (a?: string, b?: string): boolean => {
+  if (!a || !b) return true; // dado incompleto: não bloqueia na UI, backend decide
+  if (a === b) return true;
+  return SUBJECT_FAMILIES.some(
+    (family) => family.includes(a) && family.includes(b),
+  );
+};
+
 interface ClassroomViewProps {
   // true quando montado na rota /guest-exam/:problemId — sem turma, sem
   // matrícula, acesso concedido só por um ExamAccessGrant válido para
@@ -301,7 +314,12 @@ export default function ClassroomView({
   // Modal "Duplicar Exercício" (POST /problems/:id/duplicate)
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicateTargets, setDuplicateTargets] = useState<
-    { id: string; name: string; isArchived?: boolean }[]
+    {
+      id: string;
+      name: string;
+      isArchived?: boolean;
+      subject?: string;
+    }[]
   >([]);
   const [isLoadingDuplicateTargets, setIsLoadingDuplicateTargets] =
     useState(false);
@@ -1450,6 +1468,7 @@ export default function ClassroomView({
             id: c.id,
             name: c.name,
             isArchived: c.isArchived,
+            subject: c.subject,
           })),
       );
     } catch {
@@ -3608,8 +3627,8 @@ export default function ClassroomView({
         {activeTab === "classwork" && (
           <div className="flex flex-col h-full">
             {/* Toolbar da IDE */}
-            <div className="flex-none flex items-center justify-between p-4 border-b border-border bg-surface gap-4">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="flex-none flex items-center justify-between flex-wrap gap-y-3 p-4 border-b border-border bg-surface gap-4">
+              <div className="flex items-center gap-3 flex-wrap gap-y-2 flex-1 min-w-0">
                 {!isGuestMode && (
                   <div className="flex items-center gap-2">
                     {/* Pills para alternar tipo */}
@@ -3720,8 +3739,12 @@ export default function ClassroomView({
                 )}
               </div>
 
-              {/* Toolbar Desktop (lg+) */}
-              <div className="hidden lg:flex items-center gap-3">
+              {/* Toolbar Desktop (xl+). Breakpoint deliberadamente em xl, não
+                  lg: em lg (1024px) — largura de um iPad em paisagem ou de
+                  uma janela de notebook não maximizada — pills + Select +
+                  badge de prova + até 6 botões nunca cabiam numa linha só
+                  sem sobrepor. */}
+              <div className="hidden xl:flex items-center gap-3">
                 {isOwner && selectedProblemId && (
                   <>
                     <Button
@@ -4004,7 +4027,7 @@ export default function ClassroomView({
               </div>
 
               {/* Toolbar Mobile (Hamburguer + Submit Conditional) */}
-              <div className="lg:hidden flex items-center gap-2">
+              <div className="xl:hidden flex items-center gap-2">
                 {/* Botão de Enviar (Apenas na aba Editor e para Alunos) */}
                 {mobileIdeTab === "editor" && !isOwner && hasTeacher && (
                   <Button
@@ -4598,7 +4621,11 @@ export default function ClassroomView({
                   </div>
                 ) : (
                   duplicateTargets.map((c) => {
-                    const disabled = !!c.isArchived;
+                    const incompatible = !areSubjectsCompatible(
+                      currentProblem?.subject,
+                      c.subject,
+                    );
+                    const disabled = !!c.isArchived || incompatible;
                     const isCurrent = c.id === id;
                     return (
                       <button
@@ -4606,6 +4633,11 @@ export default function ClassroomView({
                         type="button"
                         disabled={disabled}
                         onClick={() => setDuplicateTargetId(c.id)}
+                        title={
+                          incompatible
+                            ? `Turma de ${c.subject} não é compatível com um problema de ${currentProblem?.subject}.`
+                            : undefined
+                        }
                         className={cn(
                           "text-left px-4 py-3 rounded-lg border transition-colors flex items-center justify-between gap-2",
                           disabled && "opacity-50 cursor-not-allowed",
@@ -4616,17 +4648,26 @@ export default function ClassroomView({
                       >
                         <span className="flex items-center gap-2">
                           {c.name}
+                          {c.subject && (
+                            <span className="text-[10px] uppercase tracking-wider text-muted bg-background px-1.5 py-0.5 rounded border border-border">
+                              {c.subject}
+                            </span>
+                          )}
                           {isCurrent && (
                             <span className="text-[10px] uppercase tracking-wider text-muted bg-background px-1.5 py-0.5 rounded border border-border">
                               esta turma
                             </span>
                           )}
                         </span>
-                        {disabled && (
+                        {c.isArchived ? (
                           <span className="text-[10px] text-muted">
                             Arquivada
                           </span>
-                        )}
+                        ) : incompatible ? (
+                          <span className="text-[10px] text-muted">
+                            Incompatível
+                          </span>
+                        ) : null}
                       </button>
                     );
                   })

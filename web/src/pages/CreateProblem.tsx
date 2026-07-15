@@ -52,6 +52,12 @@ const MULTI_ACTIVITY_SUBJECTS: Partial<
     },
   ],
 };
+// Turmas com subject: SQL_MODELING não deveriam existir (a criação de
+// turma nunca oferece essa opção — ver Dashboard.tsx), mas se uma já
+// existir por dado legado/manual, tratamos como equivalente a "SQL" pra
+// fins do seletor. Sem isso, o professor cairia direto no
+// SqlModelingWizard sem nenhuma escolha — foi exatamente o bug relatado.
+MULTI_ACTIVITY_SUBJECTS.SQL_MODELING = MULTI_ACTIVITY_SUBJECTS.SQL;
 
 export default function CreateProblem() {
   const navigate = useNavigate();
@@ -75,9 +81,7 @@ export default function CreateProblem() {
   // Matéria efetiva que decide qual wizard renderizar: para turmas com
   // mais de um tipo de atividade, é a escolha feita no seletor; para as
   // demais, é a própria matéria da turma (comportamento de sempre).
-  const effectiveSubject = activityOptions
-    ? activitySubject
-    : classroomSubject;
+  const effectiveSubject = activityOptions ? activitySubject : classroomSubject;
 
   useEffect(() => {
     const classId = params.id || params.classroomId;
@@ -142,6 +146,28 @@ export default function CreateProblem() {
     }
   };
 
+  const classroomIdFromUrl = params.id || params.classroomId;
+
+  const handleBack = () => {
+    // Dentro de um wizard (já escolheu o tipo de atividade): volta pro
+    // seletor, não pra página anterior do navegador.
+    if (activityOptions && activitySubject !== null) {
+      setActivitySubject(null);
+      return;
+    }
+    // No próprio seletor (ou em qualquer wizard de matéria sem seletor):
+    // não há mais nada "atrás" dentro desta página — sai pra turma de
+    // origem. Sem isso, a única forma de sair do seletor era o botão de
+    // voltar do navegador, o bug relatado.
+    if (classroomIdFromUrl) {
+      navigate(`/class/${classroomIdFromUrl}`, {
+        state: { activeTab: "classwork" },
+      });
+    } else {
+      navigate("/dashboard");
+    }
+  };
+
   const headerDescription = needsActivityPicker
     ? "Escolha o tipo de atividade de Banco de Dados que você quer criar."
     : effectiveSubject === "CHEMISTRY"
@@ -158,17 +184,19 @@ export default function CreateProblem() {
     <div className="h-screen w-full bg-background text-foreground flex flex-col font-sans overflow-hidden">
       <div className="p-4 md:p-6 pb-2 flex-none">
         <header className="flex items-center gap-3">
-          {activityOptions && activitySubject !== null && (
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setActivitySubject(null)}
-              className="border-border hover:bg-surface text-muted hover:text-foreground flex-none"
-              title="Escolher outro tipo de atividade"
-            >
-              <ArrowLeft size={18} />
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleBack}
+            className="border-border hover:bg-surface text-muted hover:text-foreground flex-none"
+            title={
+              activityOptions && activitySubject !== null
+                ? "Escolher outro tipo de atividade"
+                : "Voltar para a turma"
+            }
+          >
+            <ArrowLeft size={18} />
+          </Button>
           <div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">
               Nova Atividade

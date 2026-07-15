@@ -21,6 +21,7 @@ import {
   Code,
   Beaker,
   Globe,
+  Database,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -47,7 +48,7 @@ interface Classroom {
   id: string;
   name: string;
   code: string;
-  subject?: "PROGRAMMING" | "CHEMISTRY" | "HTML";
+  subject?: "PROGRAMMING" | "CHEMISTRY" | "HTML" | "SQL" | "SQL_MODELING";
   owner: {
     id: string;
     email: string;
@@ -71,7 +72,7 @@ export default function Dashboard() {
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [newClassName, setNewClassName] = useState("");
   const [newClassroomSubject, setNewClassroomSubject] = useState<
-    "PROGRAMMING" | "CHEMISTRY" | "HTML"
+    "PROGRAMMING" | "CHEMISTRY" | "HTML" | "SQL"
   >("PROGRAMMING");
   const [joinCode, setJoinCode] = useState("");
 
@@ -417,6 +418,9 @@ export default function Dashboard() {
                         <Beaker size={24} />
                       ) : c.subject === "HTML" ? (
                         <Globe size={24} />
+                      ) : c.subject === "SQL" ||
+                        c.subject === "SQL_MODELING" ? (
+                        <Database size={24} />
                       ) : (
                         <Code size={24} />
                       )}
@@ -612,7 +616,7 @@ export default function Dashboard() {
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Disciplina do Ambiente
                 </label>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {/* Botão de Programação */}
                   <button
                     onClick={() => setNewClassroomSubject("PROGRAMMING")}
@@ -650,6 +654,25 @@ export default function Dashboard() {
                   >
                     <Globe size={28} className="mb-2" />
                     <span className="font-semibold text-sm">HTML / Web</span>
+                  </button>
+
+                  {/* Botão de SQL / Banco de Dados. De propósito, não existe
+                      um botão "Modelagem Conceitual" aqui — SQL_MODELING é
+                      um subject de ATIVIDADE (escolhido por exercício em
+                      CreateProblem.tsx), nunca de TURMA. Uma turma "SQL"
+                      já cobre os dois tipos de atividade por dentro. */}
+                  <button
+                    onClick={() => setNewClassroomSubject("SQL")}
+                    className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${
+                      newClassroomSubject === "SQL"
+                        ? "border-primary bg-primary/10 text-primary shadow-sm"
+                        : "border-border bg-surface text-muted hover:border-muted hover:text-foreground"
+                    }`}
+                  >
+                    <Database size={28} className="mb-2" />
+                    <span className="font-semibold text-sm">
+                      SQL / Banco de Dados
+                    </span>
                   </button>
                 </div>
               </div>
