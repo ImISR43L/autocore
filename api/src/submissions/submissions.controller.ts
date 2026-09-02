@@ -28,7 +28,7 @@ export class SubmissionsController {
 
   @UseGuards(JwtAuthGuard)
   @Post()
-  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Throttle({ default: { limit: 200, ttl: 60000 } })
   create(
     @Body() createSubmissionDto: CreateSubmissionDto,
     @Request() req: RequestWithUser,

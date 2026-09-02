@@ -15,6 +15,11 @@ services:
       - REDIS_HOST=redis
       - EXECUTOR_URL=http://go-judge:5050/run
       - NODE_ENV=development
+      # Default do libuv é 4 — satura rápido sob rajada de requisições
+      # autenticadas concorrentes (cada verificação de JWT compete pelos
+      # mesmos 4 slots). Achado pelo teste de carga (load-test/), não
+      # uma otimização prematura — os números mostraram fila real.
+      - UV_THREADPOOL_SIZE=16
       # Não-sensível: host/porta/db/user do sandbox de SQL. A senha vem
       # via secret (sql_sandbox_role_password), lida pelo getSecret().
       - SQL_SANDBOX_HOST=sql-sandbox-db
@@ -54,6 +59,17 @@ services:
       - backend_net
       - secure_sandbox
       - sql_sandbox_net
+    # SIMULAÇÃO DA VM ORACLE (2 OCPU/12GB): cpuset fixa este container nos
+    # MESMOS núcleos físicos que os outros serviços abaixo — diferente de
+    # só reduzir `cpus:` por container (que travaria cada um no seu teto
+    # mesmo com os outros ociosos, sendo mais pessimista que a realidade),
+    # isso deixa o escalonador do Linux dividir o tempo entre eles de
+    # verdade, exatamente como aconteceria numa VM de 2 núcleos de
+    # verdade. Ajuste os IDs conforme a saída de `nproc`/`lscpu` na sua
+    # máquina — "0,1" assume pelo menos 2 núcleos lógicos disponíveis.
+    # REMOVER esse bloco (ou comentar) depois do teste, não faz sentido
+    # em desenvolvimento normal.
+    cpuset: "0,1"
     deploy:
       resources:
         limits:
@@ -71,6 +87,8 @@ services:
       - redis_data:/data
     networks:
       - backend_net
+    # Ver comentário em api: mesmos núcleos, simulação da VM de 2 OCPU.
+    cpuset: "0,1"
     deploy:
       resources:
         limits:
@@ -105,6 +123,8 @@ services:
       - apparmor:unconfined
       - seccomp:unconfined
     shm_size: "512mb"
+    # Ver comentário em api: mesmos núcleos, simulação da VM de 2 OCPU.
+    cpuset: "0,1"
     deploy:
       resources:
         limits:
@@ -139,6 +159,8 @@ services:
     # serviço (sql-sandbox-db:5432).
     networks:
       - sql_sandbox_net
+    # Ver comentário em api: mesmos núcleos, simulação da VM de 2 OCPU.
+    cpuset: "0,1"
     deploy:
       resources:
         limits:

@@ -1,0 +1,16 @@
+{
+  "name": "sql-corretor-load-test",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Scripts avulsos de teste de carga — nunca fazem parte do build/deploy da aplicação.",
+  "scripts": {
+    "create-users": "node create-users.js",
+    "run": "node run-load-test.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "socket.io-client": "^4.7.0",
+    "dotenv": "^16.4.0"
+  }
+}
