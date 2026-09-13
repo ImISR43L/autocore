@@ -7,6 +7,7 @@ import { Submission } from './entities/submission.entity';
 import { Problem } from '../problems/entities/problem.entity';
 import { SubmissionsProcessor } from './submissions.processor';
 import { SqlSubmissionsProcessor } from './sql-submissions.processor';
+import { HtmlSubmissionsProcessor } from './html-submissions.processor';
 import { SubmissionsGateway } from './submissions.gateway';
 import { getSecret } from '../common/utils/secrets.util';
 import { ProblemsModule } from '../problems/problems.module';
@@ -42,9 +43,20 @@ import { ManualGradingStrategy } from './strategies/manual-grading.strategy';
     // execução é outro (Postgres efêmero vs Go-Judge), e um pico de
     // submissões de SQL não deve competir por workers/recursos com a
     // correção de código.
+    //
+    // html-queue é separada das duas por um motivo diferente: não é o
+    // motor que muda (é sempre HtmlExecutorService), é que SÓ as
+    // submissões de HTML com regra `interaction` passam por ela —
+    // HtmlGradingStrategy decide isso por submissão (ver
+    // hasInteractionRules em html-rule.types.ts), o resto de HTML
+    // continua rodando inline no próprio POST /submissions. Uma fila
+    // própria permite limitar a concorrência (@Process({ concurrency: 2 })
+    // em HtmlSubmissionsProcessor) sem competir com Programação/SQL nem
+    // atrasar submissões de HTML que não precisam de fila nenhuma.
     BullModule.registerQueue(
       { name: 'submission-queue' },
       { name: 'sql-queue' },
+      { name: 'html-queue' },
     ),
 
     ProblemsModule,
@@ -58,6 +70,7 @@ import { ManualGradingStrategy } from './strategies/manual-grading.strategy';
     SubmissionsService,
     SubmissionsProcessor,
     SqlSubmissionsProcessor,
+    HtmlSubmissionsProcessor,
     SubmissionsGateway,
     ChemistryGradingStrategy,
     HtmlGradingStrategy,

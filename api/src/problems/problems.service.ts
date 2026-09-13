@@ -23,6 +23,7 @@ import { Classroom } from '../classrooms/entities/classroom.entity';
 import { SubjectType } from '../common/enums/subject-type.enum';
 import { WrapperGenerator } from '../submissions/wrapper-generator';
 import { ExamAccessGrant } from '../exam-access/entities/exam-access-grant.entity';
+import { validateHtmlValidationConfigShape } from '../html/html-validation-config.validator';
 
 @Injectable()
 export class ProblemsService {
@@ -200,6 +201,20 @@ export class ProblemsService {
 
     if (existingProblem) {
       throw new ConflictException('Este slug já está em uso nesta turma.');
+    }
+
+    // FIX (validação server-side): até aqui, o shape de
+    // `validationConfig` de HTML era validado só no Zod do wizard
+    // (problem.schema.ts) — a API aceitava qualquer `Record<string, any>`
+    // vindo direto de um POST, sem passar pela tela. Isso era tolerável
+    // enquanto uma regra só lia seletor/atributo/texto contra uma árvore
+    // DOM estática; deixa de ser aceitável a partir do HtmlExecutorService
+    // (Playwright) — um payload malformado tem alcance real sobre um
+    // browser de verdade. Falha aqui, antes de qualquer `save()`, pra não
+    // persistir um gabarito que o HtmlGradingStrategy só descobriria
+    // inválido na primeira submissão de aluno.
+    if ((problemData.subject ?? SubjectType.PROGRAMMING) === SubjectType.HTML) {
+      this.assertValidHtmlConfig(problemData.validationConfig, questions);
     }
 
     let children: Problem[] = [];
@@ -455,6 +470,23 @@ export class ProblemsService {
     delete (dataToUpdate as any).id;
     delete (dataToUpdate as any).classroom;
     delete (dataToUpdate as any).children;
+
+    // FIX (validação server-side): mesma checagem de create(), aplicada
+    // aqui a updates. Só valida o que este request está de fato tentando
+    // gravar — `questions` quando a prova está sendo editada, ou
+    // `dataToUpdate.validationConfig` quando é um EXERCISE avulso e o
+    // campo foi enviado neste PATCH. Um PATCH parcial que não toca nem
+    // um nem outro (ex: só mudando `deadline`) não é forçado a
+    // revalidar/reformatar uma configuração antiga que não está sendo
+    // alterada agora.
+    const resultingSubject = (dataToUpdate as any).subject ?? problem.subject;
+    if (resultingSubject === SubjectType.HTML) {
+      if (questions) {
+        this.assertValidHtmlConfig(undefined, questions);
+      } else if ((dataToUpdate as any).validationConfig !== undefined) {
+        this.assertValidHtmlConfig((dataToUpdate as any).validationConfig);
+      }
+    }
 
     // BLINDAGEM (Fase 2): se o problema é (ou está se tornando) uma prova
     // com questões, ele é só um invólucro — os dados de execução pertencem
@@ -826,6 +858,46 @@ export class ProblemsService {
    * cresce — até lá, misturar qualquer outro par é inseguro de verdade,
    * não só inconsistente.
    */
+  /**
+   * Agrega os erros de shape de `HtmlValidationConfig` — do problema raiz
+   * (EXERCISE avulso) OU de cada questão-filha (EXAM), nunca os dois ao
+   * mesmo tempo, pelo mesmo motivo de `isExamShell` em create()/update():
+   * numa prova, dados de execução (aqui, as regras de validação) vivem
+   * só nas questões, o pai é só um invólucro.
+   *
+   * Lança BadRequestException com a lista completa de problemas de uma
+   * vez (em vez de parar no primeiro) — mais útil pro professor corrigir
+   * tudo de uma vez no wizard do que descobrir um erro por tentativa.
+   */
+  private assertValidHtmlConfig(
+    rootValidationConfig?: unknown,
+    questions?: { title?: string; slug?: string; validationConfig?: unknown }[],
+  ): void {
+    const errors: string[] = [];
+
+    if (questions && questions.length > 0) {
+      questions.forEach((q, idx) => {
+        const questionErrors = validateHtmlValidationConfigShape(
+          q.validationConfig,
+        );
+        questionErrors.forEach((msg) =>
+          errors.push(
+            `Questão ${idx + 1} (${q.title || q.slug || 'sem título'}): ${msg}`,
+          ),
+        );
+      });
+    } else {
+      errors.push(...validateHtmlValidationConfigShape(rootValidationConfig));
+    }
+
+    if (errors.length > 0) {
+      throw new BadRequestException({
+        message: 'Configuração de validação HTML inválida.',
+        errors,
+      });
+    }
+  }
+
   private areSubjectsCompatible(a: SubjectType, b: SubjectType): boolean {
     if (a === b) return true;
 

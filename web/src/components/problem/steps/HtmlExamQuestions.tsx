@@ -8,68 +8,11 @@ import {
   Globe,
   AlertCircle,
   Code2,
-  Eye,
 } from "lucide-react";
 import { HtmlRulesConfig } from "./HtmlRulesConfig";
+import { HtmlReferenceFilesEditor } from "../HtmlReferenceFilesEditor";
 import { MarkdownInput } from "../../inputs/MarkdownInput";
 import { cn } from "../../../lib/utils";
-
-// Mini preview reutilizável por questão
-function QuestionHtmlPreview({
-  html,
-  previewTab,
-  setPreviewTab,
-}: {
-  html: string;
-  previewTab: "preview" | "code";
-  setPreviewTab: (t: "preview" | "code") => void;
-}) {
-  return (
-    <div className="flex flex-col h-full border border-border rounded-xl overflow-hidden">
-      <div className="flex items-center gap-1 px-3 py-2 border-b border-border bg-surface flex-none">
-        <button
-          type="button"
-          onClick={() => setPreviewTab("preview")}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
-            previewTab === "preview"
-              ? "bg-primary/10 text-primary border border-primary/20"
-              : "text-muted hover:text-foreground",
-          )}
-        >
-          <Eye size={12} /> Preview
-        </button>
-        <button
-          type="button"
-          onClick={() => setPreviewTab("code")}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
-            previewTab === "code"
-              ? "bg-primary/10 text-primary border border-primary/20"
-              : "text-muted hover:text-foreground",
-          )}
-        >
-          <Code2 size={12} /> HTML
-        </button>
-      </div>
-      {previewTab === "preview" ? (
-        <iframe
-          srcDoc={
-            html ||
-            "<p style='color:#888;font-family:sans-serif;padding:1rem;text-align:center'>Nenhum HTML de referência definido.</p>"
-          }
-          className="flex-1 w-full bg-white"
-          sandbox="allow-same-origin"
-          title="Preview HTML de referência"
-        />
-      ) : (
-        <pre className="flex-1 overflow-auto p-4 text-xs font-mono text-foreground bg-background leading-relaxed whitespace-pre-wrap">
-          {html || "// Nenhum HTML de referência"}
-        </pre>
-      )}
-    </div>
-  );
-}
 
 export function HtmlExamQuestions() {
   const {
@@ -80,10 +23,6 @@ export function HtmlExamQuestions() {
   } = useFormContext();
 
   const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
-  // Controla a aba preview/code de cada questão independentemente
-  const [previewTabs, setPreviewTabs] = useState<
-    Record<number, "preview" | "code">
-  >({});
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -255,7 +194,7 @@ export function HtmlExamQuestions() {
 
                   <hr className="border-border" />
 
-                  {/* HTML de Referência por questão */}
+                  {/* HTML de Referência por questão (múltiplas páginas) */}
                   <div className="flex flex-col gap-3">
                     <div>
                       <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
@@ -266,33 +205,12 @@ export function HtmlExamQuestions() {
                         </span>
                       </h4>
                       <p className="text-xs text-muted mt-1">
-                        Escreva o HTML esperado para esta questão. Não é usado
-                        na correção automática, serve como referência visual.
+                        Escreva o HTML esperado para esta questão — adicione
+                        quantas páginas precisar. Não é usado na correção
+                        automática, serve como referência visual.
                       </p>
                     </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[280px]">
-                      <textarea
-                        {...register(
-                          `${basePath}.validationConfig.referenceHtml` as any,
-                        )}
-                        placeholder={
-                          "<!DOCTYPE html>\n<html>\n  <body>\n    <h1>Resultado esperado</h1>\n  </body>\n</html>"
-                        }
-                        className="h-full w-full resize-none rounded-lg border border-border bg-background p-3 font-mono text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                        spellCheck={false}
-                      />
-                      <QuestionHtmlPreview
-                        html={
-                          watch(
-                            `${basePath}.validationConfig.referenceHtml` as any,
-                          ) ?? ""
-                        }
-                        previewTab={previewTabs[index] ?? "preview"}
-                        setPreviewTab={(t) =>
-                          setPreviewTabs((prev) => ({ ...prev, [index]: t }))
-                        }
-                      />
-                    </div>
+                    <HtmlReferenceFilesEditor basePath={basePath} />
                   </div>
                 </div>
               )}

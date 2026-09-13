@@ -54,10 +54,7 @@ export class SubmissionsService {
       programmingGradingStrategy,
     );
     this.gradingStrategies.set(SubjectType.SQL, sqlQueryGradingStrategy);
-    this.gradingStrategies.set(
-      SubjectType.SQL_MODELING,
-      manualGradingStrategy,
-    );
+    this.gradingStrategies.set(SubjectType.SQL_MODELING, manualGradingStrategy);
   }
 
   // Pending (aguardando processamento assíncrono) e Awaiting Manual
@@ -298,16 +295,24 @@ export class SubmissionsService {
     try {
       const result = await strategy.grade(submission, problem);
 
-      // Modo síncrono (HTML/Química): o resultado já é final, persistimos
-      // e notificamos o aluno imediatamente, dentro da mesma requisição.
-      if (strategy.mode === 'sync') {
-        return this.persistAndNotify(submission, result, userId);
+      // FIX (roteamento por resultado, não por classe): antes checava
+      // `strategy.mode === 'sync'` para decidir se persiste aqui ou
+      // deixa pro Processor. Isso amarrava a decisão à ESTRATÉGIA
+      // inteira — nenhuma strategy normalmente síncrona podia, num caso
+      // pontual, decidir enfileirar. Checar o `status` do resultado em
+      // vez do `mode` é estritamente equivalente para as estratégias
+      // existentes (as assíncronas sempre retornam 'Pending'; Química e
+      // Manual nunca retornam) e abre espaço para HtmlGradingStrategy
+      // rotear só as submissões com regra `interaction` (a única cujo
+      // pior caso realmente pode levar segundos) para uma fila própria,
+      // mantendo tudo o mais instantâneo.
+      if (result.status === 'Pending') {
+        // A estratégia já enfileirou o job; quem persiste o resultado
+        // final e notifica o aluno é o Processor correspondente.
+        return submission;
       }
 
-      // Modo assíncrono (Programação, SQL): a estratégia já enfileirou o
-      // job; quem persiste o resultado final e notifica é o Processor
-      // correspondente.
-      return submission;
+      return this.persistAndNotify(submission, result, userId);
     } catch (error) {
       this.logger.error(
         `Erro ao rotear submissão ${submission.id} para a estratégia de correção:`,

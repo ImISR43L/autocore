@@ -97,7 +97,26 @@ export const chemistryDetailsSchema = z.object({
 });
 
 // 3.3 Detalhes Exclusivos de HTML
-export const htmlRuleSchema = z.object({
+//
+// FIX (engine — troca jsdom por Playwright): antes, uma única regra
+// genérica com todos os campos opcionais (attribute/expectedValue/
+// textContains) cobria os três tipos visuais do editor (existência/
+// atributo/texto) — o "tipo" nunca existiu no dado, só na UI
+// (HtmlRulesConfig::getRuleType, inferido por presença de campo). Isso
+// quebra ao introduzir `computedStyle`, que também precisa de um
+// `expectedValue` com significado diferente (valor de propriedade CSS
+// computada de verdade via browser real, não valor de atributo HTML) —
+// o mesmo nome de campo não pode servir pros dois sem ambiguidade.
+//
+// RETROCOMPATIBILIDADE: todo exercício de HTML já salvo em produção tem
+// regras SEM `type` nenhum (Problem.validationConfig é jsonb solto, sem
+// migration possível). `legacyStructuralRuleSchema` cobre exatamente
+// esse shape antigo, campo a campo idêntico ao htmlRuleSchema anterior.
+// Regras novas devem sempre gravar `type: "structural"` explicitamente
+// — ver handleAddRule em HtmlRulesConfig.tsx — e é isso que evita a
+// colisão de `expectedValue` entre os dois tipos daqui em diante.
+const legacyStructuralRuleSchema = z.object({
+  type: z.undefined().optional(),
   selector: z.string().min(1, "Seletor CSS é obrigatório"),
   description: z.string().min(1, "Descrição da regra é obrigatória"),
   attribute: z.string().optional(),
@@ -106,12 +125,167 @@ export const htmlRuleSchema = z.object({
   mustExist: z.boolean().default(true),
 });
 
+// FASE 2 (multi-página): `page` é o nome do arquivo .html onde a regra
+// deve ser avaliada — opcional, ausência = página de entrada padrão.
+// Não validamos contra nomes "esperados" de arquivo aqui: a convenção
+// de nomenclatura é comunicada só pelo enunciado (decisão consciente),
+// então qualquer string não vazia é aceita — um nome que o aluno nunca
+// criou vira falha normal da regra em tempo de correção, não erro de
+// configuração do professor.
+const pageFieldSchema = z.string().min(1).optional();
+
+const structuralRuleSchema = z.object({
+  type: z.literal("structural"),
+  page: pageFieldSchema,
+  selector: z.string().min(1, "Seletor CSS é obrigatório"),
+  description: z.string().min(1, "Descrição da regra é obrigatória"),
+  attribute: z.string().optional(),
+  expectedValue: z.string().optional(),
+  textContains: z.string().optional(),
+  mustExist: z.boolean().default(true),
+});
+
+// NOVO: verifica uma propriedade CSS computada de verdade (resolvida por
+// um Chromium real via HtmlExecutorService — jsdom não suportava isto de
+// forma confiável, era a causa raiz da limitação anterior). Diferente da
+// regra estrutural de atributo, `expectedValue` aqui é sempre
+// obrigatório: não existe "só checar presença" para uma propriedade CSS
+// — todo elemento sempre tem algum valor computado pra qualquer
+// propriedade, então "presença" não é uma checagem que faz sentido.
+const computedStyleRuleSchema = z.object({
+  type: z.literal("computedStyle"),
+  page: pageFieldSchema,
+  selector: z.string().min(1, "Seletor CSS é obrigatório"),
+  description: z.string().min(1, "Descrição da regra é obrigatória"),
+  property: z
+    .string()
+    .min(1, "Propriedade CSS é obrigatória (ex: display, color)"),
+  expectedValue: z.string().min(1, "Valor esperado é obrigatório"),
+});
+
+// NOVO (Fase 2): simula clicar num link e verificar em qual página o
+// browser realmente aterrissou — não dá pra checar isso só olhando o
+// HTML estático, precisa navegar de verdade (ver
+// HtmlExecutorService/HtmlValidatorService). `page` aqui é a página de
+// PARTIDA (onde `selector` deve existir); `expectedPage` é o arquivo
+// esperado depois do clique. Os dois são nomes de arquivo da própria
+// submissão, nunca URLs.
+const navigationRuleSchema = z.object({
+  type: z.literal("navigation"),
+  page: pageFieldSchema,
+  description: z.string().min(1, "Descrição da regra é obrigatória"),
+  selector: z.string().min(1, "Seletor do link/elemento é obrigatório"),
+  expectedPage: z
+    .string()
+    .min(1, "Página esperada após a navegação é obrigatória"),
+});
+
+// NOVO (Fase 3 — JS vanilla): simula uma sequência de ações do usuário
+// (clicar, digitar, esperar) e checa o resultado — a peça mais arriscada
+// das três fases, por isso os tetos abaixo não são só UX, são limite de
+// segurança real (espelhados 1:1 no backend, ver
+// html-validation-config.validator.ts, porque o Zod aqui só protege
+// quem passa pelo wizard, não um POST direto na API).
+//
+// MAX_STEPS=10, MAX_WAIT_MS_PER_STEP=2000, soma de waits ≤5000ms por
+// regra: números escolhidos pra manter o pior caso de uma regra
+// individual bem abaixo do teto duro de execução do
+// HtmlExecutorService (20s, compartilhado entre TODAS as regras da
+// submissão) — sem isso, uma regra sozinha já poderia consumir o
+// processo Chromium compartilhado por perto do tempo todo disponível.
+const MAX_INTERACTION_STEPS = 10;
+const MAX_WAIT_MS_PER_STEP = 2000;
+const MAX_TOTAL_WAIT_MS_PER_RULE = 5000;
+
+const interactionClickStepSchema = z.object({
+  action: z.literal("click"),
+  selector: z.string().min(1, "Seletor é obrigatório"),
+});
+
+const interactionTypeStepSchema = z.object({
+  action: z.literal("type"),
+  selector: z.string().min(1, "Seletor é obrigatório"),
+  text: z.string().max(200, "Texto muito longo (máx. 200 caracteres)"),
+});
+
+const interactionWaitStepSchema = z.object({
+  action: z.literal("wait"),
+  ms: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(
+      MAX_WAIT_MS_PER_STEP,
+      `Espera máxima de ${MAX_WAIT_MS_PER_STEP}ms por passo`,
+    ),
+});
+
+const interactionStepSchema = z.discriminatedUnion("action", [
+  interactionClickStepSchema,
+  interactionTypeStepSchema,
+  interactionWaitStepSchema,
+]);
+
+const interactionRuleSchema = z
+  .object({
+    type: z.literal("interaction"),
+    page: pageFieldSchema,
+    description: z.string().min(1, "Descrição da regra é obrigatória"),
+    steps: z
+      .array(interactionStepSchema)
+      .min(1, "Adicione pelo menos um passo de interação")
+      .max(
+        MAX_INTERACTION_STEPS,
+        `No máximo ${MAX_INTERACTION_STEPS} passos por regra`,
+      ),
+    // Asserção final, depois de executar todos os `steps` — mesmo
+    // vocabulário de uma regra estrutural, ver comentário em
+    // html-rule.types.ts::InteractionHtmlRule.
+    assertSelector: z.string().min(1, "Seletor de asserção é obrigatório"),
+    assertMustExist: z.boolean().default(true),
+    assertAttribute: z.string().optional(),
+    assertExpectedValue: z.string().optional(),
+    assertTextContains: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const totalWaitMs = data.steps
+      .filter((s) => s.action === "wait")
+      .reduce((sum, s) => sum + (s as { ms: number }).ms, 0);
+    if (totalWaitMs > MAX_TOTAL_WAIT_MS_PER_RULE) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Soma das esperas não pode passar de ${MAX_TOTAL_WAIT_MS_PER_RULE}ms por regra (somado: ${totalWaitMs}ms)`,
+        path: ["steps"],
+      });
+    }
+  });
+
+export const htmlRuleSchema = z.union([
+  legacyStructuralRuleSchema,
+  structuralRuleSchema,
+  computedStyleRuleSchema,
+  navigationRuleSchema,
+  interactionRuleSchema,
+]);
+
+// Uma página de referência (Fase de preview multi-arquivo): mesmo shape
+// de fileEntrySchema (nome + conteúdo), reexportado aqui com nome
+// próprio porque semanticamente é "página de referência do professor",
+// não "arquivo de starter code do aluno" — mesmo que o formato seja
+// idêntico.
+const referenceFileSchema = fileEntrySchema;
+
 export const htmlDetailsSchema = z.object({
   validationConfig: z
     .object({
       rules: z
         .array(htmlRuleSchema)
         .min(1, "Adicione pelo menos uma regra de validação"),
+      // Campo legado (uma única página) — nunca mais escrito por telas
+      // novas, mantido só pra ler exercícios salvos antes de
+      // referenceFiles existir. Ver html-rule.types.ts::HtmlValidationConfig.
+      referenceHtml: z.string().optional(),
+      referenceFiles: z.array(referenceFileSchema).optional(),
     })
     .optional(),
 });
@@ -126,6 +300,8 @@ const htmlQuestionSchema = z.object({
       rules: z
         .array(htmlRuleSchema)
         .min(1, "Adicione pelo menos uma regra de validação"),
+      referenceHtml: z.string().optional(),
+      referenceFiles: z.array(referenceFileSchema).optional(),
     })
     .optional(),
 });

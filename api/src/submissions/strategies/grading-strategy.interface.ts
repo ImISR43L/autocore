@@ -26,9 +26,18 @@ export interface GradingResult {
  * Programação e SQL dependem de sandbox externo e são assíncronas (fila
  * do Bull).
  *
- * - mode 'sync'  → grade() retorna o GradingResult final, pronto para persistir.
+ * - mode 'sync'  → grade() geralmente retorna o GradingResult final, pronto para persistir.
  * - mode 'async' → grade() apenas enfileira o job e retorna { status: 'Pending' };
  *                  quem persiste o resultado final é o Processor correspondente.
+ *
+ * IMPORTANTE: `mode` é só o comportamento PADRÃO/documental da
+ * estratégia — quem decide de verdade se `SubmissionsService` persiste
+ * o resultado agora ou deixa pra depois é o `status` retornado por
+ * `grade()`, não este campo (ver `routeToGradingStrategy`). Isso permite
+ * uma estratégia majoritariamente síncrona (ex: HtmlGradingStrategy)
+ * enfileirar só em casos pontuais — uma submissão com regra
+ * `interaction`, por exemplo — sem precisar declarar `mode: 'async'`
+ * para todos os outros casos, que continuam instantâneos.
  *
  * 'Awaiting Manual Review' (Fase 2 — modelagem conceitual de SQL) é
  * DIFERENTE de 'Pending': Pending significa "processando, resultado sai

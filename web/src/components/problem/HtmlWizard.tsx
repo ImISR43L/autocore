@@ -9,6 +9,7 @@ import {
 } from "../../schemas/problem.schema";
 import Stepper from "../Stepper";
 import { HtmlRulesConfig } from "./steps/HtmlRulesConfig";
+import { HtmlReferenceFilesEditor } from "./HtmlReferenceFilesEditor";
 import { HtmlExamQuestions } from "./steps/HtmlExamQuestions";
 import { HtmlExamReview } from "./steps/HtmlExamReview";
 import { ExamConfig } from "./steps/ExamConfig";
@@ -24,7 +25,6 @@ import {
   AlertTriangle,
   RefreshCw,
   Code2,
-  Eye,
   Clock,
   LayoutTemplate,
   FileText,
@@ -65,55 +65,6 @@ const generateSlug = (text: string) =>
     .replace(/\s+/g, "-")
     .replace(/[^\w-]+/g, "")
     .replace(/--+/g, "-");
-
-function HtmlPreviewPane({ html }: { html: string }) {
-  const [tab, setTab] = useState<"preview" | "code">("preview");
-  return (
-    <div className="flex flex-col h-full border border-border rounded-xl overflow-hidden">
-      <div className="flex items-center gap-1 px-3 py-2 border-b border-border bg-surface flex-none">
-        <button
-          type="button"
-          onClick={() => setTab("preview")}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
-            tab === "preview"
-              ? "bg-primary/10 text-primary border border-primary/20"
-              : "text-muted hover:text-foreground",
-          )}
-        >
-          <Eye size={12} /> Preview
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("code")}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
-            tab === "code"
-              ? "bg-primary/10 text-primary border border-primary/20"
-              : "text-muted hover:text-foreground",
-          )}
-        >
-          <Code2 size={12} /> HTML
-        </button>
-      </div>
-      {tab === "preview" ? (
-        <iframe
-          srcDoc={
-            html ||
-            "<p style='color:#888;font-family:sans-serif;padding:1rem;text-align:center'>Nenhum HTML de referência definido.</p>"
-          }
-          className="flex-1 w-full bg-white"
-          sandbox="allow-same-origin"
-          title="Preview do gabarito HTML"
-        />
-      ) : (
-        <pre className="flex-1 overflow-auto p-4 text-xs font-mono text-foreground bg-background leading-relaxed whitespace-pre-wrap">
-          {html || "// Nenhum HTML de referência"}
-        </pre>
-      )}
-    </div>
-  );
-}
 
 export function HtmlWizard({ initialValues, onSubmit }: HtmlWizardProps) {
   const params = useParams();
@@ -164,8 +115,6 @@ export function HtmlWizard({ initialValues, onSubmit }: HtmlWizardProps) {
   const problemType = useWatch({ control, name: "type" });
   const titleValue = useWatch({ control, name: "title" });
   const descriptionValue = useWatch({ control, name: "description" });
-  const referenceHtml =
-    methods.watch("validationConfig.referenceHtml" as any) ?? "";
 
   useEffect(() => {
     if (classroomId)
@@ -476,7 +425,7 @@ export function HtmlWizard({ initialValues, onSubmit }: HtmlWizardProps) {
                     <HtmlRulesConfig />
                   </div>
 
-                  {/* HTML de Referência */}
+                  {/* HTML de Referência (múltiplas páginas) */}
                   <div className="bg-surface border border-border rounded-xl p-4 md:p-6 shadow-sm space-y-4">
                     <div>
                       <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -487,24 +436,13 @@ export function HtmlWizard({ initialValues, onSubmit }: HtmlWizardProps) {
                         </span>
                       </h3>
                       <p className="text-xs text-muted mt-1">
-                        Cole um HTML de exemplo da solução. Não é usado na
-                        validação automática, serve apenas como referência
-                        visual.
+                        Cole o HTML de exemplo da solução — adicione quantas
+                        páginas precisar (ex: um portfólio com
+                        index/sobre/projetos). Não é usado na validação
+                        automática, serve apenas como referência visual.
                       </p>
                     </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[320px]">
-                      <textarea
-                        {...methods.register(
-                          "validationConfig.referenceHtml" as any,
-                        )}
-                        placeholder={
-                          "<!DOCTYPE html>\n<html>\n  <body>\n    <h1>Meu Site</h1>\n  </body>\n</html>"
-                        }
-                        className="h-full w-full resize-none rounded-lg border border-border bg-background p-3 font-mono text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                        spellCheck={false}
-                      />
-                      <HtmlPreviewPane html={referenceHtml} />
-                    </div>
+                    <HtmlReferenceFilesEditor />
                   </div>
 
                   {/* Agendamento */}

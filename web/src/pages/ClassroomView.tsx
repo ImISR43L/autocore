@@ -39,7 +39,6 @@ import {
   Lock,
   User,
   Search,
-  Filter,
   Cpu,
   Settings,
   BarChart as BarChartIcon,
@@ -57,11 +56,8 @@ import {
   Maximize,
   Minimize,
   Copy,
-  Users,
   Archive,
   EyeOff,
-  Beaker,
-  ClipboardPaste,
   AlertTriangle,
   Network,
   Loader2,
@@ -77,6 +73,8 @@ import { io } from "socket.io-client";
 import LogViewer from "../components/LogViewer";
 import { usePreferences } from "../contexts/PreferencesContext";
 import { useMonacoTheme } from "../hooks/useMonacoTheme";
+import { SubmissionsPanel } from "../components/submissions/SubmissionsPanel";
+import { useSubmissionsInspection } from "../hooks/useSubmissionsInspection";
 
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
@@ -117,12 +115,12 @@ interface TestCase {
   isHidden: boolean;
 }
 
-interface FileEntry {
+export interface FileEntry {
   name: string;
   content: string;
 }
 
-interface Problem {
+export interface Problem {
   id: string;
   title: string;
   description: string;
@@ -157,7 +155,7 @@ interface Problem {
   referenceModel?: ErModel;
 }
 
-interface Classroom {
+export interface Classroom {
   id: number;
   name: string;
   code: string;
@@ -169,7 +167,7 @@ interface Classroom {
   isArchived?: boolean;
 }
 
-interface Submission {
+export interface Submission {
   id: string;
   status:
     | "Pending"
@@ -257,8 +255,45 @@ const getLanguageFromExt = (filename: string) => {
   if (filename.endsWith(".py")) return "python";
   if (filename.endsWith(".java")) return "java";
   if (filename.endsWith(".cpp") || filename.endsWith(".c")) return "cpp";
+  if (filename.endsWith(".html") || filename.endsWith(".htm")) return "html";
+  if (filename.endsWith(".css")) return "css";
   return "plaintext";
 };
+
+/**
+ * Preview client-side (professor OU aluno) de um conjunto de arquivos
+ * HTML/CSS. Faz um inlining best-effort de
+ * `<link rel="stylesheet" href="X">` com o conteúdo real do arquivo X,
+ * se ele existir entre os arquivos — só para o preview ficar mais fiel
+ * ao que a correção de verdade (HtmlExecutorService, que serve os
+ * arquivos como um site estático real) vai enxergar. Isto NÃO afeta a
+ * correção em nada, é puramente visual.
+ *
+ * Regex simples, não é um parser HTML completo — cobre o caso comum
+ * (`<link rel="stylesheet" href="...">`), não toda variação possível de
+ * atributos/ordem.
+ *
+ * JS (`<script src="...">`) é DELIBERADAMENTE NÃO inlinado: o iframe
+ * usa sandbox="allow-same-origin" sem "allow-scripts". Habilitar os
+ * dois ao mesmo tempo destrava o sandboxing (o documento fica "mesma
+ * origem" do app real e ainda pode rodar script) — um risco de
+ * auto-XSS de verdade, não só uma limitação estética do preview.
+ */
+function composePreviewHtml(
+  files: { name: string; content: string }[],
+  activeIndex: number,
+): string {
+  const active = files[Math.min(activeIndex, Math.max(files.length - 1, 0))];
+  if (!active) return "";
+
+  return active.content.replace(
+    /<link\b[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi,
+    (match, href) => {
+      const cssFile = files.find((f) => f.name === href);
+      return cssFile ? `<style>${cssFile.content}</style>` : match;
+    },
+  );
+}
 
 // Espelha ProblemsService.areSubjectsCompatible() no backend — é só uma
 // checagem de UI (desabilitar/avisar antes de clicar), a validação real
@@ -330,6 +365,10 @@ export default function ClassroomView({
 
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
+  // Qual página de referência (professor) está sendo exibida — compartilhado
+  // entre o painel de editor (esquerda) e o preview ao vivo (direita) do
+  // modo HTML, para as abas dos dois lados ficarem sincronizadas.
+  const [ownerReferencePageIndex, setOwnerReferencePageIndex] = useState(0);
   const [diagramModel, setDiagramModel] = useState<ErModel>(EMPTY_ER_MODEL);
   // Incrementado sempre que o problema/submissão muda, força o
   // ErDiagramCanvas a remontar (ele só lê seu valor inicial uma vez —
@@ -346,39 +385,20 @@ export default function ClassroomView({
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const loadingRef = useRef(false);
-  const [showSubmissions, setShowSubmissions] = useState(false);
   const [showExamAccessPanel, setShowExamAccessPanel] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
 
-  // Filtros de Submissão
-  const [selectedStudentFilter, setSelectedStudentFilter] = useState<
-    string | null
-  >(null);
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState<
-    string | null
-  >(null);
-
   const [studentSearch, setStudentSearch] = useState("");
 
-  const [inspectingUser, setInspectingUser] = useState<{
-    id: string;
-    email: string;
-    name?: string;
-  } | null>(null);
-  const [studentSubmissions, setStudentSubmissions] = useState<
-    Record<string, Submission>
-  >({});
-  const [activeInspectionIndex, setActiveInspectionIndex] = useState(0);
-  const [inspectFileIndex, setInspectFileIndex] = useState(0);
-  const [showReferenceInInspector, setShowReferenceInInspector] =
-    useState(false);
-
-  const [selectedSubmission, setSelectedSubmission] =
-    useState<Submission | null>(null);
-  const [showModal, setShowModal] = useState(false);
-
-  const [gradingGrade, setGradingGrade] = useState<string | number>("");
-  const [gradingComment, setGradingComment] = useState("");
+  // FIX (redução de props do SubmissionsPanel): showSubmissions,
+  // showModal, os filtros de submissão, inspectingUser,
+  // studentSubmissions, activeInspectionIndex, inspectFileIndex,
+  // selectedSubmission, gradingGrade/gradingComment, e os handlers
+  // handleStartInspection/handleSaveGrade/handleMarkAsDelivery — tudo
+  // isso morava aqui como useState soltos, um virando uma prop cada.
+  // Agora mora junto em useSubmissionsInspection (ver o hook), chamado
+  // mais abaixo depois que `fetchSubmissions`/`currentProblem`/
+  // `displayProblem` já existem.
 
   const [newAnnouncement, setNewAnnouncement] = useState("");
   const [manualLinks, setManualLinks] = useState<string[]>([]);
@@ -449,6 +469,9 @@ export default function ClassroomView({
   useEffect(() => {
     setExamAcknowledged(false);
   }, [selectedProblemId]);
+  useEffect(() => {
+    setOwnerReferencePageIndex(0);
+  }, [selectedProblemId]);
 
   // Dicionário de arquivos por questão (chave = child problem ID)
   // Substitui o estado `files` para provas com múltiplas questões
@@ -456,10 +479,17 @@ export default function ClassroomView({
     {},
   );
 
-  // Dicionário de HTML por questão (chave = child problem ID)
-  // Substitui o estado `htmlCode` para provas de HTML com múltiplas questões,
-  // evitando que o código do aluno seja perdido ao trocar de questão.
-  const [examHtmlMap, setExamHtmlMap] = useState<Record<string, string>>({});
+  // Dicionário de arquivos de HTML por questão (chave = child problem ID).
+  // Substitui o antigo `htmlCode`/`examHtmlMap` (string única) por arrays
+  // de arquivo — mesma estrutura que `files`/`examFilesMap` já usam para
+  // Programação. Sem isso, o aluno nunca teria como criar uma segunda
+  // página (sobre.html) ou um .css separado: o editor de HTML era um
+  // único Monaco, sempre virando um único arquivo "index.html" no envio
+  // — inviabilizando as regras `navigation`/`page` que o gabarito já
+  // suporta há duas fases.
+  const [examHtmlFilesMap, setExamHtmlFilesMap] = useState<
+    Record<string, FileEntry[]>
+  >({});
 
   // Questões já entregues (travadas) — Set de child problem IDs
   const [deliveredQuestions, setDeliveredQuestions] = useState<Set<string>>(
@@ -469,7 +499,7 @@ export default function ClassroomView({
   useEffect(() => {
     setDeliveredQuestions(new Set());
     setExamFilesMap({});
-    setExamHtmlMap({});
+    setExamHtmlFilesMap({});
     setExamFinalized(false);
   }, [selectedProblemId]);
 
@@ -635,6 +665,17 @@ export default function ClassroomView({
     (probId: string, langId: number) => {
       if (!myUserId) return null;
       return `autosave_files_${myUserId}_${probId}_${langId}`;
+    },
+    [myUserId],
+  );
+
+  // HTML não tem o conceito de `languageId` — chave própria, sem esse
+  // segmento. Faltava isto antes: o antigo `htmlCode` (string única)
+  // nunca tinha autosave nenhum, diferente de Programming/SQL.
+  const getHtmlStorageKey = useCallback(
+    (probId: string) => {
+      if (!myUserId) return null;
+      return `autosave_html_files_${myUserId}_${probId}`;
     },
     [myUserId],
   );
@@ -877,6 +918,22 @@ export default function ClassroomView({
     }
   }, []);
 
+  // Todo o estado + handlers da feature de "ver submissões" (lista,
+  // inspeção, nota manual) — ver useSubmissionsInspection para o porquê
+  // disso não ser mais ~15 useState soltos aqui. Chamado aqui (não perto
+  // de onde era usado antes) porque precisa vir DEPOIS de
+  // `fetchSubmissions` existir (é passado como argumento, não usado
+  // dentro de uma closure adiada — diferente de outros casos nesta
+  // mesma migração) e ANTES do primeiro `return` condicional do
+  // componente (guard de "carregando turma", mais abaixo) — hooks não
+  // podem ser chamados depois de um return condicional.
+  const inspection = useSubmissionsInspection({
+    isOwner,
+    currentProblem,
+    displayProblem,
+    fetchSubmissions,
+  });
+
   const fetchProblemStats = useCallback(async (probId: string) => {
     try {
       const res = await api.get(`/submissions/stats/problem/${probId}`);
@@ -1071,6 +1128,43 @@ export default function ClassroomView({
       return;
     }
 
+    // FASE de multi-arquivo: HTML ganha o mesmo tratamento de
+    // Programming/SQL aqui — antes, `htmlCode` não tinha ramo nenhum
+    // neste efeito (nem autosave, nem reset ao trocar de exercício).
+    if (displayProblem?.subject === "HTML") {
+      setActiveHtmlFileIndex(0);
+      const storageKey = getHtmlStorageKey(displayProblem.id);
+      const savedFilesJson = storageKey
+        ? localStorage.getItem(storageKey)
+        : null;
+
+      if (savedFilesJson) {
+        try {
+          const savedFiles = JSON.parse(savedFilesJson);
+          if (Array.isArray(savedFiles) && savedFiles.length > 0) {
+            setHtmlFiles(savedFiles);
+            return;
+          }
+        } catch (e) {
+          console.error("Erro ao parsear autosave de HTML", e);
+        }
+      }
+
+      if (displayProblem.starterCode && displayProblem.starterCode.length > 0) {
+        setHtmlFiles(displayProblem.starterCode);
+        return;
+      }
+
+      setHtmlFiles([
+        {
+          name: "index.html",
+          content:
+            '<!DOCTYPE html>\n<html lang="pt-br">\n<head>\n  <meta charset="UTF-8" />\n  <title>Meu Site</title>\n</head>\n<body>\n  \n</body>\n</html>\n',
+        },
+      ]);
+      return;
+    }
+
     const lang = LANGUAGES.find((l) => l.id === languageId);
     if (!lang) return;
 
@@ -1111,7 +1205,7 @@ export default function ClassroomView({
     };
     setFiles([defaultFile]);
     setActiveFileIndex(0);
-  }, [languageId, displayProblem, myUserId, getStorageKey]);
+  }, [languageId, displayProblem, myUserId, getStorageKey, getHtmlStorageKey]);
 
   useEffect(() => {
     if (displayProblem && activeTab === "classwork") {
@@ -1264,91 +1358,6 @@ export default function ClassroomView({
       setActiveFileIndex(0);
     }
     toast.success("Restaurado.");
-  };
-
-  const handleStartInspection = async (targetSubmission: Submission) => {
-    if (isOwner) {
-      setInspectingUser(targetSubmission.user);
-      setStudentSubmissions({});
-      setInspectFileIndex(0);
-      const targetProblemId = targetSubmission.problem?.id
-        ? String(targetSubmission.problem.id)
-        : targetSubmission.problemId
-          ? String(targetSubmission.problemId)
-          : null;
-
-      if (currentProblem) {
-        const problemsToFetch =
-          currentProblem.children && currentProblem.children.length > 0
-            ? currentProblem.children
-            : [currentProblem];
-
-        const loadedSubs: Record<string, Submission> = {};
-        let foundIndex = 0;
-
-        for (let i = 0; i < problemsToFetch.length; i++) {
-          const p = problemsToFetch[i];
-          try {
-            const res = await api.get(`/submissions/problem/${p.id}`);
-            const userSub = res.data.find(
-              (s: Submission) => s.user.id === targetSubmission.user.id,
-            );
-            if (userSub) {
-              loadedSubs[p.id] = userSub;
-              if (targetProblemId === String(p.id)) foundIndex = i;
-            }
-          } catch (e) {
-            console.error(e);
-            // fallback: se o fetch falhar para o problema clicado, usa o que já temos
-            if (targetProblemId === String(p.id)) {
-              loadedSubs[p.id] = targetSubmission;
-              foundIndex = i;
-            }
-          }
-        }
-        setStudentSubmissions(loadedSubs);
-        setActiveInspectionIndex(foundIndex);
-
-        const activeProbId = problemsToFetch[foundIndex].id;
-        if (loadedSubs[activeProbId]) {
-          setGradingGrade(loadedSubs[activeProbId].grade ?? "");
-          setGradingComment(loadedSubs[activeProbId].teacherComment ?? "");
-        } else {
-          setGradingGrade("");
-          setGradingComment("");
-        }
-      }
-    } else {
-      setSelectedSubmission(targetSubmission);
-      setShowModal(true);
-    }
-  };
-
-  const handleSaveGrade = async () => {
-    if (!currentProblem || !inspectingUser) return;
-    const targetProb =
-      currentProblem.children && currentProblem.children.length > 0
-        ? currentProblem.children[activeInspectionIndex]
-        : currentProblem;
-    const sub = studentSubmissions[targetProb.id];
-    if (!sub) return toast.error("Nenhuma submissão para dar nota.");
-    try {
-      await api.patch(`/submissions/${sub.id}/grade`, {
-        grade: gradingGrade === "" ? null : Number(gradingGrade),
-        teacherComment: gradingComment,
-      });
-      toast.success("Nota salva!");
-      setStudentSubmissions((prev) => ({
-        ...prev,
-        [targetProb.id]: {
-          ...sub,
-          grade: Number(gradingGrade),
-          teacherComment: gradingComment,
-        },
-      }));
-    } catch {
-      toast.error("Erro ao salvar nota.");
-    }
   };
 
   const handlePostAnnouncement = async (e: React.FormEvent) => {
@@ -1563,14 +1572,23 @@ export default function ClassroomView({
       }
 
       if (classroom?.subject === "HTML") {
-        if (!activeQuestionHtml.trim()) {
+        const hasContent = activeQuestionHtmlFiles.some((f) =>
+          f.content.trim(),
+        );
+        if (!hasContent) {
           toast.error("O editor está vazio! Escreva seu HTML antes de enviar.");
           setLoading(false);
           loadingRef.current = false;
           setVerdict(null);
           return;
         }
-        payloadFiles = [{ name: "index.html", content: activeQuestionHtml }];
+        // FIX (multi-arquivo): antes, só o arquivo "index.html" era
+        // enviado, não importa quantas abas o aluno tivesse (na
+        // verdade, antes nem existiam abas). Agora manda todos os
+        // arquivos que o aluno criou — é isso que torna alcançáveis as
+        // regras `navigation`/`page` (multi-página) que o gabarito já
+        // suporta desde a Fase 2 do corretor.
+        payloadFiles = activeQuestionHtmlFiles;
         payloadLanguageId = undefined; // HTML não usa language_id
       }
 
@@ -1788,18 +1806,6 @@ export default function ClassroomView({
     }
   };
 
-  const handleMarkAsDelivery = async (subId: string) => {
-    try {
-      await api.patch(`/submissions/${subId}/deliver`);
-      toast.success("Submissão definida como entrega oficial!");
-      if (displayProblem) {
-        fetchSubmissions(displayProblem.id);
-      }
-    } catch (error) {
-      toast.error("Erro ao definir entrega.");
-    }
-  };
-
   const handleGoToProblem = (probId: string) => {
     setSelectedProblemId(probId);
     setActiveTab("classwork");
@@ -1883,7 +1889,14 @@ export default function ClassroomView({
     [saveCurrentQuestionFiles],
   );
 
-  const [htmlCode, setHtmlCode] = useState<string>("");
+  // Arquivos de HTML do exercício avulso — mesmo padrão de `files` para
+  // Programação (array + índice ativo), no lugar do antigo `htmlCode`
+  // (string única). Ver comentário em examHtmlFilesMap acima.
+  const [htmlFiles, setHtmlFiles] = useState<FileEntry[]>([
+    { name: "index.html", content: "" },
+  ]);
+  const [activeHtmlFileIndex, setActiveHtmlFileIndex] = useState(0);
+  const [newHtmlFileName, setNewHtmlFileName] = useState("");
 
   // Estado do editor HTML ao vivo
   const isExam = currentProblem?.type === "EXAM";
@@ -2158,13 +2171,6 @@ export default function ClassroomView({
     (isExam && examStatus === "FINISHED" && !isOwner);
 
   const dropdownOptions = classroom.problems.filter((p) => !p.parent);
-  const activeInspectionProblem =
-    currentProblem?.children && currentProblem.children.length > 0
-      ? currentProblem.children[activeInspectionIndex]
-      : currentProblem;
-  const activeSubmission = activeInspectionProblem
-    ? studentSubmissions[activeInspectionProblem.id]
-    : null;
 
   const filteredStudents = (classroom.students || []).filter((student) => {
     const term = studentSearch.toLowerCase();
@@ -2179,6 +2185,19 @@ export default function ClassroomView({
       safeValidationConfig = JSON.parse(safeValidationConfig);
     } catch (e) {}
   }
+
+  // Páginas de referência do professor (Fase de preview multi-arquivo).
+  // `referenceFiles` é o campo atual (array); `referenceHtml` é o campo
+  // legado (string única) de exercícios salvos antes dessa mudança — a
+  // mesma migração feita em HtmlReferenceFilesEditor.tsx no wizard, aqui
+  // só de leitura (não é editado nesta tela, é o painel de visualização
+  // do professor dentro da sala de aula).
+  const ownerReferenceFiles: { name: string; content: string }[] =
+    safeValidationConfig?.referenceFiles?.length
+      ? safeValidationConfig.referenceFiles
+      : safeValidationConfig?.referenceHtml
+        ? [{ name: "index.html", content: safeValidationConfig.referenceHtml }]
+        : [{ name: "index.html", content: "" }];
 
   let parsedRawState = safeValidationConfig?.rawState;
   if (typeof parsedRawState === "string") {
@@ -2206,20 +2225,104 @@ export default function ClassroomView({
         ])
       : files;
 
-  // HTML da questão ativa no modo prova (mesma lógica do `activeQuestionFiles`)
-  // Em exercícios, continua usando `htmlCode`; em provas, usa o mapa por questão
-  const activeQuestionHtml: string =
+  // Arquivos de HTML da questão ativa no modo prova (mesma lógica de
+  // `activeQuestionFiles` acima). Em exercícios, usa `htmlFiles`; em
+  // provas, usa o mapa por questão.
+  const activeQuestionHtmlFiles: FileEntry[] =
     isExam && displayProblem
-      ? (examHtmlMap[displayProblem.id] ?? "")
-      : htmlCode;
+      ? (examHtmlFilesMap[displayProblem.id] ?? [
+          { name: "index.html", content: "" },
+        ])
+      : htmlFiles;
 
-  // Atualiza o HTML respeitando se estamos numa prova (mapa) ou exercício avulso
-  const setActiveQuestionHtml = (value: string) => {
+  // Atualiza o conteúdo do arquivo HTML ativo, respeitando se estamos
+  // numa prova (mapa) ou exercício avulso — e persiste autosave só no
+  // caso de exercício avulso (provas não têm essa chave de storage,
+  // igual ao padrão de handleCodeChange/getStorageKey acima).
+  const setActiveQuestionHtmlContent = (value: string | undefined) => {
+    const val = value || "";
     if (isExam && displayProblem) {
-      setExamHtmlMap((prev) => ({ ...prev, [displayProblem.id]: value }));
-    } else {
-      setHtmlCode(value);
+      setExamHtmlFilesMap((prev) => {
+        const current = prev[displayProblem.id] ?? activeQuestionHtmlFiles;
+        const updated = [...current];
+        if (updated[activeHtmlFileIndex]) {
+          updated[activeHtmlFileIndex] = {
+            ...updated[activeHtmlFileIndex],
+            content: val,
+          };
+        }
+        return { ...prev, [displayProblem.id]: updated };
+      });
+      return;
     }
+
+    const newFiles = [...htmlFiles];
+    if (newFiles[activeHtmlFileIndex]) {
+      newFiles[activeHtmlFileIndex] = {
+        ...newFiles[activeHtmlFileIndex],
+        content: val,
+      };
+      setHtmlFiles(newFiles);
+      if (displayProblem) {
+        const key = getHtmlStorageKey(displayProblem.id);
+        if (key) localStorage.setItem(key, JSON.stringify(newFiles));
+      }
+    }
+  };
+
+  /**
+   * FIX em relação ao padrão original (handleAddFile/handleRemoveFile,
+   * usados por Programming): aqueles dois só mexem em `files`
+   * diretamente, então adicionar/remover arquivo durante uma PROVA
+   * silenciosamente teria efeito nenhum no que é submetido de verdade
+   * (que lê de `examFilesMap`/`activeQuestionFiles`). Aqui,
+   * `activeQuestionHtmlFiles` já resolve exercício-vs-prova, e as duas
+   * funções gravam no lugar certo em cada caso.
+   */
+  const handleAddHtmlFile = () => {
+    if (!newHtmlFileName.trim()) return toast.warning("Nome vazio");
+    if (activeQuestionHtmlFiles.some((f) => f.name === newHtmlFileName))
+      return toast.warning("Já existe");
+    const updated = [
+      ...activeQuestionHtmlFiles,
+      { name: newHtmlFileName, content: "" },
+    ];
+
+    if (isExam && displayProblem) {
+      setExamHtmlFilesMap((prev) => ({
+        ...prev,
+        [displayProblem.id]: updated,
+      }));
+    } else {
+      setHtmlFiles(updated);
+      if (displayProblem) {
+        const key = getHtmlStorageKey(displayProblem.id);
+        if (key) localStorage.setItem(key, JSON.stringify(updated));
+      }
+    }
+    setNewHtmlFileName("");
+    setActiveHtmlFileIndex(updated.length - 1);
+  };
+
+  const handleRemoveHtmlFile = (idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (activeQuestionHtmlFiles.length <= 1)
+      return toast.warning("Mínimo 1 arquivo");
+    const updated = activeQuestionHtmlFiles.filter((_, i) => i !== idx);
+
+    if (isExam && displayProblem) {
+      setExamHtmlFilesMap((prev) => ({
+        ...prev,
+        [displayProblem.id]: updated,
+      }));
+    } else {
+      setHtmlFiles(updated);
+      if (displayProblem) {
+        const key = getHtmlStorageKey(displayProblem.id);
+        if (key) localStorage.setItem(key, JSON.stringify(updated));
+      }
+    }
+    setActiveHtmlFileIndex(0);
   };
 
   // A questão atual está travada?
@@ -2296,31 +2399,99 @@ export default function ClassroomView({
     ) : classroom?.subject === "HTML" ? (
       <div className="flex flex-col h-full bg-background">
         {/* Barra de abas do editor HTML */}
-        <div className="flex-none flex items-center gap-1 px-3 py-2 bg-surface border-b border-border">
-          <span className="text-xs font-mono text-muted px-2 py-1 bg-background rounded border border-border">
-            index.html
-          </span>
-          {isOwner && (
-            <span className="ml-2 text-xs text-warning bg-warning/10 border border-warning/20 px-2 py-0.5 rounded">
-              Gabarito do professor
-            </span>
+        <div className="flex-none flex items-center gap-1 px-3 py-2 bg-surface border-b border-border overflow-x-auto no-scrollbar">
+          {isOwner ? (
+            <>
+              {ownerReferenceFiles.map((file, idx) => (
+                <span
+                  key={idx}
+                  onClick={() => setOwnerReferencePageIndex(idx)}
+                  className={cn(
+                    "text-xs font-mono px-2 py-1 rounded border cursor-pointer select-none",
+                    idx === ownerReferencePageIndex
+                      ? "bg-background text-foreground border-primary/40"
+                      : "bg-surface text-muted border-border hover:text-foreground",
+                  )}
+                >
+                  {file.name}
+                </span>
+              ))}
+              <span className="ml-2 text-xs text-warning bg-warning/10 border border-warning/20 px-2 py-0.5 rounded">
+                Gabarito do professor
+              </span>
+            </>
+          ) : (
+            <>
+              {/* FIX (multi-arquivo): antes era uma aba fixa só com o
+                  texto "index.html" — o aluno não tinha como criar uma
+                  segunda página ou um .css separado. Mesmo padrão de
+                  abas (adicionar/remover) que Programming já usa para
+                  `files`, aplicado aqui a `activeQuestionHtmlFiles`. */}
+              {activeQuestionHtmlFiles.map((file, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => setActiveHtmlFileIndex(idx)}
+                  className={cn(
+                    "px-3 py-1.5 text-xs cursor-pointer flex items-center gap-2 border-r border-border border-t-2 select-none min-w-fit font-mono rounded-t",
+                    activeHtmlFileIndex === idx
+                      ? "bg-background text-foreground border-t-primary"
+                      : "bg-surface text-muted border-t-transparent hover:bg-surface-hover",
+                  )}
+                >
+                  <FileCode size={13} />
+                  {file.name}
+                  {activeQuestionHtmlFiles.length > 1 && (
+                    <Trash
+                      size={12}
+                      className="hover:text-destructive ml-1"
+                      onClick={(e) => handleRemoveHtmlFile(idx, e)}
+                    />
+                  )}
+                </div>
+              ))}
+              <div className="flex items-center px-2 min-w-[90px]">
+                <input
+                  className="bg-transparent border-none text-xs text-foreground w-full focus:outline-none placeholder:text-muted/50"
+                  placeholder="+ Nova página..."
+                  value={newHtmlFileName}
+                  onChange={(e) => setNewHtmlFileName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddHtmlFile()}
+                />
+              </div>
+            </>
           )}
         </div>
 
         {/* Editor Monaco em modo HTML */}
         <div className="flex-1 relative">
           <Editor
-            key={`html-${displayProblem?.id}`}
+            key={
+              isOwner
+                ? `html-ref-${displayProblem?.id}-${ownerReferencePageIndex}`
+                : `html-${displayProblem?.id}-${activeHtmlFileIndex}`
+            }
             height="100%"
             theme={monacoTheme}
-            language="html"
+            language={
+              isOwner
+                ? "html"
+                : getLanguageFromExt(
+                    activeQuestionHtmlFiles[activeHtmlFileIndex]?.name ??
+                      "index.html",
+                  )
+            }
             value={
               isOwner
-                ? (safeValidationConfig?.referenceHtml ?? "")
-                : activeQuestionHtml
+                ? (ownerReferenceFiles[
+                    Math.min(
+                      ownerReferencePageIndex,
+                      ownerReferenceFiles.length - 1,
+                    )
+                  ]?.content ?? "")
+                : (activeQuestionHtmlFiles[activeHtmlFileIndex]?.content ?? "")
             }
             onChange={(value) => {
-              if (!isOwner) setActiveQuestionHtml(value ?? "");
+              if (!isOwner) setActiveQuestionHtmlContent(value);
             }}
             options={{
               minimap: { enabled: false },
@@ -2722,6 +2893,47 @@ export default function ClassroomView({
         <span className="text-xs font-semibold text-muted uppercase tracking-wider">
           Preview ao vivo
         </span>
+        {isOwner && ownerReferenceFiles.length > 1 && (
+          <div className="flex items-center gap-1">
+            {ownerReferenceFiles.map((file, idx) => (
+              <span
+                key={idx}
+                onClick={() => setOwnerReferencePageIndex(idx)}
+                className={cn(
+                  "text-[10px] font-mono px-2 py-0.5 rounded border cursor-pointer select-none",
+                  idx === ownerReferencePageIndex
+                    ? "bg-primary/10 text-primary border-primary/30"
+                    : "bg-surface text-muted border-border hover:text-foreground",
+                )}
+              >
+                {file.name}
+              </span>
+            ))}
+          </div>
+        )}
+        {/* FIX (multi-arquivo): mesma ideia das abas do professor, agora
+            para o aluno — reaproveita `activeHtmlFileIndex` (o mesmo
+            índice que já controla qual arquivo está aberto no editor à
+            esquerda), então trocar de aba no editor já troca o preview
+            junto, sem precisar de um segundo estado. */}
+        {!isOwner && activeQuestionHtmlFiles.length > 1 && (
+          <div className="flex items-center gap-1">
+            {activeQuestionHtmlFiles.map((file, idx) => (
+              <span
+                key={idx}
+                onClick={() => setActiveHtmlFileIndex(idx)}
+                className={cn(
+                  "text-[10px] font-mono px-2 py-0.5 rounded border cursor-pointer select-none",
+                  idx === activeHtmlFileIndex
+                    ? "bg-primary/10 text-primary border-primary/30"
+                    : "bg-surface text-muted border-border hover:text-foreground",
+                )}
+              >
+                {file.name}
+              </span>
+            ))}
+          </div>
+        )}
         {verdict && (
           <span
             className={cn(
@@ -2738,14 +2950,34 @@ export default function ClassroomView({
       <iframe
         srcDoc={
           isOwner
-            ? (safeValidationConfig?.referenceHtml ?? "")
-            : activeQuestionHtml ||
+            ? composePreviewHtml(
+                ownerReferenceFiles,
+                ownerReferencePageIndex,
+              ) ||
+              "<p style='color:#888;font-family:sans-serif;padding:2rem;text-align:center'>Nenhum HTML de referência definido.</p>"
+            : composePreviewHtml(
+                activeQuestionHtmlFiles,
+                activeHtmlFileIndex,
+              ) ||
               "<p style='color:#888;font-family:sans-serif;padding:2rem;text-align:center'>Escreva seu HTML no editor ao lado para ver o preview aqui.</p>"
         }
         className="flex-1 w-full bg-white"
         sandbox="allow-same-origin"
         title="Preview HTML do aluno"
       />
+      {/* Nota: preview é por página isolada, sem navegação real entre
+          elas — um link para outra página não navega sozinho aqui
+          dentro; troque de aba manualmente para conferir cada uma. O
+          CSS via <link rel="stylesheet"> já é resolvido (ver
+          composePreviewHtml); JS não roda neste preview de propósito
+          (ver comentário na função). */}
+      {((isOwner && ownerReferenceFiles.length > 1) ||
+        (!isOwner && activeQuestionHtmlFiles.length > 1)) && (
+        <p className="flex-none text-[11px] text-muted px-4 py-1.5 border-t border-border bg-surface/50">
+          Preview por página isolada — links entre páginas de referência não
+          navegam sozinhos aqui; troque de aba para conferir cada uma.
+        </p>
+      )}
       {/* Feedback de validação após submissão (checklist de regras do gabarito) */}
       {verdict && verdict !== "Processando..." && (
         <div className="flex-none border-t border-border max-h-60 overflow-y-auto">
@@ -3823,8 +4055,8 @@ export default function ClassroomView({
                     size="sm"
                     className="h-11 px-5 text-base whitespace-nowrap"
                     onClick={() => {
-                      setShowSubmissions(true);
-                      setSelectedStudentFilter(null);
+                      inspection.setShowSubmissions(true);
+                      inspection.setSelectedStudentFilter(null);
                     }}
                   >
                     {isOwner ? "Ver Turma" : "Meu Histórico"}
@@ -4124,7 +4356,7 @@ export default function ClassroomView({
                       {selectedProblemId && (
                         <button
                           onClick={() => {
-                            setShowSubmissions(true);
+                            inspection.setShowSubmissions(true);
                             setIsMobileMenuOpen(false);
                           }}
                           className="w-full text-left px-4 py-3 text-sm hover:bg-surface-hover flex items-center gap-2"
@@ -4695,564 +4927,17 @@ export default function ClassroomView({
           </div>
         </div>
       )}
-      {showSubmissions && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 md:p-6">
-          <div className="bg-background w-full max-w-5xl max-h-[90vh] rounded-xl border border-border flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            {/* Header Modal */}
-            <div className="flex items-center justify-between p-4 md:p-6 border-b border-border bg-surface">
-              <h3 className="text-xl md:text-2xl font-semibold text-foreground flex items-center gap-3">
-                {isOwner ? (
-                  <Users size={24} className="text-primary" />
-                ) : (
-                  <Clock size={24} className="text-primary" />
-                )}
-                {isOwner ? "Entregas dos Alunos" : "Histórico de Envios"}
-              </h3>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowSubmissions(false)}
-                className="h-10 w-10"
-              >
-                <XCircle size={24} />
-              </Button>
-            </div>
-
-            {/* Filtros */}
-            <div className="p-4 border-b border-border bg-surface/50 flex flex-col sm:flex-row items-center gap-4">
-              <div className="flex items-center gap-2 text-sm text-muted font-medium uppercase tracking-wider whitespace-nowrap">
-                <Filter size={16} /> Filtros:
-              </div>
-
-              {/* Filtro de Aluno (Apenas Professor) */}
-              {isOwner && (
-                <Select
-                  className="w-full sm:w-64 h-10 text-base"
-                  value={selectedStudentFilter || ""}
-                  onChange={(e) =>
-                    setSelectedStudentFilter(e.target.value || null)
-                  }
-                >
-                  <option value="">Todos os Alunos</option>
-                  {classroom?.students.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name ? `${s.name} (${s.email})` : s.email}
-                    </option>
-                  ))}
-                </Select>
-              )}
-
-              {/* Filtro de Status (Novo) */}
-              <Select
-                className="w-full sm:w-48 h-10 text-base"
-                value={selectedStatusFilter || ""}
-                onChange={(e) =>
-                  setSelectedStatusFilter(e.target.value || null)
-                }
-              >
-                <option value="">Todos os Status</option>
-                <option value="Accepted">Accepted</option>
-                <option value="Wrong Answer">Wrong Answer</option>
-                <option value="Runtime Error">Runtime Error</option>
-                <option value="Time Limit Exceeded">Time Limit Exceeded</option>
-                <option value="Compilation Error">Compilation Error</option>
-              </Select>
-            </div>
-
-            {/* Lista com Scroll Horizontal no Mobile */}
-            <div className="flex-1 overflow-auto p-0">
-              <div className="min-w-[600px] md:min-w-full">
-                <table className="w-full text-base text-left">
-                  <thead className="text-sm text-muted uppercase bg-surface sticky top-0">
-                    <tr>
-                      <th className="px-6 py-4 font-semibold">Status</th>
-                      <th className="px-6 py-4 font-semibold">Data</th>
-                      <th className="px-6 py-4 font-semibold">Tempo</th>
-                      <th className="px-6 py-4 font-semibold">Memória</th>
-                      {isOwner ? (
-                        <th className="px-6 py-4 font-semibold">Aluno</th>
-                      ) : (
-                        <th className="px-6 py-4 font-semibold">Entrega</th>
-                      )}
-                      <th className="px-6 py-4 text-right font-semibold">
-                        Detalhes
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {submissions
-                      .filter(
-                        (s) =>
-                          (!selectedStudentFilter ||
-                            s.user.id === selectedStudentFilter) &&
-                          (!selectedStatusFilter ||
-                            s.status === selectedStatusFilter),
-                      )
-                      .map((sub) => (
-                        <tr
-                          key={sub.id}
-                          className="hover:bg-surface/50 transition-colors"
-                        >
-                          {/* ... tds de status, data, tempo, memória (mantém iguais) ... */}
-                          <td className="px-6 py-4">{/* status */}</td>
-                          <td className="px-6 py-4 text-foreground whitespace-nowrap">
-                            {new Date(sub.createdAt).toLocaleString()}
-                          </td>
-                          <td className="px-6 py-4 text-muted font-mono">
-                            {sub.executionTime}ms
-                          </td>
-                          <td className="px-6 py-4 text-muted font-mono">
-                            {sub.memoryUsage}KB
-                          </td>
-
-                          {isOwner ? (
-                            <td className="px-6 py-4 text-foreground">
-                              <div className="flex items-center gap-3">
-                                <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold">
-                                  {sub.user?.email?.charAt(0)?.toUpperCase() ||
-                                    "U"}
-                                </div>
-                                <span className="truncate max-w-[180px]">
-                                  {sub.user?.name ||
-                                    sub.user?.email ||
-                                    "Conta Excluída"}
-                                </span>
-                              </div>
-                            </td>
-                          ) : (
-                            <td className="px-6 py-4">
-                              {sub.isDelivery ? (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-success/10 text-success text-xs font-bold uppercase tracking-wider border border-success/20">
-                                  <CheckCircle size={14} /> Entregue
-                                </span>
-                              ) : hasTeacher ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleMarkAsDelivery(sub.id)}
-                                  className="h-8 text-xs whitespace-nowrap"
-                                >
-                                  Marcar Entrega
-                                </Button>
-                              ) : (
-                                <span
-                                  className="text-xs text-muted"
-                                  title="Turma sem professor"
-                                >
-                                  Bloqueado
-                                </span>
-                              )}
-                            </td>
-                          )}
-                          <td className="px-6 py-4 text-right">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="h-8 text-sm"
-                              onClick={() => handleStartInspection(sub)}
-                            >
-                              {isOwner ? "Avaliar" : "Detalhes"}
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL: DETALHES/NOTAS (OVERLAY) --- */}
-      {(inspectingUser || showModal) && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/90 backdrop-blur-sm p-4 md:p-6">
-          <div className="bg-background w-full max-w-7xl h-[90vh] rounded-xl border border-border flex flex-col shadow-2xl overflow-hidden">
-            {/* Header Inspeção */}
-            <div className="flex items-center justify-between p-4 md:p-6 border-b border-border bg-surface">
-              <div>
-                <h2 className="text-xl md:text-2xl font-bold text-foreground mb-1">
-                  {isOwner && inspectingUser
-                    ? `Avaliando: ${inspectingUser.name || inspectingUser.email}`
-                    : "Detalhes da Submissão"}
-                </h2>
-                <p className="text-sm text-muted">
-                  {activeSubmission
-                    ? `Enviado em ${new Date(activeSubmission.createdAt).toLocaleString()}`
-                    : selectedSubmission
-                      ? `Enviado em ${new Date(selectedSubmission.createdAt).toLocaleString()}`
-                      : ""}
-                </p>
-              </div>
-              <Button
-                variant="danger"
-                size="sm"
-                className="h-9 px-4 text-sm"
-                onClick={() => {
-                  setInspectingUser(null);
-                  setShowModal(false);
-                  setSelectedSubmission(null);
-                }}
-              >
-                Fechar
-              </Button>
-
-              {isOwner && (
-                <div className="mt-6 border-t border-border pt-4">
-                  <h3 className="text-lg font-semibold flex items-center gap-2 mb-4 text-foreground">
-                    <AlertTriangle className="w-5 h-5 text-warning" />
-                    Logs de Atividade Suspeita
-                  </h3>
-
-                  {!activeSubmission?.activityLogs?.length ? (
-                    <p className="text-sm text-muted">
-                      Nenhuma atividade anormal detectada.
-                    </p>
-                  ) : (
-                    <ul className="space-y-3 max-h-60 overflow-y-auto pr-2">
-                      {activeSubmission.activityLogs.map(
-                        (log: ActivityLog, index: number) => (
-                          <li
-                            key={index}
-                            className="flex items-start gap-3 bg-surface p-3 rounded-md border border-border"
-                          >
-                            {log.action === "PASTE" ? (
-                              <ClipboardPaste className="w-4 h-4 text-destructive mt-1" />
-                            ) : (
-                              <Copy className="w-4 h-4 text-blue-500 mt-1" />
-                            )}
-                            <div>
-                              <p className="text-sm font-medium text-foreground">
-                                Ação:{" "}
-                                {log.action === "PASTE"
-                                  ? "Colagem externa"
-                                  : "Cópia de código"}
-                              </p>
-                              <p className="text-xs text-muted mt-0.5">
-                                {log.details}
-                              </p>
-                              <p className="text-xs text-muted/70 mt-1">
-                                {new Date(log.timestamp).toLocaleTimeString()}
-                              </p>
-                            </div>
-                          </li>
-                        ),
-                      )}
-                    </ul>
-                  )}
-                </div>
-              )}
-
-              {isOwner &&
-                currentProblem?.children &&
-                currentProblem.children.length > 1 && (
-                  <div className="flex items-center gap-2 px-4 md:px-6 py-3 border-b border-border bg-surface/50 overflow-x-auto no-scrollbar">
-                    <span className="text-xs text-muted font-semibold uppercase tracking-wider whitespace-nowrap mr-2">
-                      Questão:
-                    </span>
-                    {currentProblem.children.map((child, idx) => (
-                      <button
-                        key={child.id}
-                        onClick={() => {
-                          setActiveInspectionIndex(idx);
-                          const sub = studentSubmissions[child.id];
-                          if (sub) {
-                            setGradingGrade(sub.grade ?? "");
-                            setGradingComment(sub.teacherComment ?? "");
-                          } else {
-                            setGradingGrade("");
-                            setGradingComment("");
-                          }
-                        }}
-                        title={child.title}
-                        className={cn(
-                          "w-9 h-9 rounded-lg text-sm font-bold border-2 transition-all flex-none flex items-center justify-center",
-                          activeInspectionIndex === idx
-                            ? "bg-primary border-primary text-primary-foreground scale-110 shadow-lg"
-                            : "bg-surface border-border text-muted hover:border-primary/50 hover:text-foreground",
-                        )}
-                      >
-                        {idx + 1}
-                      </button>
-                    ))}
-                  </div>
-                )}
-            </div>
-
-            <div className="flex-1 flex flex-col lg:flex-row min-h-0">
-              {/* Lado Esquerdo: Código */}
-              <div className="flex-1 lg:border-r border-border flex flex-col min-h-[300px]">
-                <div className="bg-surface p-3 border-b border-border text-sm text-muted flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {classroom?.subject === "CHEMISTRY" ? (
-                      <Beaker size={18} />
-                    ) : (
-                      <FileCode size={18} />
-                    )}
-                    Visualizador de Resolução
-                  </div>
-
-                  {/* Navegação de arquivos na inspeção */}
-                  {(activeSubmission?.files?.length || 0) > 1 && (
-                    <div className="flex bg-background/20 rounded overflow-hidden">
-                      {activeSubmission?.files.map((f, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => setInspectFileIndex(idx)}
-                          className={cn(
-                            "px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors",
-                            inspectFileIndex === idx
-                              ? "text-primary bg-white/5"
-                              : "text-muted",
-                          )}
-                        >
-                          {f.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* SQL_MODELING não tem "arquivos" — em vez de abas de
-                      arquivo, alterna entre a resposta do aluno e o
-                      gabarito (se o professor desenhou um), já que ainda
-                      não existe diff automático entre os dois. */}
-                  {displayProblem?.subject === "SQL_MODELING" &&
-                    (displayProblem?.referenceModel?.entities?.length || 0) >
-                      0 && (
-                      <div className="flex bg-background/20 rounded overflow-hidden">
-                        <button
-                          onClick={() => setShowReferenceInInspector(false)}
-                          className={cn(
-                            "px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors",
-                            !showReferenceInInspector
-                              ? "text-primary bg-white/5"
-                              : "text-muted",
-                          )}
-                        >
-                          Resposta do aluno
-                        </button>
-                        <button
-                          onClick={() => setShowReferenceInInspector(true)}
-                          className={cn(
-                            "px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors",
-                            showReferenceInInspector
-                              ? "text-primary bg-white/5"
-                              : "text-muted",
-                          )}
-                        >
-                          Gabarito
-                        </button>
-                      </div>
-                    )}
-                </div>
-
-                <div className="flex-1 relative bg-background">
-                  {classroom?.subject === "CHEMISTRY" ? (
-                    <MoleculeWorkspace
-                      key={
-                        activeSubmission?.id ||
-                        selectedSubmission?.id ||
-                        "viewer"
-                      }
-                      initialSmiles={
-                        (isOwner &&
-                          activeSubmission?.files[inspectFileIndex]?.content) ||
-                        (!isOwner &&
-                          selectedSubmission?.files[inspectFileIndex]
-                            ?.content) ||
-                        ""
-                      }
-                      initialMode={
-                        displayProblem?.validationConfig?.expectedMode as any
-                      }
-                    />
-                  ) : displayProblem?.subject === "SQL" ? (
-                    <Editor
-                      height="100%"
-                      width="100%"
-                      language="sql"
-                      theme={monacoTheme}
-                      value={
-                        (isOwner &&
-                          activeSubmission?.files[inspectFileIndex]?.content) ||
-                        selectedSubmission?.files[inspectFileIndex]?.content ||
-                        "-- Consulta não disponível"
-                      }
-                      options={{
-                        readOnly: true,
-                        minimap: { enabled: false },
-                        fontSize: 16,
-                        scrollBeyondLastLine: false,
-                        automaticLayout: true,
-                        accessibilitySupport: screenReaderMode ? "on" : "auto",
-                      }}
-                    />
-                  ) : displayProblem?.subject === "SQL_MODELING" ? (
-                    <ErDiagramCanvas
-                      key={`inspect-${
-                        showReferenceInInspector ? "reference" : "student"
-                      }-${activeSubmission?.id || selectedSubmission?.id || "viewer"}`}
-                      initialValue={
-                        showReferenceInInspector
-                          ? (displayProblem?.referenceModel ?? EMPTY_ER_MODEL)
-                          : ((isOwner
-                              ? activeSubmission?.modelData
-                              : selectedSubmission?.modelData) ??
-                            EMPTY_ER_MODEL)
-                      }
-                      readOnly
-                    />
-                  ) : (
-                    <Editor
-                      height="100%"
-                      width="100%"
-                      language="python"
-                      theme={monacoTheme}
-                      value={
-                        (isOwner &&
-                          activeSubmission?.files[inspectFileIndex]?.content) ||
-                        selectedSubmission?.files[inspectFileIndex]?.content ||
-                        "// Código não disponível"
-                      }
-                      options={{
-                        readOnly: true,
-                        minimap: { enabled: false },
-                        fontSize: 16,
-                        scrollBeyondLastLine: false,
-                        automaticLayout: true,
-                        accessibilitySupport: screenReaderMode ? "on" : "auto",
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
-
-              {/* Lado Direito: Feedback e Notas */}
-              <div className="w-full lg:w-[450px] bg-surface flex flex-col p-6 overflow-y-auto border-t lg:border-t-0 lg:border-l border-border h-1/2 lg:h-full">
-                <div className="space-y-8">
-                  {/* Status Card */}
-                  <Card className="bg-surface border-border p-5">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm text-muted uppercase font-bold tracking-wider">
-                        Veredito
-                      </span>
-                      {(activeSubmission?.status ||
-                        selectedSubmission?.status) === "Accepted" ? (
-                        <CheckCircle size={20} className="text-success" />
-                      ) : (
-                        <XCircle size={20} className="text-destructive" />
-                      )}
-                    </div>
-                    <div
-                      className={cn(
-                        "text-2xl font-bold",
-                        (activeSubmission?.status ||
-                          selectedSubmission?.status) === "Accepted"
-                          ? "text-success"
-                          : "text-destructive",
-                      )}
-                    >
-                      {activeSubmission?.status || selectedSubmission?.status}
-                    </div>
-                  </Card>
-
-                  {/* Logs */}
-                  <div>
-                    <h4 className="text-base font-bold text-foreground mb-3">
-                      Saída / Logs
-                    </h4>
-                    <div className="bg-background rounded-lg p-4 text-sm font-mono text-foreground max-h-60 overflow-y-auto border border-border">
-                      <pre>
-                        {activeSubmission?.output ||
-                          selectedSubmission?.output ||
-                          "Sem saída."}
-                      </pre>
-                    </div>
-                  </div>
-
-                  {/* Área de Nota (Apenas Professor) */}
-                  {isOwner && (
-                    <div className="pt-8 border-t border-border space-y-6">
-                      <h4 className="text-lg font-bold text-foreground flex items-center gap-2">
-                        <Settings size={20} /> Avaliação Manual
-                      </h4>
-
-                      <div className="space-y-2.5">
-                        <label className="text-sm text-muted font-medium">
-                          Nota (0-10)
-                        </label>
-                        <Input
-                          type="number"
-                          placeholder="0"
-                          value={gradingGrade}
-                          onChange={(e) => setGradingGrade(e.target.value)}
-                          className="h-11 text-base disabled:opacity-50"
-                          disabled={classroom.isArchived} // <-- Trava
-                        />
-                      </div>
-
-                      <div className="space-y-2.5">
-                        <label className="text-sm text-muted font-medium">
-                          Comentários
-                        </label>
-                        <textarea
-                          disabled={classroom.isArchived} // <-- Trava
-                          className="w-full bg-background/20 border border-border rounded-lg p-3 text-base text-foreground resize-none h-32 focus:outline-none focus:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          placeholder="Feedback para o aluno..."
-                          value={gradingComment}
-                          onChange={(e) => setGradingComment(e.target.value)}
-                        />
-                      </div>
-
-                      <Button
-                        className="w-full h-11 text-base"
-                        disabled={classroom.isArchived} // <-- Trava
-                        onClick={handleSaveGrade}
-                      >
-                        Salvar Avaliação
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* Área de Visualização do Feedback (Apenas Aluno) */}
-                  {!isOwner &&
-                    (selectedSubmission?.grade != null ||
-                      selectedSubmission?.teacherComment) && (
-                      <div className="pt-8 border-t border-border space-y-6">
-                        <h4 className="text-lg font-bold text-foreground flex items-center gap-2">
-                          <GraduationCap size={20} className="text-primary" />{" "}
-                          Feedback do Professor
-                        </h4>
-
-                        {selectedSubmission.grade != null && (
-                          <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg flex items-center justify-between">
-                            <span className="text-sm text-muted uppercase font-bold tracking-wider">
-                              Nota Final
-                            </span>
-                            <span className="text-3xl font-bold text-primary">
-                              {selectedSubmission.grade}
-                            </span>
-                          </div>
-                        )}
-
-                        {selectedSubmission.teacherComment && (
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-sm text-muted font-medium">
-                              <MessageSquare size={16} /> Comentários:
-                            </div>
-                            <div className="p-4 bg-surface border border-border rounded-lg text-foreground text-sm leading-relaxed whitespace-pre-wrap">
-                              {selectedSubmission.teacherComment}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <SubmissionsPanel
+        isOwner={isOwner}
+        classroom={classroom!}
+        displayProblem={displayProblem}
+        currentProblem={currentProblem}
+        submissions={submissions}
+        hasTeacher={hasTeacher}
+        monacoTheme={monacoTheme}
+        screenReaderMode={screenReaderMode}
+        inspection={inspection}
+      />
     </div>
   );
 }
