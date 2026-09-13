@@ -88,6 +88,124 @@ import { useMoleculeStore } from "../features/molecule-env/store/useMoleculeStor
 import "highlight.js/styles/atom-one-dark.css";
 import "../App.css";
 
+/**
+ * Alça de redimensionamento dos PanelGroup (editor/painel lateral,
+ * enunciado/console, preview/log). Estilo "03" aprovado: uma linha fina
+ * de 1px em repouso (quase imperceptível) que ganha cor no hover/foco,
+ * com um pequeno indicador de 3 pontos centralizado sinalizando que dá
+ * pra arrastar — sem a barra grossa e sempre visível de antes.
+ */
+function ResizeHandle({ direction }: { direction: "horizontal" | "vertical" }) {
+  const isHorizontal = direction === "horizontal";
+  return (
+    <PanelResizeHandle
+      className={cn(
+        "group relative flex items-center justify-center outline-none shrink-0",
+        isHorizontal ? "w-2 cursor-col-resize" : "h-2 cursor-row-resize",
+      )}
+    >
+      {/* Linha fina — some no fundo até o hover/foco */}
+      <div
+        className={cn(
+          "absolute bg-border transition-colors group-hover:bg-primary/60 group-focus-visible:bg-primary",
+          isHorizontal
+            ? "inset-y-0 left-1/2 w-px -translate-x-1/2"
+            : "inset-x-0 top-1/2 h-px -translate-y-1/2",
+        )}
+      />
+      {/* Grip dots — só aparecem no hover/foco */}
+      <div
+        className={cn(
+          "relative z-10 flex items-center justify-center gap-[3px] rounded border border-border bg-surface opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100",
+          isHorizontal ? "flex-col px-1 py-1.5" : "flex-row px-1.5 py-1",
+        )}
+      >
+        <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground" />
+        <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground" />
+        <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground" />
+      </div>
+    </PanelResizeHandle>
+  );
+}
+
+/**
+ * Split vertical (top/bottom) redimensionável, implementado à mão.
+ *
+ * O PanelGroup/Separator importado de "react-resizable-panels" acima só
+ * funciona de fato para o split horizontal original (editor x painel
+ * lateral) — `direction="vertical"` não empilha os painéis, ele
+ * continua tratando os filhos como colunas lado a lado (foi o que
+ * causou enunciado/preview/log aparecerem espremidos numa faixa
+ * horizontal). Em vez de brigar com essa parte da lib, este componente
+ * controla o arrasto manualmente com useState + mousemove, então o
+ * empilhamento vertical é garantido independente do que a lib faz.
+ */
+function VSplit({
+  top,
+  bottom,
+  defaultTopPct = 60,
+  minPct = 15,
+  maxPct = 85,
+}: {
+  top: React.ReactNode;
+  bottom: React.ReactNode;
+  defaultTopPct?: number;
+  minPct?: number;
+  maxPct?: number;
+}) {
+  const [topPct, setTopPct] = useState(defaultTopPct);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!draggingRef.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const pct = ((e.clientY - rect.top) / rect.height) * 100;
+      setTopPct(Math.min(maxPct, Math.max(minPct, pct)));
+    }
+    function onUp() {
+      draggingRef.current = false;
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [minPct, maxPct]);
+
+  return (
+    <div ref={containerRef} className="h-full min-h-0 flex flex-col">
+      <div
+        style={{ flex: `0 0 ${topPct}%` }}
+        className="min-h-0 flex flex-col overflow-hidden"
+      >
+        {top}
+      </div>
+      <div
+        onMouseDown={() => {
+          draggingRef.current = true;
+        }}
+        className="group relative h-2 flex shrink-0 items-center justify-center outline-none cursor-row-resize"
+      >
+        <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border transition-colors group-hover:bg-primary/60" />
+        <div className="pointer-events-none relative z-10 flex flex-row items-center justify-center gap-[3px] rounded border border-border bg-surface px-1.5 py-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground" />
+          <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground" />
+          <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground" />
+        </div>
+      </div>
+      <div
+        style={{ flex: `1 1 ${100 - topPct}%` }}
+        className="min-h-0 flex flex-col overflow-hidden"
+      >
+        {bottom}
+      </div>
+    </div>
+  );
+}
+
 interface AnnouncementLink {
   url: string;
   title: string;
@@ -2947,53 +3065,98 @@ export default function ClassroomView({
           </span>
         )}
       </div>
-      <iframe
-        srcDoc={
-          isOwner
-            ? composePreviewHtml(
-                ownerReferenceFiles,
-                ownerReferencePageIndex,
-              ) ||
-              "<p style='color:#888;font-family:sans-serif;padding:2rem;text-align:center'>Nenhum HTML de referência definido.</p>"
-            : composePreviewHtml(
-                activeQuestionHtmlFiles,
-                activeHtmlFileIndex,
-              ) ||
-              "<p style='color:#888;font-family:sans-serif;padding:2rem;text-align:center'>Escreva seu HTML no editor ao lado para ver o preview aqui.</p>"
-        }
-        className="flex-1 w-full bg-white"
-        sandbox="allow-same-origin"
-        title="Preview HTML do aluno"
-      />
-      {/* Nota: preview é por página isolada, sem navegação real entre
-          elas — um link para outra página não navega sozinho aqui
-          dentro; troque de aba manualmente para conferir cada uma. O
-          CSS via <link rel="stylesheet"> já é resolvido (ver
-          composePreviewHtml); JS não roda neste preview de propósito
-          (ver comentário na função). */}
-      {((isOwner && ownerReferenceFiles.length > 1) ||
-        (!isOwner && activeQuestionHtmlFiles.length > 1)) && (
-        <p className="flex-none text-[11px] text-muted px-4 py-1.5 border-t border-border bg-surface/50">
-          Preview por página isolada — links entre páginas de referência não
-          navegam sozinhos aqui; troque de aba para conferir cada uma.
-        </p>
-      )}
-      {/* Feedback de validação após submissão (checklist de regras do gabarito) */}
-      {verdict && verdict !== "Processando..." && (
-        <div className="flex-none border-t border-border max-h-60 overflow-y-auto">
-          {submissionError ? (
-            <div className="bg-surface p-3">
-              <pre className="text-xs font-mono text-destructive whitespace-pre-wrap">
-                {submissionError}
-              </pre>
-            </div>
-          ) : (
-            <LogViewer
-              logs={lastSubmission?.output || lastSubmission?.stderr || ""}
-              status={(lastSubmission?.status as any) || "Pending"}
-            />
-          )}
+
+      {/* Corpo: preview + (se houver veredito) log de execução.
+          Usa o VSplit manual (ver comentário no componente acima) em vez
+          do PanelGroup direction="vertical", que não empilha de verdade
+          nessa lib. */}
+      {verdict && verdict !== "Processando..." ? (
+        <div className="flex-1 min-h-0">
+          <VSplit
+            defaultTopPct={65}
+            minPct={20}
+            maxPct={85}
+            top={
+              <div className="h-full flex flex-col min-h-0">
+                <iframe
+                  srcDoc={
+                    isOwner
+                      ? composePreviewHtml(
+                          ownerReferenceFiles,
+                          ownerReferencePageIndex,
+                        ) ||
+                        "<p style='color:#888;font-family:sans-serif;padding:2rem;text-align:center'>Nenhum HTML de referência definido.</p>"
+                      : composePreviewHtml(
+                          activeQuestionHtmlFiles,
+                          activeHtmlFileIndex,
+                        ) ||
+                        "<p style='color:#888;font-family:sans-serif;padding:2rem;text-align:center'>Escreva seu HTML no editor ao lado para ver o preview aqui.</p>"
+                  }
+                  className="flex-1 min-h-0 w-full bg-white"
+                  sandbox="allow-same-origin"
+                  title="Preview HTML do aluno"
+                />
+                {/* Nota: preview é por página isolada, sem navegação real
+                    entre elas — um link para outra página não navega
+                    sozinho aqui dentro; troque de aba manualmente para
+                    conferir cada uma. O CSS via <link rel="stylesheet">
+                    já é resolvido (ver composePreviewHtml); JS não roda
+                    neste preview de propósito (ver comentário na
+                    função). */}
+                {((isOwner && ownerReferenceFiles.length > 1) ||
+                  (!isOwner && activeQuestionHtmlFiles.length > 1)) && (
+                  <p className="flex-none text-[11px] text-muted px-4 py-1.5 border-t border-border bg-surface/50">
+                    Preview por página isolada — links entre páginas de
+                    referência não navegam sozinhos aqui; troque de aba para
+                    conferir cada uma.
+                  </p>
+                )}
+              </div>
+            }
+            bottom={
+              <div className="h-full flex flex-col min-h-0 overflow-auto border-t border-border">
+                {submissionError ? (
+                  <div className="bg-surface p-3">
+                    <pre className="text-xs font-mono text-destructive whitespace-pre-wrap">
+                      {submissionError}
+                    </pre>
+                  </div>
+                ) : (
+                  // resize-y do próprio LogViewer permite um ajuste fino
+                  // por cima do resize "grosso" da alça do VSplit;
+                  // flex-1 faz ele preencher o painel por padrão em vez
+                  // de só a altura mínima de conteúdo.
+                  <LogViewer
+                    logs={
+                      lastSubmission?.output || lastSubmission?.stderr || ""
+                    }
+                    status={(lastSubmission?.status as any) || "Pending"}
+                    className="flex-1"
+                  />
+                )}
+              </div>
+            }
+          />
         </div>
+      ) : (
+        <iframe
+          srcDoc={
+            isOwner
+              ? composePreviewHtml(
+                  ownerReferenceFiles,
+                  ownerReferencePageIndex,
+                ) ||
+                "<p style='color:#888;font-family:sans-serif;padding:2rem;text-align:center'>Nenhum HTML de referência definido.</p>"
+              : composePreviewHtml(
+                  activeQuestionHtmlFiles,
+                  activeHtmlFileIndex,
+                ) ||
+                "<p style='color:#888;font-family:sans-serif;padding:2rem;text-align:center'>Escreva seu HTML no editor ao lado para ver o preview aqui.</p>"
+          }
+          className="flex-1 w-full bg-white"
+          sandbox="allow-same-origin"
+          title="Preview HTML do aluno"
+        />
       )}
     </div>
   ) : isSql ? (
@@ -3031,9 +3194,11 @@ export default function ClassroomView({
             <div className="text-xs sm:text-sm font-bold text-muted mb-3 uppercase tracking-wider shrink-0">
               {verdict === "Accepted" ? "Resultado" : "Detalhes do Erro"}
             </div>
-            <div className="shrink-0 overflow-hidden rounded-lg border border-border/50">
+            {/* Sem overflow-hidden aqui: cortaria a alça de resize do
+                LogViewer, que agora controla sua própria altura/scroll. */}
+            <div className="shrink-0 rounded-lg border border-border/50 overflow-visible">
               {submissionError ? (
-                <div className="bg-background p-4 text-destructive font-mono text-sm whitespace-pre-wrap">
+                <div className="bg-background p-4 text-destructive font-mono text-sm whitespace-pre-wrap rounded-lg overflow-hidden">
                   {submissionError}
                 </div>
               ) : (
@@ -3204,9 +3369,11 @@ export default function ClassroomView({
                 ? "Saída do Programa"
                 : "Logs Técnicos / Detalhes"}
             </div>
-            <div className="shrink-0 overflow-hidden rounded-lg border border-border/50">
+            {/* Sem overflow-hidden aqui pelo mesmo motivo do bloco SQL
+                acima: cortaria a alça de resize do LogViewer. */}
+            <div className="shrink-0 rounded-lg border border-border/50 overflow-visible">
               {submissionError ? (
-                <div className="bg-background p-4 text-destructive font-mono text-sm whitespace-pre-wrap">
+                <div className="bg-background p-4 text-destructive font-mono text-sm whitespace-pre-wrap rounded-lg overflow-hidden">
                   {submissionError}
                 </div>
               ) : (
@@ -4591,21 +4758,32 @@ export default function ClassroomView({
                     <Panel defaultSize={60} minSize={30}>
                       {editorContent}
                     </Panel>
-                    <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 focus-visible:bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-surface transition-colors cursor-col-resize" />
+                    <ResizeHandle direction="horizontal" />
                     <Panel defaultSize={40} minSize={20}>
                       {isOwner ? (
                         <div className="h-full flex flex-col">
                           {problemDetailsContent}
                         </div>
                       ) : (
-                        <>
-                          <div className="h-[60%] flex flex-col border-b border-border">
-                            {problemDetailsContent}
-                          </div>
-                          <div className="h-[40%] flex flex-col">
-                            {consoleContent}
-                          </div>
-                        </>
+                        // Split vertical (enunciado x console/preview) via
+                        // VSplit manual — o PanelGroup da lib não empilha
+                        // de verdade em direction="vertical" (ver
+                        // comentário no componente VSplit acima).
+                        <VSplit
+                          defaultTopPct={60}
+                          minPct={20}
+                          maxPct={85}
+                          top={
+                            <div className="h-full flex flex-col">
+                              {problemDetailsContent}
+                            </div>
+                          }
+                          bottom={
+                            <div className="h-full flex flex-col">
+                              {consoleContent}
+                            </div>
+                          }
+                        />
                       )}
                     </Panel>
                   </PanelGroup>

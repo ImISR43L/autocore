@@ -40,8 +40,14 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ expected, actual }) => {
 
   return (
     <div className="diff-container">
-      {/* Container Principal */}
-      <div className="diff-box">
+      {/* Container Principal — redimensionável verticalmente.
+          `resize-y` habilita a alça nativa do navegador no canto
+          inferior direito; `overflow-auto` é obrigatório para o
+          `resize` funcionar e também garante scroll quando o
+          conteúdo do diff ultrapassa a altura escolhida pelo
+          usuário. min-h/max-h evitam que fique grande demais ou
+          pequeno demais que nem consiga ver o conteúdo. */}
+      <div className="diff-box resize-y overflow-auto min-h-[200px] max-h-[80vh] rounded-md">
         {/* LADO ESQUERDO: ESPERADO */}
         <div className="diff-panel">
           <div className="diff-header diff-text-expected">ESPERADO</div>

@@ -15,13 +15,17 @@ interface LogViewerProps {
     | "Compilation Error"
     | "Runtime Error"
     | "Memory Limit Exceeded";
+  // Opcional: permite o componente pai compor classes de layout (ex:
+  // `flex-1` quando o LogViewer mora dentro de um flex/Panel externo),
+  // sem precisar de um wrapper div extra.
+  className?: string;
 }
 
-export default function LogViewer({ logs, status }: LogViewerProps) {
+export default function LogViewer({ logs, status, className }: LogViewerProps) {
   // Estado de Carregamento
   if (!logs && status === "Pending") {
     return (
-      <div className="log-container log-status-pending flex items-center justify-center p-8">
+      <div className="log-container log-status-pending resize-y overflow-auto min-h-[140px] max-h-[70vh] flex items-center justify-center p-8">
         <Terminal size={24} className="mr-2 animate-pulse" />
         <span>Aguardando execução...</span>
       </div>
@@ -104,7 +108,12 @@ export default function LogViewer({ logs, status }: LogViewerProps) {
   };
 
   return (
-    <div className={`log-container ${getContainerClass()}`}>
+    // resize-y + overflow-auto habilitam a alça nativa de redimensionamento
+    // do navegador (canto inferior direito). min-h/max-h evitam que o
+    // usuário arraste para um tamanho inutilizável.
+    <div
+      className={`log-container ${getContainerClass()} resize-y overflow-auto min-h-[140px] max-h-[70vh] ${className || ""}`}
+    >
       {/* Cabeçalho */}
       <div className="log-header">
         {renderHeaderIcon()}
